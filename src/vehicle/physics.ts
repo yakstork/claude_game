@@ -13,8 +13,11 @@
  *    Угол заноса β = ψ_v − h (курс скорости минус курс кузова) управляется газом
  *    и рулём: целевой угол растёт от руля в занос/газа, контрруль его убавляет.
  *    Траектория загибается с боковым ускорением driftGrip·g, скорость теряется
- *    умеренно. Выход (руль/газ отпущены, контрруль) — фаза EXIT: угол экспоненциально
- *    сводится к нулю, затем GRIP берёт управление без рывка и «маятника».
+ *    умеренно. Вход резкий: зад срывается за ~0.2 с, кузов «кивает» (визуальный импульс
+ *    крена/тангажа), задние шины сразу визжат. Без Space занос держится рулём + газом;
+ *    слабый руль «тает» устойчивость заноса (driftSelfAlign). Выход (руль/газ отпущены,
+ *    контрруль) — фаза EXIT: угол экспоненциально сводится к нулю, затем GRIP берёт
+ *    управление без рывка и «маятника».
  *
  * Вертикаль: 4 пружины-демпфера, у каждого колеса свой луч вниз (высота дороги под
  * КОНКРЕТНЫМ колесом через Track.project), тангаж и крен кузова — из разницы высот
@@ -69,6 +72,19 @@ const EXIT_DONE_ANGLE = 0.07;
 const MAX_ANGLE_RATE = 3.2;
 /** Занос принудительно завершается, если угол больше этого, рад */
 const MAX_SLIDE_ANGLE = 1.15;
+/** Время нарастания боковой силы и потерь скорости при входе в занос, с */
+const DRIFT_ENTRY_TIME = 0.25;
+/** «Кивок» кузова на входе: пик огибающей через NOD_PEAK с, затухание ~NOD_DUR с */
+const NOD_PEAK = 0.08;
+const NOD_DUR = 0.6;
+/** Доля от крена кивка, идущая в клевок носом */
+const NOD_PITCH_RATIO = 0.4;
+/** Руль в занос, начиная с которого расход устойчивости равен driftSelfAlignFull */
+const SELF_ALIGN_FULL_STEER = 0.75;
+/** Предел динамического крена кузова (от поворота и «кивка»), рад: выше колёса отрываются */
+const MAX_DYN_ROLL = 0.115;
+/** Первые DRIFT_SKID_HOLD с заноса задние шины визжат на полную */
+const DRIFT_SKID_HOLD = 0.3;
 
 // ─── Временные объекты уровня модуля (без аллокаций в step) ────────────────
 
@@ -185,6 +201,12 @@ export class VehiclePhysics {
   private driftCooldown = 0;
   private pathRate = 0;
   private angleRate = 0;
+  /** «Устойчивость» заноса 1..0: при удержании только рулём тает со скоростью driftSelfAlign */
+  private stability = 1;
+  // «кивок» кузова на входе в занос (только визуал): время с начала и сторона заноса
+  private nodT = NOD_DUR;
+  private nodDir = 0;
+  private skidKick = false;
   // визуал колёс
   private frontSkid = 0;
   private rearSkid = 0;
@@ -257,6 +279,10 @@ export class VehiclePhysics {
     this.driftDir = 0;
     this.driftTime = this.driftCooldown = 0;
     this.pathRate = this.angleRate = 0;
+    this.stability = 1;
+    this.nodT = NOD_DUR;
+    this.nodDir = 0;
+    this.skidKick = false;
     this.frontSkid = this.rearSkid = this.visSteer = 0;
     this.shiftTimer = 0;
     this.wallCooldown = 0;
@@ -581,7 +607,7 @@ export class VehiclePhysics {
       ) {
         this.phase = PHASE_DRIFT;
         this.driftDir = steerIn > 0 ? 1 : -1;
-        this.driftTime = 0;
+        this.startDriftKick();
         this.pathRate = this.state.yawRate;
         this.angleRate = 0;
       }
@@ -597,26 +623,47 @@ export class VehiclePhysics {
     ) {
       // переброс: Space + руль резко в другую сторону — занос в противоположном направлении
       this.driftDir = -this.driftDir;
-      this.driftTime = 0;
+      this.startDriftKick();
     }
     const bd = beta * this.driftDir;
     const steerInto = steerIn * this.driftDir;
     if (this.phase === PHASE_DRIFT) {
       this.driftTime += dt;
       // занос держится, пока игрок «вложен»: Space, либо руль в занос + газ/тормоз
-      const held = c.handbrake || (steerInto >= cfg.driftHoldSteer && (throttle >= 0.15 || brake >= 0.15));
+      // без Space устойчивость тает тем быстрее, чем слабее руль в занос (driftSelfAlign)
+      let held = c.handbrake;
+      if (c.handbrake) {
+        this.stability = 1;
+      } else if (steerInto >= cfg.driftHoldSteer && (throttle >= 0.15 || brake >= 0.15)) {
+        const slack = clamp(1 - steerInto / SELF_ALIGN_FULL_STEER, 0, 1);
+        // расход: на полном руле — driftSelfAlignFull, на слабом растёт до driftSelfAlign
+        this.stability -= (cfg.driftSelfAlignFull + (cfg.driftSelfAlign - cfg.driftSelfAlignFull) * slack * slack) * dt;
+        held = this.stability > 0;
+      }
       if (!held || V < cfg.driftMinSpeed * 0.55) this.phase = PHASE_EXIT;
     } else {
       const reenter =
         steerInto >= Math.max(cfg.driftEntrySteer, 0.3) &&
-        (c.handbrake || throttle >= 0.3) &&
+        (c.handbrake || (throttle >= 0.3 && this.stability > 0)) &&
         bd > 0.1 &&
         V > cfg.driftMinSpeed * 0.7 &&
         gf > 0.7;
-      if (reenter) this.phase = PHASE_DRIFT;
+      if (reenter) {
+        this.phase = PHASE_DRIFT;
+        if (c.handbrake) this.stability = 1;
+      }
       else if (bd < EXIT_DONE_ANGLE || V < 3) this.endDrift(0.15);
     }
     if (this.phase !== PHASE_GRIP && (u <= 1 || bd > MAX_SLIDE_ANGLE)) this.endDrift(0.4);
+  }
+
+  /** Начало заноса (или переброса): сброс таймеров, «кивок» кузова, визг шин */
+  private startDriftKick(): void {
+    this.driftTime = 0;
+    this.stability = 1;
+    this.nodT = 0;
+    this.nodDir = this.driftDir;
+    this.skidKick = true;
   }
 
   /** Продольное ускорение (тяга, торможение, сопротивление, задний ход) */
@@ -739,7 +786,7 @@ export class VehiclePhysics {
 
     // целевой угол: руль в занос и газ увеличивают, контрруль убавляет; на очень
     // высокой скорости угол сужается (иначе продольная скорость «проваливается»)
-    const entry = drifting ? clamp(this.driftTime / 0.6, 0, 1) : 1;
+    const entry = drifting ? clamp(this.driftTime / DRIFT_ENTRY_TIME, 0, 1) : 1;
     let aRate: number;
     let aT = 0;
     if (drifting) {
@@ -750,12 +797,14 @@ export class VehiclePhysics {
         cfg.driftThrottleGain * (throttle - 0.7);
       aT = clamp(aT, 0.12, cfg.driftMaxAngle);
       aT *= 1 - 0.35 * MathUtils.smoothstep(V, cfg.driftAngleFadeSpeed, cfg.driftAngleFadeSpeed + 30);
+      // самовыравнивание: когда занос держится лишь слабым рулём, угол сужается
+      aT *= 0.65 + 0.35 * clamp(this.stability, 0, 1);
       aRate = cfg.driftAngleRate;
     } else {
       aRate = cfg.driftExitRate;
     }
-    // рост угла ограничен driftEntryRate и плавно «разгоняется» за первые ~0.08 с (без рывка)
-    const rampUp = drifting ? MathUtils.smoothstep(this.driftTime, 0, 0.08) : 1;
+    // рост угла ограничен driftEntryRate и «разгоняется» за первые ~0.05 с (зад срывается сразу)
+    const rampUp = drifting ? MathUtils.smoothstep(this.driftTime, 0, 0.05) : 1;
     const rateT = clamp((aT - bd) * aRate, -MAX_ANGLE_RATE * 0.75, cfg.driftEntryRate * rampUp);
     this.angleRate += (rateT - this.angleRate) * (1 - Math.exp(-30 * dt));
     const bdDot = this.angleRate;
@@ -772,7 +821,7 @@ export class VehiclePhysics {
       const wd = yawRateForSteer(cfg, V * cosB, this.delta);
       target = softLimit(wd, Math.max(aMax, 1) / Math.max(V, 2), cfg.understeer);
     }
-    const kPath = drifting ? (this.driftTime < 0.3 ? 25 : 10) : aRate;
+    const kPath = drifting ? (this.driftTime < DRIFT_ENTRY_TIME ? 25 : 10) : aRate;
     this.pathRate += (target - this.pathRate) * (1 - Math.exp(-kPath * dt));
     const omega = this.pathRate - dir * bdDot;
 
@@ -926,6 +975,7 @@ export class VehiclePhysics {
     const st = this.state;
     let tp: number;
     let tr: number;
+    if (this.nodT < NOD_DUR) this.nodT += dt;
     if (contacts > 0) {
       // геометрия: кузов повторяет гребень, въезд на эстакаду, вираж — по высотам контактов
       const g = this.ground;
@@ -936,9 +986,20 @@ export class VehiclePhysics {
       tp = Math.atan2(front - rear, WHEELBASE);
       tr = Math.atan2(left - right, TRACK_WIDTH);
       // динамика: клевок/приседание и крен от бокового ускорения
-      const aLeft = st.yawRate * u;
-      tr += clamp(aLeft * 0.0058, -0.07, 0.07);
+      // в заносе крен — от реального поворота траектории, а не от быстрого рыскания кузова
+      const aLeft = (this.phase === PHASE_GRIP ? st.yawRate : this.pathRate) * u;
+      const rollCap = this.phase === PHASE_GRIP ? 0.07 : 0.055;
+      let dynRoll = clamp(aLeft * 0.0058, -rollCap, rollCap);
       tp += clamp(this.axSmooth * 0.0044, -0.0436, 0.0436);
+      // «кивок» на входе в занос: крен наружу и клевок носом, затухает за ~0.3 с (визуал)
+      if (this.nodT < NOD_DUR) {
+        const x = this.nodT / NOD_PEAK;
+        const env = x * Math.exp(1 - x);
+        dynRoll -= this.nodDir * this.cfg.driftNod * env;
+        tp -= this.cfg.driftNod * NOD_PITCH_RATIO * env;
+      }
+      // предел динамического крена: дальше начинается отрыв внутренних колёс от дороги
+      tr += clamp(dynRoll, -MAX_DYN_ROLL, MAX_DYN_ROLL);
     } else {
       const vh = Math.hypot(st.velocity.x, st.velocity.z);
       tp = clamp(Math.atan2(st.velocity.y, Math.max(vh, 1)) * 0.7, -0.4, 0.4);
@@ -981,10 +1042,15 @@ export class VehiclePhysics {
     if (handbrake && vAbs > 4) rearSkid = Math.max(rearSkid, 0.85);
     if (wheelspin > 0.15) rearSkid = Math.max(rearSkid, wheelspin * 0.8);
     if (this.phase !== PHASE_GRIP) rearSkid = Math.max(rearSkid, st.driftIntensity);
+    // первые ~0.3 с заноса зад визжит на полную, дальше — по углу (мгновенный «срыв» шин)
+    const entrySkid = this.phase === PHASE_DRIFT && this.driftTime < DRIFT_SKID_HOLD;
+    if (entrySkid) rearSkid = 1;
     const hardBrake = brake > 0.95 && vAbs > 15 ? 0.25 : 0;
     // в заносе колёса визуально «контрулят» вдоль вектора скорости
     const steerL = MathUtils.lerp(this.delta, this.visSteer, clamp(st.driftIntensity * 1.5, 0, 1));
     const kSkid = 1 - Math.exp(-dt * 20);
+    const kick = this.skidKick;
+    this.skidKick = false;
     for (let i = 0; i < 4; i++) {
       const wh = wheels[i];
       const front = i < 2;
@@ -1001,6 +1067,7 @@ export class VehiclePhysics {
       }
       const raw = grounded && wh.onGround ? Math.min(1, (front ? this.frontSkid : rearSkid) + hardBrake) * speedGate : 0;
       wh.skid += (raw - wh.skid) * kSkid;
+      if (kick && !front && raw > 0.9) wh.skid = Math.max(wh.skid, 0.95);
     }
   }
 

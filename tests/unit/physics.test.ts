@@ -183,8 +183,9 @@ describe('VehiclePhysics: занос и нитро', () => {
       const cfg = getHandling(CAR_SPECS[i].id);
       let minA = Infinity;
       let maxA = 0;
-      run(car, 5, (t) => ctl({ throttle: 1, steer: 0.7, handbrake: t < 0.5 }), (t) => {
-        if (t > 2.5) {
+      // окно 0.8–1.2 с: Photon без Space сам выходит из заноса за ~1.5 с (driftSelfAlignFull)
+      run(car, 1.2, (t) => ctl({ throttle: 1, steer: 0.7, handbrake: t < 0.5 }), (t) => {
+        if (t > 0.8) {
           const a = Math.abs(car.state.driftAngle);
           minA = Math.min(minA, a);
           maxA = Math.max(maxA, a);

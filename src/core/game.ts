@@ -713,7 +713,7 @@ export class Game {
       position: st.position,
       heading: st.heading,
       velocity: st.velocity,
-      speed: st.speed,
+      speed: Math.sign(st.speed || 1) * Math.hypot(st.velocity.x, st.velocity.z),
       maxSpeed: getHandling(c.spec.id).maxSpeed,
       nitro: st.nitroActive,
       onGround: st.onGround,
@@ -745,7 +745,8 @@ export class Game {
     const h = this.hud;
     const ps = this.player.physics.state;
     const st = race.standing(PLAYER_SLOT);
-    h.speedKmh = Math.abs(ps.speed) * 3.6;
+    // полная горизонтальная скорость: в заносе продольная составляющая падает, а машина — нет
+    h.speedKmh = Math.hypot(ps.velocity.x, ps.velocity.z) * 3.6;
     h.nitro = ps.nitro;
     h.nitroActive = ps.nitroActive;
     h.lap = Math.min(LAPS, st.lap + 1);

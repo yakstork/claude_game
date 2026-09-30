@@ -73,7 +73,7 @@ export type HandlingConfig = {
   driftCounterSteer: number;
   /** Скорость набора угла заноса (постоянная времени), 1/с */
   driftAngleRate: number;
-  /** Предел скорости роста угла при входе в занос, рад/с (плавный вход) */
+  /** Предел скорости роста угла при входе в занос, рад/с (резкость срыва зада) */
   driftEntryRate: number;
   /** Скорость, м/с, выше которой угол заноса сужается (до ~65% на +30 м/с) */
   driftAngleFadeSpeed: number;
@@ -85,6 +85,12 @@ export type HandlingConfig = {
   driftSpeedLoss: number;
   /** Заряд нитро в секунду полного заноса (доля шкалы) */
   driftChargeRate: number;
+  /** Самовыравнивание: как быстро занос, удерживаемый лишь слабым рулём (без Space), сходит сам, 1/с */
+  driftSelfAlign: number;
+  /** То же на полном руле в занос без Space (клавиатура): 1/с; время удержания ≈ 1 / значение */
+  driftSelfAlignFull: number;
+  /** «Кивок» кузова на входе в занос: крен наружу, рад (клевок носом — ~40% от него; только визуал) */
+  driftNod: number;
 
   // ── Стены ───────────────────────────────────────────────────────────────
   /** Трение скольжения вдоль стены (доля погашенной нормальной скорости) */
@@ -147,18 +153,21 @@ function build(): Record<string, HandlingConfig> {
       understeerSpeed: 22,
       driftMinSpeed: 15,
       driftEntrySteer: 0.25,
-      driftGrip: 1.3,
-      driftBaseAngle: 0.3,
-      driftMaxAngle: 0.75,
-      driftSteerGain: 0.24,
+      driftGrip: 1.25,
+      driftBaseAngle: 0.38,
+      driftMaxAngle: 0.72,
+      driftSteerGain: 0.22,
       driftThrottleGain: 0.2,
       driftCounterSteer: 0.6,
-      driftAngleRate: 8,
-      driftEntryRate: 1.65,
-      driftAngleFadeSpeed: 28,
+      driftAngleRate: 13,
+      driftEntryRate: 6,
+      driftAngleFadeSpeed: 46,
       driftExitRate: 8,
       driftHoldSteer: 0.12,
       driftSpeedLoss: 0.16,
+      driftSelfAlign: 1.2,
+      driftSelfAlignFull: 0.27,
+      driftNod: 0.095,
       driftChargeRate: 0.32,
       wallFriction: 0.1,
       wallBounce: 0.25,
@@ -183,18 +192,21 @@ function build(): Record<string, HandlingConfig> {
       understeerSpeed: 20,
       driftMinSpeed: 13,
       driftEntrySteer: 0.25,
-      driftGrip: 1.1,
-      driftBaseAngle: 0.32,
-      driftMaxAngle: 0.85,
-      driftSteerGain: 0.24,
-      driftThrottleGain: 0.22,
+      driftGrip: 0.95,
+      driftBaseAngle: 0.5,
+      driftMaxAngle: 0.95,
+      driftSteerGain: 0.3,
+      driftThrottleGain: 0.2,
       driftCounterSteer: 0.5,
-      driftAngleRate: 8,
-      driftEntryRate: 1.7,
-      driftAngleFadeSpeed: 28,
+      driftAngleRate: 12,
+      driftEntryRate: 5.5,
+      driftAngleFadeSpeed: 46,
       driftExitRate: 6.5,
-      driftHoldSteer: 0.08,
+      driftHoldSteer: 0.06,
       driftSpeedLoss: 0.12,
+      driftSelfAlign: 0.08,
+      driftSelfAlignFull: 0.04,
+      driftNod: 0.1,
       driftChargeRate: 0.42,
       wallFriction: 0.1,
       wallBounce: 0.2,
@@ -217,20 +229,23 @@ function build(): Record<string, HandlingConfig> {
       slipDamping: 10,
       understeer: 0.4,
       understeerSpeed: 22,
-      driftMinSpeed: 18,
+      driftMinSpeed: 20,
       driftEntrySteer: 0.3,
-      driftGrip: 1.35,
-      driftBaseAngle: 0.24,
-      driftMaxAngle: 0.58,
-      driftSteerGain: 0.16,
-      driftThrottleGain: 0.12,
+      driftGrip: 1.5,
+      driftBaseAngle: 0.28,
+      driftMaxAngle: 0.5,
+      driftSteerGain: 0.14,
+      driftThrottleGain: 0.1,
       driftCounterSteer: 0.7,
-      driftAngleRate: 8,
-      driftEntryRate: 1.4,
-      driftAngleFadeSpeed: 34,
-      driftExitRate: 10,
+      driftAngleRate: 16,
+      driftEntryRate: 3.8,
+      driftAngleFadeSpeed: 50,
+      driftExitRate: 12,
       driftHoldSteer: 0.15,
       driftSpeedLoss: 0.2,
+      driftSelfAlign: 2.0,
+      driftSelfAlignFull: 0.67,
+      driftNod: 0.085,
       driftChargeRate: 0.24,
       wallFriction: 0.09,
       wallBounce: 0.25,
@@ -341,12 +356,15 @@ export const HANDLING_PARAMS: TuningParam[] = [
   p('driftThrottleGain', 'Влияние газа на угол, рад', 'Дрифт', 0, 0.6, 0.01),
   p('driftCounterSteer', 'Сила контрруления, рад', 'Дрифт', 0, 1.5, 0.01),
   p('driftAngleRate', 'Скорость набора угла, 1/с', 'Дрифт', 1, 20, 0.5),
-  p('driftEntryRate', 'Плавность входа, рад/с', 'Дрифт', 0.5, 6, 0.1),
+  p('driftEntryRate', 'Резкость срыва зада, рад/с', 'Дрифт', 0.5, 10, 0.1),
   p('driftAngleFadeSpeed', 'Сужение угла от скорости, м/с', 'Дрифт', 20, 80, 1),
   p('driftExitRate', 'Скорость выравнивания, 1/с', 'Дрифт', 2, 20, 0.5),
   p('driftHoldSteer', 'Руль для удержания заноса', 'Дрифт', 0, 0.6, 0.01),
   p('driftSpeedLoss', 'Потеря скорости, 1/с', 'Дрифт', 0, 0.5, 0.01),
   p('driftChargeRate', 'Заряд нитро, 1/с', 'Дрифт', 0.05, 1, 0.01),
+  p('driftSelfAlign', 'Самовыравнивание слабого руля, 1/с', 'Дрифт', 0, 6, 0.05),
+  p('driftSelfAlignFull', 'Самовыравнивание на полном руле, 1/с', 'Дрифт', 0, 3, 0.01),
+  p('driftNod', 'Кивок кузова на входе, рад', 'Дрифт', 0, 0.15, 0.005),
 
   p('wallFriction', 'Трение о стену', 'Стены', 0, 0.6, 0.01),
   p('wallBounce', 'Отскок от стены', 'Стены', 0, 0.8, 0.01),

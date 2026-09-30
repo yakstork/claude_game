@@ -8,6 +8,7 @@ const DT = 1 / 60;
 function drifting(speed = 30, angle = 0.6) {
   const s = createVehicleState();
   s.speed = speed;
+  s.velocity.set(0, 0, speed);
   s.drifting = true;
   s.driftAngle = angle;
   s.onGround = true;
@@ -17,6 +18,7 @@ function drifting(speed = 30, angle = 0.6) {
 function idle(speed = 30) {
   const s = createVehicleState();
   s.speed = speed;
+  s.velocity.set(0, 0, speed);
   return s;
 }
 
@@ -250,12 +252,32 @@ describe('DriftScorer', () => {
   });
 });
 
+describe('DriftScorer: скорость для очков', () => {
+  it('очки считаются по модулю горизонтальной скорости, а не по продольной компоненте', () => {
+    const sc = new DriftScorer();
+    const st = drifting(30, 0.6);
+    // на большом угле продольная компонента заметно меньше полной скорости
+    st.speed = 30 * Math.cos(0.9);
+    run(sc, st, 1);
+    expect(sc.combo.points).toBeCloseTo(1 * 30 * 1 * 10, 0);
+  });
+
+  it('порог 12 м/с — тоже по модулю вектора (малая продольная при большой скорости не гасит комбо)', () => {
+    const sc = new DriftScorer();
+    const st = drifting(20, 1);
+    st.speed = 10;
+    run(sc, st, 0.5);
+    expect(sc.combo.active).toBe(true);
+  });
+});
+
 describe('DriftScorer.flush', () => {
   it('банкует активное комбо (например, на финише)', () => {
     const sc = new DriftScorer();
     const st = createVehicleState();
     st.drifting = true;
     st.speed = 30;
+    st.velocity.set(0, 0, 30);
     st.driftAngle = 0.6;
     st.onGround = true;
     for (let i = 0; i < 240; i++) sc.update(1 / 120, st, false);
