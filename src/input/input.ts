@@ -1,9 +1,9 @@
 /**
- * InputManager — клавиатура + геймпад (Standard mapping).
+ * InputManager — клавиатура + сенсорные кнопки + геймпад (Standard mapping).
  * controls() — непрерывное управление машиной; consumeActions() — дискретные
  * действия для меню/паузы/респауна.
  */
-import type { MenuAction, VehicleControls } from '../core/types';
+import type { ControlMode, MenuAction, TouchState, VehicleControls } from '../core/types';
 import { INPUT_TUNING } from '../vehicle/handling';
 
 const KEY_ACTIONS: Record<string, MenuAction> = {
@@ -39,6 +39,15 @@ const DEADZONE = 0.15;
 /** Скорость набора руля с клавиатуры при зажатом Space, 1/с */
 const DRIFT_STEER_RISE = 10;
 
+/** Включать ли сенсорное управление: 'touch' — да, 'keyboard' — нет, 'auto' — по устройству */
+export function resolveTouchMode(mode: ControlMode, touchDevice: boolean): boolean {
+  if (mode === 'touch') return true;
+  if (mode === 'keyboard') return false;
+  return touchDevice;
+}
+
+export type InputDevice = 'keyboard' | 'gamepad' | 'touch';
+
 export class InputManager {
   private readonly keys = new Set<string>();
   private readonly actions: MenuAction[] = [];
@@ -47,9 +56,12 @@ export class InputManager {
   private keySteer = 0;
   private lastTime = performance.now();
   private readonly out: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
-  lastDevice: 'keyboard' | 'gamepad' = 'keyboard';
+  private touch: TouchState | null = null;
+  lastDevice: InputDevice = 'keyboard';
 
-  constructor(target: Window = window) {
+  /** target по умолчанию window; без DOM (Node) подписок нет */
+  constructor(target: Pick<Window, 'addEventListener'> | null = typeof window === 'undefined' ? null : window) {
+    if (!target) return;
     target.addEventListener('keydown', (e) => {
       if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       this.lastDevice = 'keyboard';
@@ -61,6 +73,11 @@ export class InputManager {
     });
     target.addEventListener('keyup', (e) => this.keys.delete(e.code));
     target.addEventListener('blur', () => this.keys.clear());
+  }
+
+  /** Источник сенсорных кнопок (живой объект, его мутирует UI); null — нет. */
+  setTouchSource(state: TouchState | null): void {
+    this.touch = state;
   }
 
   private key(...codes: string[]): boolean {
@@ -114,26 +131,29 @@ export class InputManager {
     const dt = simDt ?? Math.min(0.1, (now - this.lastTime) / 1000);
     this.lastTime = now;
 
-    const left = this.key('KeyA', 'ArrowLeft');
-    const right = this.key('KeyD', 'ArrowRight');
+    const t = this.touch;
+    const left = this.key('KeyA', 'ArrowLeft') || (t !== null && t.left);
+    const right = this.key('KeyD', 'ArrowRight') || (t !== null && t.right);
+    const drift = this.key('Space') || (t !== null && t.drift);
     const target = (right ? 1 : 0) - (left ? 1 : 0);
     if (target !== 0) {
       // плавное нарастание; при смене направления — быстрый переход через ноль
       const flip = Math.sign(target) !== Math.sign(this.keySteer) && this.keySteer !== 0;
       let rate = flip ? INPUT_TUNING.keySteerCounter : INPUT_TUNING.keySteerRise;
       // с зажатым дрифтом руль набирается быстрее — срыв зада не ждёт плавного нарастания
-      if (this.key('Space')) rate = Math.max(rate, DRIFT_STEER_RISE);
+      if (drift) rate = Math.max(rate, DRIFT_STEER_RISE);
       this.keySteer = approach(this.keySteer, target, rate * dt);
     } else {
       this.keySteer = approach(this.keySteer, 0, INPUT_TUNING.keySteerReturn * dt);
     }
 
     const o = this.out;
-    o.throttle = this.key('KeyW', 'ArrowUp') ? 1 : 0;
-    o.brake = this.key('KeyS', 'ArrowDown') ? 1 : 0;
+    o.throttle = this.key('KeyW', 'ArrowUp') || (t !== null && t.throttle) ? 1 : 0;
+    o.brake = this.key('KeyS', 'ArrowDown') || (t !== null && t.brake) ? 1 : 0;
     o.steer = this.keySteer;
-    o.handbrake = this.key('Space');
-    o.nitro = this.key('ShiftLeft', 'ShiftRight');
+    o.handbrake = drift;
+    o.nitro = this.key('ShiftLeft', 'ShiftRight') || (t !== null && t.nitro);
+    if (t && (t.left || t.right || t.throttle || t.brake || t.drift || t.nitro)) this.lastDevice = 'touch';
 
     const p = this.pad();
     if (p) {
