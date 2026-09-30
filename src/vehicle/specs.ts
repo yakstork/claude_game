@@ -76,3 +76,26 @@ export const BOT_PROFILES: BotProfile[] = [
 export function specById(id: string): CarSpec {
   return CAR_SPECS.find((c) => c.id === id) ?? CAR_SPECS[0];
 }
+
+/**
+ * Общие габариты машины (едины для физики и визуальных моделей).
+ * Локальные координаты: +Z — вперёд, +X — влево, y = 0 — уровень осей колёс
+ * (это точка VehicleState.position). В покое на ровной дороге
+ * position.y ≈ высота дороги + wheelRadius.
+ */
+export const CAR_GEOMETRY = {
+  wheelBase: 2.6,
+  trackWidth: 1.72,
+  wheelRadius: 0.36,
+  /** Точки крепления колёс: FL, FR, RL, RR */
+  wheelOffsets: [
+    [0.86, 0, 1.3],
+    [-0.86, 0, 1.3],
+    [0.86, 0, -1.3],
+    [-0.86, 0, -1.3],
+  ] as const,
+  /** Габариты кузова для столкновений */
+  length: 4.4,
+  width: 1.95,
+  collisionRadius: 2.1,
+} as const;
