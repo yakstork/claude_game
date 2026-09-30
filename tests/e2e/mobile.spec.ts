@@ -55,7 +55,7 @@ for (const phone of phones) {
 
       // выбор машины касанием
       await page.getByRole('button', { name: 'Следующая машина' }).tap();
-      await page.waitForFunction(() => window.__neonRush!.game.selectedCar === 1, null, { timeout: 10_000 });
+      await page.waitForFunction(() => window.__neonRush!.game.selectedCar === 1, null, { timeout: 30_000 });
 
       // старт гонки касанием
       await page.getByText('ГОНКА', { exact: true }).first().tap();

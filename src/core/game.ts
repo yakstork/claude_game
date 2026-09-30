@@ -9,7 +9,7 @@ import { GameLoop } from './loop';
 import type { RenderSystem } from './renderer';
 import { ChaseCamera } from './camera';
 import { isTouchDevice, vibrate } from './device';
-import { loadCustomBuild, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
+import { DEFAULT_CUSTOM_BUILD, loadCustomBuild, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
 import type {
   BotProfile,
   CarSpec,
@@ -205,7 +205,7 @@ export class Game {
   }
 
   private debugPanel: DebugPanel | null = null;
-  customBuild: CustomBuild = normalizeBuild(loadCustomBuild());
+  customBuild: CustomBuild = paletteSafe(normalizeBuild(loadCustomBuild()));
 
   /** Индекс машины «своя сборка» в CAR_SPECS */
   private get customIndex(): number {
@@ -227,7 +227,7 @@ export class Game {
   /** «Своя сборка» изменилась: физика, превью, сохранение */
   applyCustomBuild(b: CustomBuild): void {
     const prev = this.customBuild;
-    this.customBuild = normalizeBuild(b);
+    this.customBuild = paletteSafe(normalizeBuild(b));
     saveCustomBuild(this.customBuild);
     const spec = this.syncCustomSpec();
     if (!spec) return;
@@ -862,4 +862,13 @@ function formatTime(t: number): string {
   const m = Math.floor(t / 60);
   const s = t - m * 60;
   return `${m}:${s.toFixed(3).padStart(6, '0')}`;
+}
+
+/** Цвета «своей сборки» — только из палитры игры; чужие (например, из старого localStorage) заменяются */
+function paletteSafe(b: CustomBuild): CustomBuild {
+  return {
+    ...b,
+    bodyColor: CUSTOM_PALETTE.body.includes(b.bodyColor) ? b.bodyColor : DEFAULT_CUSTOM_BUILD.bodyColor,
+    neonColor: CUSTOM_PALETTE.neon.includes(b.neonColor) ? b.neonColor : DEFAULT_CUSTOM_BUILD.neonColor,
+  };
 }

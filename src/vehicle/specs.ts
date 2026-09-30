@@ -51,7 +51,7 @@ export const CAR_SPECS: CarSpec[] = [
 ];
 
 /** Цвета, разрешённые для «своей сборки» (только палитра игры) */
-export const CUSTOM_PALETTE = {
+export const CUSTOM_PALETTE: { body: number[]; neon: number[] } = {
   body: [PALETTE.cyan, PALETTE.magenta, PALETTE.orange, PALETTE.yellow, PALETTE.lilac, PALETTE.pink, PALETTE.white, PALETTE.violet],
   neon: [PALETTE.magenta, PALETTE.cyan, PALETTE.pink, PALETTE.orange, PALETTE.yellow, PALETTE.lilac, PALETTE.white],
 };

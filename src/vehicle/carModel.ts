@@ -359,7 +359,8 @@ function carMaterial(): MeshStandardNodeMaterial {
   const mat = new MeshStandardNodeMaterial({ roughness: 0.38, metalness: 0.2, flatShading: true });
   const g = attribute('glow', 'float');
   mat.colorNode = vertexColor();
-  mat.emissiveNode = vertexColor().mul(g).mul(2.2);
+  // неон — по атрибуту glow; кузову — лёгкий собственный подсвет, чтобы цвет читался в закатном свете
+  mat.emissiveNode = vertexColor().mul(g.mul(2.2).add(float(1).sub(g).mul(0.12)));
   return mat;
 }
 

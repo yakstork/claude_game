@@ -19,9 +19,9 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const DEFAULT_CUSTOM_BUILD: CustomBuild = {
-  speed: 0.6,
-  handling: 0.6,
-  drift: 0.6,
+  speed: 0.65,
+  handling: 0.65,
+  drift: 0.65,
   bodyColor: PALETTE.cyan,
   neonColor: PALETTE.magenta,
 };
