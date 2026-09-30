@@ -25,7 +25,8 @@ npm test           # vitest
 npm run test:e2e   # playwright smoke (сам собирает и поднимает preview)
 ```
 Отладочные URL-параметры: `?autostart=1&car=0` — сразу в гонку;
-`?quality=low|high`; `?fps=1`. Хэндл `window.__neonRush` — для e2e.
+`?quality=low|high`; `?fps=1`; `?debug` — панель тюнинга управления
+(все числа управления — `src/vehicle/handling.ts`). Хэндл `window.__neonRush` — для e2e.
 
 ## Жёсткие ограничения
 - Никаких внешних ассетов, генераций и платных сервисов: графика, шрифты,

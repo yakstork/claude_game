@@ -23,6 +23,7 @@ import {
 } from 'three/tsl';
 import { PALETTE } from './palette';
 import { setGlow } from './materials';
+import { GROUND_Y } from './constants';
 
 export class Ground {
   readonly mesh: Mesh;
@@ -67,7 +68,7 @@ export class Ground {
       setGlow(mat, lines.mul(0.55));
     }
     this.mesh = new Mesh(geo, mat);
-    this.mesh.position.y = -0.3;
+    this.mesh.position.y = GROUND_Y;
     this.mesh.renderOrder = -5;
   }
 }

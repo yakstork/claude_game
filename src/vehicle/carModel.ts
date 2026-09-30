@@ -34,6 +34,8 @@ const TIRE = 0x0e0a16;
 const DARK = 0x1a1026;
 const HEAD = 0xfff4d6;
 const TAIL = 0xff1f4f;
+const EXHAUST_X = 0.45;
+const EXHAUST_Y = 0.02;
 
 const T = (x: number, y: number, z: number) => new Matrix4().makeTranslation(x, y, z);
 
@@ -148,8 +150,6 @@ function buildBody(look: CarLook): GeometryBuilder {
       body,
     );
     gb.box(hw * 1.9, 0.12, 0.05, TAIL, 1, T(0, 0.5, -2.26));
-    // боковые выхлопы
-    for (const side of [-1, 1]) gb.cylinder(0.07, 0.07, 1.2, 6, 0x4a3a5a, 0, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * (hw + 0.04), -0.08, 0.2)));
   } else {
     // Photon X — очень низкий гиперкар с каплевидным фонарём
     gb.prism(
@@ -207,7 +207,61 @@ function buildBody(look: CarLook): GeometryBuilder {
     gb.box(hw * 1.2, 0.18, 0.05, DARK, 0, T(0, 0.1, -2.3));
   }
 
-  // общие элементы: неоновая полоса по порогам, днище
+  // ── общие детали: зеркала, неон окон, фары, диффузор, выхлоп, сплиттер ──
+  const [front, rear] = look.model === 'wedge' ? [2.25, -2.2] : look.model === 'muscle' ? [2.3, -2.28] : [2.35, -2.3];
+  const cab =
+    look.model === 'wedge'
+      ? { z0: -1.15, z1: 0.9, y: 0.5, zm: 0.55, ym: 0.62, w: hw * 0.74 }
+      : look.model === 'muscle'
+        ? { z0: -1.7, z1: 0.42, y: 0.63, zm: 0.2, ym: 0.78, w: hw * 0.8 }
+        : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
+  for (const side of [-1, 1]) {
+    // зеркала на стойке
+    gb.box(0.05, 0.05, 0.12, DARK, 0, T(side * (cab.w + 0.08), cab.ym - 0.04, cab.zm));
+    gb.box(0.18, 0.12, 0.06, body, 0, T(side * (cab.w + 0.18), cab.ym, cab.zm));
+    // неоновая линия окна по низу кабины
+    gb.box(0.02, 0.025, cab.z1 - cab.z0 - 0.2, neon, 1, T(side * (cab.w + 0.01), cab.y + 0.02, (cab.z0 + cab.z1) / 2));
+  }
+  if (look.model === 'wedge') {
+    // выдвижные фары на капоте
+    for (const side of [-1, 1]) {
+      gb.box(0.46, 0.1, 0.3, bodyDark, 0, T(side * hw * 0.55, 0.31, 1.72));
+      gb.box(0.4, 0.06, 0.03, HEAD, 1, T(side * hw * 0.55, 0.32, 1.88));
+    }
+    // жалюзи заднего стекла
+    for (let i = 0; i < 4; i++) gb.box(hw * 1.2, 0.02, 0.05, DARK, 0, T(0, 0.66 + i * 0.03, -1.35 - i * 0.12));
+  } else if (look.model === 'muscle') {
+    // круглые фары + стопы по две с каждой стороны
+    for (const side of [-1, 1]) {
+      gb.cylinder(0.1, 0.1, 0.04, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * hw * 0.42, 0.33, 2.3)));
+      for (const k of [0.62, 0.36]) gb.box(0.24, 0.12, 0.05, TAIL, 1, T(side * hw * k, 0.5, -2.29));
+    }
+  } else {
+    // гиперкар: центральный стоп и заборник на крыше
+    gb.box(0.3, 0.05, 0.05, TAIL, 1, T(0, 0.5, -2.2));
+    gb.prism(
+      [
+        [-1.0, 0.88],
+        [-0.3, 0.88],
+        [-0.55, 1.02],
+      ],
+      0.14,
+      DARK,
+    );
+  }
+  // передний сплиттер с неоновой кромкой и решётка заборника
+  gb.box(hw * 1.9, 0.04, 0.32, DARK, 0, T(0, -0.12, front - 0.08));
+  gb.box(hw * 1.9, 0.02, 0.03, neon, 1, T(0, -0.1, front + 0.07));
+  gb.box(hw * 1.1, 0.1, 0.03, 0x0a0612, 0, T(0, 0.0, front + 0.01));
+  // диффузор с рёбрами
+  gb.box(hw * 1.5, 0.14, 0.4, DARK, 0, T(0, -0.06, rear + 0.12));
+  for (let i = -2; i <= 2; i++) gb.box(0.03, 0.2, 0.45, 0x2a2238, 0, T(i * hw * 0.3, -0.04, rear + 0.1));
+  // выхлопные трубы (из них бьёт пламя нитро)
+  for (const side of [-1, 1]) {
+    gb.cylinder(0.1, 0.1, 0.28, 8, 0x3a3048, 0, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * EXHAUST_X, EXHAUST_Y, rear - 0.05)));
+    gb.cylinder(0.065, 0.065, 0.02, 8, PALETTE.orange, 0.7, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * EXHAUST_X, EXHAUST_Y, rear - 0.2)));
+  }
+  // неоновая полоса по порогам, днище
   for (const side of [-1, 1]) gb.box(0.03, 0.04, 3.4, neon, 1, T(side * (hw + 0.02), -0.06, 0));
   gb.box(hw * 1.9, 0.08, 4.2, DARK, 0, T(0, -0.16, 0));
   return gb;
@@ -222,6 +276,8 @@ function buildWheel(neon: number): GeometryBuilder {
   for (const side of [-1, 1]) {
     gb.cylinder(r * 0.62, r * 0.62, 0.02, 10, 0x3a2a4a, 0, new Matrix4().makeRotationZ(Math.PI / 2).premultiply(T(side * 0.155, 0, 0)));
     gb.cylinder(r * 0.8, r * 0.8, 0.012, 10, neon, 1, new Matrix4().makeRotationZ(Math.PI / 2).premultiply(T(side * 0.152, 0, 0)));
+    // колпак ступицы
+    gb.cylinder(r * 0.2, r * 0.2, 0.04, 6, 0x6a5a7a, 0.15, new Matrix4().makeRotationZ(Math.PI / 2).premultiply(T(side * 0.175, 0, 0)));
     // спицы — видно вращение
     for (let k = 0; k < 3; k++) {
       const a = (k / 3) * Math.PI;
@@ -292,9 +348,11 @@ export class CarModel {
 
     // пламя нитро (два конуса из выхлопа)
     const fg = new GeometryBuilder();
-    for (const side of [-0.45, 0.45]) {
-      fg.cylinder(0.0, 0.16, 1.4, 6, PALETTE.cyan, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, 0.05, -2.95)));
-      fg.cylinder(0.0, 0.09, 0.8, 6, PALETTE.white, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, 0.05, -2.65)));
+    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : -2.3;
+    for (const side of [-EXHAUST_X, EXHAUST_X]) {
+      fg.cylinder(0.0, 0.16, 1.4, 6, PALETTE.cyan, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.95)));
+      fg.cylinder(0.0, 0.09, 0.8, 6, PALETTE.white, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.62)));
+      fg.cylinder(0.05, 0.2, 0.5, 6, PALETTE.magenta, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.45)));
     }
     const fMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
     const flick = sin(time.mul(60.0)).mul(0.15).add(0.85);
@@ -306,9 +364,13 @@ export class CarModel {
   }
 
   /** Синхронизация с физическим состоянием (каждый кадр) */
-  update(state: VehicleState, roadHeight: number, dt: number): void {
-    this.group.position.copy(state.position);
-    this.group.quaternion.copy(state.quaternion);
+  /**
+   * Синхронизация с физическим состоянием (каждый кадр). pos/quat — интерполированная
+   * поза кузова для рендера (по умолчанию — из state).
+   */
+  update(state: VehicleState, roadHeight: number, dt: number, pos: Vector3 = state.position, quat: Quaternion = state.quaternion): void {
+    this.group.position.copy(pos);
+    this.group.quaternion.copy(quat);
     this.group.updateMatrixWorld();
     _inv.copy(this.group.matrixWorld).invert();
 
@@ -317,11 +379,12 @@ export class CarModel {
       const ws = state.wheels[i];
       const w = this.wheels[i];
       const [ox, , oz] = CAR_GEOMETRY.wheelOffsets[i];
-      // центр колеса = точка контакта + радиус вдоль «вверх» машины
+      // центр колеса = точка контакта + радиус (в системе кузова). Ограничение —
+      // только ходом подвески с запасом: колесо не должно «тонуть» в покрытии.
       _v.copy(ws.contact);
       if (_v.lengthSq() > 0) {
         _v.applyMatrix4(_inv);
-        const y = Math.min(0.18, Math.max(-0.28, _v.y + r));
+        const y = Math.min(0.42, Math.max(-0.5, _v.y + r));
         w.position.set(ox, y, oz);
       } else {
         w.position.set(ox, 0, oz);

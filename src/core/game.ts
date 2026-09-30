@@ -30,6 +30,7 @@ import { InputManager } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, specById } from '../vehicle/specs';
+import { getHandling } from '../vehicle/handling';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
 import { BotDriver } from '../ai/botDriver';
@@ -37,6 +38,8 @@ import { rubberBandFactor } from '../ai/rubberBand';
 import { RaceManager } from '../race/raceManager';
 import { DriftScorer } from '../race/drift';
 import { UIManager } from '../ui/uiManager';
+import type { DebugPanel } from '../ui/debugPanel';
+import { HANDLING, HANDLING_DEFAULTS, HANDLING_PARAMS, INPUT_PARAMS, INPUT_TUNING, INPUT_TUNING_DEFAULTS } from '../vehicle/handling';
 import { AudioManager } from '../audio/audioManager';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
@@ -68,6 +71,8 @@ export interface GameOptions {
   showFps: boolean;
   autopilot: boolean;
   timeScale: number;
+  /** ?debug — панель тюнинга управления */
+  debug: boolean;
 }
 
 const NO_CONTROLS: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
@@ -179,7 +184,48 @@ export class Game {
     this.loop.timeScale = opts.timeScale;
   }
 
+  private debugPanel: DebugPanel | null = null;
+
+  /** Панель тюнинга управления (?debug). Правки сохраняются и применяются только в debug-режиме. */
+  private async initDebugPanel(): Promise<void> {
+    const { createDebugPanel, loadTuningOverrides } = await import('../ui/debugPanel');
+    loadTuningOverrides(HANDLING, INPUT_TUNING);
+    const carNames: Record<string, string> = {};
+    for (const c of CAR_SPECS) carNames[c.id] = c.name;
+    this.debugPanel = await createDebugPanel({
+      configs: HANDLING,
+      defaults: HANDLING_DEFAULTS,
+      carNames,
+      params: HANDLING_PARAMS,
+      extra: { title: 'Клавиатура', config: INPUT_TUNING, defaults: INPUT_TUNING_DEFAULTS, params: INPUT_PARAMS },
+      getActiveCarId: () => CAR_SPECS[this.selectedCar].id,
+      telemetry: (): Record<string, string | number | boolean> => {
+        const car = this.cars.length ? this.player : null;
+        if (!car) return { Состояние: this.state };
+        const st = car.physics.state;
+        return {
+          Состояние: this.state,
+          'Скорость, км/ч': Math.round(Math.abs(st.speed) * 3.6),
+          Режим: car.physics.driftMode ? 'DRIFT' : 'GRIP',
+          'Угол заноса, °': Math.round((st.driftAngle * 180) / Math.PI),
+          'Рыскание, °/с': Math.round((st.yawRate * 180) / Math.PI),
+          'Угол колёс, °': Math.round((st.wheels[0].steerAngle * 180) / Math.PI),
+          Газ: st.throttle.toFixed(2),
+          Нитро: st.nitro.toFixed(2),
+          'На земле': st.onGround,
+        };
+      },
+    });
+  }
+
   async start(): Promise<void> {
+    if (this.opts.debug) {
+      try {
+        await this.initDebugPanel();
+      } catch (e) {
+        console.warn('Панель тюнинга не загрузилась', e);
+      }
+    }
     // Прогрев: компилируем шейдеры мира и всех машин заранее, чтобы не было
     // фризов при старте гонки.
     this.ui.showLoading('Прогрев неона…');
@@ -237,6 +283,7 @@ export class Game {
 
   private setPreviewCar(i: number): void {
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, i));
+    this.debugPanel?.setActiveCar(CAR_SPECS[this.selectedCar].id);
     if (this.previewModel) {
       this.scene.remove(this.previewModel.group);
       this.previewModel.dispose();
@@ -373,6 +420,20 @@ export class Game {
     this.input.clear();
   }
 
+  /** R: вернуть игрока на трассу у последнего пройденного чекпоинта */
+  respawnAtCheckpoint(car: RaceCar, index: number): void {
+    if (!this.race) return this.respawn(car);
+    const s = this.track.wrapS(this.race.lastCheckpointS(index) + 4);
+    const sample = this.track.sampleAt(s);
+    const pos = sample.position.clone();
+    pos.y += CAR_GEOMETRY.wheelRadius + 0.3;
+    const heading = Math.atan2(sample.tangent.x, sample.tangent.z);
+    car.physics.reset(pos, heading, sample.s);
+    car.prevPos.copy(car.physics.state.position);
+    car.prevQuat.copy(car.physics.state.quaternion);
+    this.chase.snap(this.chaseInput(car));
+  }
+
   /** Респаун машины на осевую в текущей точке трассы */
   respawn(car: RaceCar): void {
     const st = car.physics.state;
@@ -414,7 +475,7 @@ export class Game {
           if (!this.playerAutopilot) this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5);
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
         } else {
-          controls = this.input.controls();
+          controls = this.input.controls(dt);
         }
       } else if (c.bot) {
         controls = this.state === 'countdown' ? NO_CONTROLS : c.bot.update(dt, c.physics.state, c.spec, this.states);
@@ -572,7 +633,7 @@ export class Game {
       }
       // 'back' (Backspace / B на геймпаде) в гонке не ставит паузу: B — это нитро
       if (a === 'pause') this.pause();
-      else if (a === 'reset' && this.state === 'racing') this.respawn(this.player);
+      else if (a === 'reset' && this.state === 'racing') this.respawnAtCheckpoint(this.player, PLAYER_SLOT);
     }
   }
 
@@ -635,7 +696,7 @@ export class Game {
       heading: st.heading,
       velocity: st.velocity,
       speed: st.speed,
-      maxSpeed: c.spec.maxSpeed,
+      maxSpeed: getHandling(c.spec.id).maxSpeed,
       nitro: st.nitroActive,
       onGround: st.onGround,
       drifting: st.drifting,

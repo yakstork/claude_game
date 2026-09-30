@@ -5,6 +5,7 @@ import { SUNSET_LOOP } from '../../src/world/trackData';
 import type { ControlPoint } from '../../src/world/trackData';
 import { VehiclePhysics } from '../../src/vehicle/physics';
 import { CAR_GEOMETRY, CAR_SPECS } from '../../src/vehicle/specs';
+import { getHandling, steerAngleAt } from '../../src/vehicle/handling';
 import type { VehicleControls } from '../../src/core/types';
 
 const DT = 1 / 120;
@@ -43,38 +44,39 @@ function run(car: VehiclePhysics, seconds: number, fn: (t: number) => VehicleCon
 }
 
 describe('VehiclePhysics: разгон и скорость', () => {
-  it('Razor разгоняется до 100 км/ч за 2.8–4 с', () => {
+  it('Razor разгоняется до 100 км/ч за 3.0–3.7 с', () => {
     const car = makeCar(wide, 0, 300);
     let t100 = -1;
     run(car, 8, () => ctl({ throttle: 1 }), (t) => {
       if (t100 < 0 && car.state.speed * KMH >= 100) t100 = t;
     });
-    expect(t100).toBeGreaterThan(2.8);
-    expect(t100).toBeLessThan(4);
+    expect(t100).toBeGreaterThan(3.0);
+    expect(t100).toBeLessThan(3.7);
   });
 
-  it('все машины разгоняются до 100 км/ч за 2.5–4.5 с', () => {
+  it('все машины разгоняются до 100 км/ч за 3.0–3.7 с', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const car = makeCar(wide, i, 300);
       let t100 = -1;
       run(car, 8, () => ctl({ throttle: 1 }), (t) => {
         if (t100 < 0 && car.state.speed * KMH >= 100) t100 = t;
       });
-      expect(t100, CAR_SPECS[i].id).toBeGreaterThan(2.5);
-      expect(t100, CAR_SPECS[i].id).toBeLessThan(4.5);
+      expect(t100, CAR_SPECS[i].id).toBeGreaterThan(3.0);
+      expect(t100, CAR_SPECS[i].id).toBeLessThan(3.7);
     }
   });
 
-  it('максимальная скорость в пределах ±10% от maxSpeed и не превышается', () => {
+  it('максимальная скорость в пределах ±10% от maxSpeed (HANDLING) и не превышается', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const spec = CAR_SPECS[i];
-      const car = makeCar(wide, i, 300, spec.maxSpeed * 0.85);
+      const vmax = getHandling(spec.id).maxSpeed;
+      const car = makeCar(wide, i, 300, vmax * 0.85);
       let peak = 0;
       run(car, 25, () => ctl({ throttle: 1 }), () => {
         peak = Math.max(peak, car.state.speed);
       });
-      expect(car.state.speed, spec.id).toBeGreaterThan(spec.maxSpeed * 0.9);
-      expect(peak, spec.id).toBeLessThan(spec.maxSpeed * 1.1);
+      expect(car.state.speed, spec.id).toBeGreaterThan(vmax * 0.9);
+      expect(peak, spec.id).toBeLessThan(vmax * 1.1);
     }
   });
 
@@ -94,7 +96,7 @@ describe('VehiclePhysics: торможение и задний ход', () => {
       if (tStop < 0 && car.state.speed < 0.5) tStop = t;
     });
     expect(tStop).toBeGreaterThan(0);
-    expect(tStop).toBeLessThan(60 / CAR_SPECS[0].brakeDecel + 1);
+    expect(tStop).toBeLessThan(60 / getHandling(CAR_SPECS[0].id).brakeDecel + 1);
   });
 
   it('после остановки удержание тормоза включает задний ход (не быстрее 12 м/с)', () => {
@@ -138,6 +140,15 @@ describe('VehiclePhysics: поворот', () => {
     expect(Math.abs(car.state.heading - h0)).toBeLessThan(0.02);
   });
 
+  it('угол передних колёс на 60 м/с — 30–40% от угла на месте (steerAngleAt)', () => {
+    for (const spec of CAR_SPECS) {
+      const cfg = getHandling(spec.id);
+      const ratio = steerAngleAt(cfg, 60) / steerAngleAt(cfg, 0);
+      expect(ratio, spec.id).toBeGreaterThan(0.3);
+      expect(ratio, spec.id).toBeLessThan(0.4);
+    }
+  });
+
   it('на высокой скорости угол руля уменьшается, но не до нуля', () => {
     const slow = makeCar(wide, 0, 300, 20);
     const fast = makeCar(wide, 0, 300, 60);
@@ -150,11 +161,11 @@ describe('VehiclePhysics: поворот', () => {
 });
 
 describe('VehiclePhysics: занос и нитро', () => {
-  it('ручник на скорости включает drifting, даёт угол заноса и заряжает нитро', () => {
+  it('ручник + руль на скорости включает drifting, даёт угол заноса и заряжает нитро', () => {
     const car = makeCar(wide, 0, 300, 30);
     let maxAngle = 0;
     let wasDrifting = false;
-    run(car, 4, (t) => ctl({ throttle: 1, steer: t < 1.2 ? 0.6 : 0.3, handbrake: t > 0.3 && t < 0.9 }), () => {
+    run(car, 4, (t) => ctl({ throttle: 1, steer: 0.8, handbrake: t < 0.5 }), () => {
       maxAngle = Math.max(maxAngle, Math.abs(car.state.driftAngle));
       if (car.state.drifting) wasDrifting = true;
     });
@@ -166,12 +177,13 @@ describe('VehiclePhysics: занос и нитро', () => {
     expect(car.state.nitro).toBeGreaterThan(0.4);
   });
 
-  it('drift assist держит угол в разумных пределах при удержании газа (все машины)', () => {
+  it('угол заноса держится в разумных пределах при удержании газа и руля (все машины)', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const car = makeCar(wide, i, 300, 32);
+      const cfg = getHandling(CAR_SPECS[i].id);
       let minA = Infinity;
       let maxA = 0;
-      run(car, 5, (t) => ctl({ throttle: 1, steer: t < 1.2 ? 0.6 : 0.2, handbrake: t > 0.3 && t < 0.8 }), (t) => {
+      run(car, 5, (t) => ctl({ throttle: 1, steer: 0.7, handbrake: t < 0.5 }), (t) => {
         if (t > 2.5) {
           const a = Math.abs(car.state.driftAngle);
           minA = Math.min(minA, a);
@@ -180,30 +192,34 @@ describe('VehiclePhysics: занос и нитро', () => {
       });
       expect(car.state.drifting, CAR_SPECS[i].id).toBe(true);
       expect(minA, CAR_SPECS[i].id).toBeGreaterThan(0.2);
-      expect(maxA, CAR_SPECS[i].id).toBeLessThan(0.95);
+      expect(maxA, CAR_SPECS[i].id).toBeLessThan(cfg.driftMaxAngle + 0.05);
     }
   });
 
-  it('резкий полный руль с газом на высокой скорости срывает в занос', () => {
-    const car = makeCar(wide, 1, 300, 40);
-    run(car, 1.5, () => ctl({ throttle: 1, steer: 1 }));
-    expect(car.state.drifting).toBe(true);
-    expect(car.state.driftAngle).toBeGreaterThan(0.2); // руль вправо → положительный угол
+  it('резкий полный руль с газом на высокой скорости (без ручника) НЕ срывает в занос', () => {
+    for (let i = 0; i < CAR_SPECS.length; i++) {
+      const car = makeCar(wide, i, 300, 40);
+      let drifted = false;
+      run(car, 2.5, () => ctl({ throttle: 1, steer: 1 }), () => {
+        if (car.state.drifting) drifted = true;
+      });
+      expect(drifted, CAR_SPECS[i].id).toBe(false);
+    }
   });
 
-  it('на малой скорости резкий руль не вызывает занос', () => {
-    const car = makeCar(wide, 0, 300, 12);
-    run(car, 1.5, () => ctl({ throttle: 0.5, steer: 1 }));
+  it('на малой скорости ручник + руль не вызывает занос', () => {
+    const car = makeCar(wide, 0, 300, 8);
+    run(car, 1.5, () => ctl({ throttle: 0.5, steer: 1, handbrake: true }));
     expect(car.state.drifting).toBe(false);
   });
 
   it('после отпускания газа и руля занос заканчивается', () => {
     const car = makeCar(wide, 0, 300, 30);
-    run(car, 2, (t) => ctl({ throttle: 1, steer: 0.5, handbrake: t > 0.3 && t < 0.9 }));
+    run(car, 2, (t) => ctl({ throttle: 1, steer: 0.5, handbrake: t < 0.5 }));
     expect(car.state.drifting).toBe(true);
-    run(car, 4, () => ctl({ throttle: 0, steer: 0 }));
+    run(car, 2, () => ctl({ throttle: 0, steer: 0 }));
     expect(car.state.drifting).toBe(false);
-    expect(Math.abs(car.state.driftAngle)).toBeLessThan(0.15);
+    expect(Math.abs(car.state.driftAngle)).toBeLessThan(0.05);
   });
 
   it('нитро ускоряет сильнее обычного газа и расходует шкалу ~0.3/с', () => {
@@ -225,8 +241,9 @@ describe('VehiclePhysics: занос и нитро', () => {
     run(car, 3, () => ctl({ throttle: 1, nitro: true }), () => {
       peak = Math.max(peak, car.state.speed);
     });
-    expect(peak).toBeGreaterThan(CAR_SPECS[0].maxSpeed * 1.05);
-    expect(peak).toBeLessThan(CAR_SPECS[0].maxSpeed * 1.2);
+    const vmax = getHandling(CAR_SPECS[0].id).maxSpeed;
+    expect(peak).toBeGreaterThan(vmax * 1.05);
+    expect(peak).toBeLessThan(vmax * 1.2);
   });
 
   it('пустая шкала нитро не даёт ускорения', () => {
@@ -379,6 +396,53 @@ describe('VehiclePhysics: подвеска, трамплин, посадка', (
     expect(car.state.onGround).toBe(true);
     for (const w of car.state.wheels) expect(w.onGround).toBe(true);
     expect(car.state.airTime).toBe(0);
+  });
+
+  it('кузов повторяет рельеф: на въезде на гребень нос вверх, на эстакаде — по уклону', () => {
+    const fwd = new Vector3();
+    const pitchOf = (car: VehiclePhysics): number => {
+      fwd.set(0, 0, 1).applyQuaternion(car.state.quaternion);
+      return Math.asin(fwd.y);
+    };
+    // подъём на трамплин (без отрыва: малая скорость): нос заметно выше горизонта
+    const ramp = makeCar(track, 0, 20, 22);
+    let maxPitch = 0;
+    run(ramp, 3, () => ctl({ throttle: 0.3 }), () => {
+      maxPitch = Math.max(maxPitch, pitchOf(ramp));
+    });
+    expect(maxPitch).toBeGreaterThan(0.05);
+    // подъём на эстакаду
+    const bridge = makeCar(track, 0, 1100, 22);
+    let bridgePitch = 0;
+    run(bridge, 3, () => ctl({ throttle: 0.5 }), () => {
+      bridgePitch = Math.max(bridgePitch, pitchOf(bridge));
+    });
+    expect(bridgePitch).toBeGreaterThan(0.05);
+    expect(bridge.state.position.y).toBeGreaterThan(3);
+  });
+
+  it('у каждого колеса своя высота: на уклоне точки контакта лежат на разной высоте', () => {
+    const car = makeCar(track, 0, 1100, 15);
+    run(car, 0.6, () => ctl({ throttle: 0.4 }));
+    const w = car.state.wheels;
+    const frontY = (w[0].contact.y + w[1].contact.y) / 2;
+    const rearY = (w[2].contact.y + w[3].contact.y) / 2;
+    expect(frontY - rearY).toBeGreaterThan(0.1);
+  });
+
+  it('в воздухе колёса на полном отбое: compression 0, onGround false', () => {
+    const car = makeCar(track, 0, 50, 60);
+    let checked = false;
+    run(car, 3, () => ctl({ throttle: 1 }), () => {
+      if (!car.state.onGround && car.state.airTime > 0.3) {
+        checked = true;
+        for (const w of car.state.wheels) {
+          expect(w.compression).toBe(0);
+          expect(w.onGround).toBe(false);
+        }
+      }
+    });
+    expect(checked).toBe(true);
   });
 
   it('wheels[].contact лежит на дороге', () => {

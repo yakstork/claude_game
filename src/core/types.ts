@@ -37,24 +37,8 @@ export interface CarSpec {
   neonColor: number;
   accentColor: number;
 
-  /** Максимальная скорость без нитро, м/с */
-  maxSpeed: number;
-  /** Ускорение на низкой скорости, м/с² */
-  acceleration: number;
-  /** Замедление при торможении, м/с² */
-  brakeDecel: number;
-  /** Максимальный угол поворота передних колёс, рад */
-  steerAngle: number;
-  /** Коэффициент поперечного сцепления (≈ g-нагрузка в повороте) */
-  grip: number;
-  /** Множитель сцепления задней оси в заносе (меньше — легче скользит) */
-  driftGrip: number;
-  /** Заряд нитро в секунду полного заноса (доля шкалы) */
-  driftChargeRate: number;
-  /** Дополнительное ускорение от нитро, м/с² */
-  nitroBoost: number;
-  /** Масса, кг (для столкновений) */
-  mass: number;
+  // Физические числа (скорость, ускорение, сцепление, дрифт, масса…) — в
+  // src/vehicle/handling.ts (HandlingConfig), единый источник истины.
   /** Полоски характеристик в меню, 0..1 */
   stats: { speed: number; handling: number; drift: number };
 }
@@ -335,3 +319,18 @@ export type SfxName =
   | 'uiBack';
 
 export type MusicTrack = 'menu' | 'race';
+
+// ─── Тюнинг (панель ?debug) ────────────────────────────────────────────────
+
+/** Описание настраиваемого числового параметра для панели тюнинга */
+export interface TuningParam {
+  /** Ключ в объекте конфига */
+  key: string;
+  /** Подпись (рус.) */
+  label: string;
+  /** Группа в панели, напр. «Руль», «Сцепление», «Дрифт» */
+  group: string;
+  min: number;
+  max: number;
+  step: number;
+}

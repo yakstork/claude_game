@@ -35,8 +35,8 @@ import type { Track } from './track';
 import { PALETTE } from './palette';
 import { GeometryBuilder, frameMatrix } from './geometryBuilder';
 
-/** Отступ ограждения от края полотна, м */
-export const BARRIER_OFFSET = 0.3;
+import { BARRIER_OFFSET, GROUND_Y } from './constants';
+export { BARRIER_OFFSET };
 const BARRIER_HEIGHT = 1.05;
 const BARRIER_THICK = 0.55;
 const DECK = 1.3;
@@ -230,9 +230,10 @@ export class TrackMesh {
       if (Math.abs(below.height) < 1 && Math.abs(below.lateral) < below.sample.halfWidth + 3 && Math.abs(t.deltaS(below.s, s)) > 50) {
         continue;
       }
-      const hgt = y - DECK + 0.2;
+      const foot = GROUND_Y - 0.3;
+      const hgt = y - DECK + 0.2 - foot;
       const center = sample.position.clone();
-      center.y = hgt / 2 - 0.2;
+      center.y = foot + hgt / 2;
       uprightFrame(center, sample.tangent, m);
       gb.box(sample.halfWidth * 1.3, 1.2, 2.2, dark, 0, new Matrix4().makeTranslation(0, hgt / 2 - 0.6, 0).premultiply(m));
       for (const side of [-1, 1]) {
@@ -255,7 +256,7 @@ export class TrackMesh {
       const add = (sx: number, sy: number, sz: number, x: number, y: number, z: number, c: number | Color, g: number) =>
         gb.box(sx, sy, sz, c, g, new Matrix4().makeTranslation(x, y, z).premultiply(f));
       for (const side of [-1, 1]) {
-        add(1.0, H, 1.0, side * hw, H / 2, 0, purple, 0);
+        add(1.0, H + 1.4, 1.0, side * hw, (H - 1.4) / 2, 0, purple, 0);
         add(0.25, H - 0.6, 0.25, side * (hw - 0.62), H / 2, 0, neon, 1);
       }
       add(hw * 2 + 1, 1.0, 1.0, 0, H, 0, purple, 0);
@@ -273,7 +274,7 @@ export class TrackMesh {
       const add = (sx: number, sy: number, sz: number, x: number, y: number, z: number, c: number | Color, g: number) =>
         gb.box(sx, sy, sz, c, g, new Matrix4().makeTranslation(x, y, z).premultiply(f));
       for (const side of [-1, 1]) {
-        add(1.6, H + 2, 1.6, side * hw, (H + 2) / 2, 0, purple, 0);
+        add(1.6, H + 3.4, 1.6, side * hw, (H + 2 - 1.4) / 2, 0, purple, 0);
         add(0.3, H + 1.4, 0.3, side * (hw - 0.95), (H + 2) / 2, 0.5, PALETTE.magenta, 1);
         add(0.3, H + 1.4, 0.3, side * (hw + 0.95), (H + 2) / 2, -0.5, PALETTE.cyan, 1);
       }

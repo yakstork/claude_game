@@ -5,6 +5,7 @@ import { SUNSET_LOOP } from '../../src/world/trackData';
 import { VehiclePhysics } from '../../src/vehicle/physics';
 import { resolveCarCollisions } from '../../src/vehicle/collisions';
 import { CAR_GEOMETRY, CAR_SPECS } from '../../src/vehicle/specs';
+import { getHandling } from '../../src/vehicle/handling';
 
 const track = new Track(SUNSET_LOOP);
 const CIRCLE_R = 1.05;
@@ -46,10 +47,11 @@ describe('resolveCarCollisions', () => {
   it('лобовое столкновение: машины отталкиваются, суммарный импульс сохраняется', () => {
     const a = place(0, 0, 0, 0, 20);
     const b = place(0, 0, 4.3, Math.PI, 20); // навстречу, перекрытие ≈ 0.1 м
-    const p0 = a.spec.mass * a.state.velocity.z + b.spec.mass * b.state.velocity.z;
+    const mass = getHandling(a.spec.id).mass;
+    const p0 = mass * a.state.velocity.z + mass * b.state.velocity.z;
     resolveCarCollisions([a, b]);
-    const p1 = a.spec.mass * a.state.velocity.z + b.spec.mass * b.state.velocity.z;
-    expect(Math.abs(p1 - p0)).toBeLessThan(1e-6 * a.spec.mass * 40);
+    const p1 = mass * a.state.velocity.z + mass * b.state.velocity.z;
+    expect(Math.abs(p1 - p0)).toBeLessThan(1e-6 * mass * 40);
     // после удара расходятся: A едет назад, B — вперёд
     expect(a.state.velocity.z).toBeLessThan(0);
     expect(b.state.velocity.z).toBeGreaterThan(0);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Track } from '../../src/world/track';
 import { SUNSET_LOOP } from '../../src/world/trackData';
 import { VehiclePhysics, createVehicleState } from '../../src/vehicle/physics';
@@ -6,9 +6,11 @@ import { resolveCarCollisions } from '../../src/vehicle/collisions';
 import { BotDriver } from '../../src/ai/botDriver';
 import { rubberBandFactor } from '../../src/ai/rubberBand';
 import { BOT_PROFILES, CAR_SPECS, specById } from '../../src/vehicle/specs';
+import { HANDLING, resetHandling } from '../../src/vehicle/handling';
 import type { BotProfile, VehicleState } from '../../src/core/types';
 
 const DT = 1 / 120;
+afterEach(() => resetHandling());
 const track = new Track(SUNSET_LOOP);
 
 /** Пять профилей из specs + шестой бот (в гонке ботов 5, но тест гоняет шестёрку) */
@@ -250,4 +252,87 @@ describe('BotDriver: гонка шести ботов', () => {
     expect(avg).toBeGreaterThan(30);
     expect(avg).toBeLessThan(60);
   });
+describe('BotDriver: режим GRIP и общий конфиг управления', () => {
+  it('без разрешения заносов (driftEnabled = false) боты за 90 с не входят в занос ни разу', () => {
+    const { cars, bots, states } = makeRace();
+    for (const b of bots) b.driftEnabled = false;
+    let driftSteps = 0;
+    for (let k = 0; k < 120 * 90; k++) {
+      for (let i = 0; i < cars.length; i++) {
+        cars[i].step(DT, bots[i].update(DT, cars[i].state, cars[i].spec, states));
+        if (cars[i].state.drifting) driftSteps++;
+      }
+      resolveCarCollisions(cars);
+    }
+    expect(driftSteps).toBe(0);
+  });
+
+  it('занос у ботов — только осознанно: каждому входу предшествует ручник (≤ 0.6 с), заносы редкие', () => {
+    const { cars, bots, states } = makeRace();
+    const lastHb = cars.map(() => -Infinity);
+    const was = cars.map(() => false);
+    let entries = 0;
+    let driftSteps = 0;
+    let t = 0;
+    for (let k = 0; k < 120 * 100; k++) {
+      t += DT;
+      for (let i = 0; i < cars.length; i++) {
+        const c = bots[i].update(DT, cars[i].state, cars[i].spec, states);
+        if (c.handbrake) lastHb[i] = t;
+        cars[i].step(DT, c);
+        const d = cars[i].state.drifting;
+        if (d) driftSteps++;
+        if (d && !was[i]) {
+          entries++;
+          expect(t - lastHb[i], `бот ${i}: вход в занос без ручника`).toBeLessThan(0.6);
+        }
+        was[i] = d;
+      }
+      resolveCarCollisions(cars);
+    }
+    // заносы случаются (зрелищно), но не доминируют: < 15% времени всех ботов
+    expect(driftSteps / (120 * 100 * cars.length)).toBeLessThan(0.15);
+    expect(entries).toBeLessThan(30);
+  });
+
+  it('боты читают тот же живой конфиг: снижение maxSpeed в HANDLING ограничивает скорость бота', () => {
+    HANDLING.photon.maxSpeed = 40;
+    const car = new VehiclePhysics(specById('photon'), track);
+    const s0 = 300;
+    const smp = track.sampleAt(s0);
+    car.reset(smp.position, Math.atan2(smp.tangent.x, smp.tangent.z), s0);
+    const bot = new BotDriver(track, BOT_PROFILES[0], 1);
+    let peak = 0;
+    for (let k = 0; k < 120 * 12; k++) {
+      car.step(DT, bot.update(DT, car.state, car.spec, [car.state]));
+      peak = Math.max(peak, car.state.speed);
+    }
+    expect(peak).toBeLessThan(40 * 1.2);
+    expect(peak).toBeGreaterThan(25);
+  });
+
+  it('ни одна из 6 машин-ботов не тратит на круг больше 90 с (проходят все повороты на сцеплении)', () => {
+    const { cars, bots, states } = makeRace();
+    for (const b of bots) b.driftEnabled = false;
+    const dist = cars.map(() => 0);
+    const prevS = cars.map((c) => c.state.trackS);
+    const lap1 = cars.map(() => -1);
+    let t = 0;
+    for (let k = 0; k < 120 * 120 && lap1.some((x) => x < 0); k++) {
+      t += DT;
+      for (let i = 0; i < cars.length; i++) {
+        cars[i].step(DT, bots[i].update(DT, cars[i].state, cars[i].spec, states));
+        const d = track.deltaS(prevS[i], cars[i].state.trackS);
+        prevS[i] = cars[i].state.trackS;
+        if (Math.abs(d) < 50) dist[i] += d;
+        if (lap1[i] < 0 && dist[i] >= track.length) lap1[i] = t;
+      }
+      resolveCarCollisions(cars);
+    }
+    for (let i = 0; i < cars.length; i++) {
+      expect(lap1[i], `бот ${i}`).toBeGreaterThan(0);
+      expect(lap1[i], `бот ${i}`).toBeLessThan(90);
+    }
+  });
+});
 });

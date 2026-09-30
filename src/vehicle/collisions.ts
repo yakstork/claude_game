@@ -7,6 +7,7 @@
  */
 import { Vector3 } from 'three';
 import type { VehiclePhysics } from './physics';
+import { getHandling } from './handling';
 import { CAR_GEOMETRY } from './specs';
 
 const CIRCLE_R = 1.05;
@@ -40,8 +41,8 @@ function collidePair(a: VehiclePhysics, b: VehiclePhysics): void {
   if (dxc * dxc + dzc * dzc > BROAD_DIST * BROAD_DIST) return;
   if (Math.abs(sb.position.y - sa.position.y) > MAX_LEVEL_DIFF) return;
 
-  const ma = a.spec.mass;
-  const mb = b.spec.mass;
+  const ma = getHandling(a.spec.id).mass;
+  const mb = getHandling(b.spec.id).mass;
   const ima = 1 / ma;
   const imb = 1 / mb;
   const iia = 1 / (ma * INERTIA_K2);

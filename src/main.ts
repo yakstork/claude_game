@@ -23,6 +23,7 @@ async function boot(): Promise<void> {
     quality: q === 'low' || q === 'high' ? (q as Quality) : null,
     showFps: params.get('fps') === '1',
     autopilot: params.get('autopilot') === '1',
+    debug: params.has('debug'),
     timeScale: Math.min(8, Math.max(0.1, Number(params.get('timescale') ?? 1) || 1)),
   });
   window.__neonRush = { game, backend: render.backendName, info: () => game.debugInfo() };
