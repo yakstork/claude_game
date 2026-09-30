@@ -360,6 +360,35 @@ describe('DRIFT: вход, удержание и выход — только о�
     }
   });
 
+  it('плавный вход: 80% установившегося угла за 0.2–0.4 с, пик |yawRate| < 2 рад/с, скорость через 0.5 с ≥ 88%', () => {
+    for (let i = 0; i < CAR_SPECS.length; i++) {
+      for (const v of [20, 30, 40, 50, 60]) {
+        for (const sign of [1, -1]) {
+          const car = makeCar(wide, i, 300, v);
+          // W + руль (набор 0.25 с), затем Space
+          run(car, 0.33, (t) => ctl({ throttle: 1, steer: sign * Math.min(1, t * 4) }));
+          const u0 = car.state.speed;
+          const angles: number[] = [];
+          let peakYaw = 0;
+          let u05 = 0;
+          run(car, 1.5, () => ctl({ throttle: 1, steer: sign, handbrake: true }), () => {
+            angles.push(Math.abs(car.state.driftAngle));
+            peakYaw = Math.max(peakYaw, Math.abs(car.state.yawRate));
+            if (angles.length === 60) u05 = car.state.speed;
+          });
+          const label = `${IDS[i]} v=${v} steer=${sign}`;
+          expect(car.state.drifting, label).toBe(true);
+          const steady = angles[angles.length - 1];
+          const t80 = angles.findIndex((a) => a >= 0.8 * steady) * DT;
+          expect(t80, label + ' t80').toBeGreaterThanOrEqual(0.2);
+          expect(t80, label + ' t80').toBeLessThanOrEqual(0.4);
+          expect(peakYaw, label + ' yaw').toBeLessThan(2);
+          expect(u05 / u0, label + ' скорость').toBeGreaterThanOrEqual(0.88);
+        }
+      }
+    }
+  });
+
   it('Space без руля и слабый руль не дают заноса; на малой скорости ручник + руль — тоже', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const cfg = getHandling(IDS[i]);
@@ -583,6 +612,50 @@ describe('стены: скольжение вдоль отбойника и ло
     expect(Math.abs(r.vnAfter)).toBeGreaterThan(1);
     // не пролетает сквозь стену
     expect(Math.abs(r.car.state.lateral)).toBeLessThan(track.halfWidth);
+  });
+});
+
+describe('стены: упор носом с газом — машина сама разворачивается вдоль трассы', () => {
+  it('курс 60°/90°/120° к оси, lateral ≈ 8.1, газ, руль 0 и ±1: за 2 с v > 8 м/с и едет вдоль трассы', () => {
+    for (let i = 0; i < CAR_SPECS.length; i++) {
+      for (const side of [1, -1]) {
+        for (const deg of [60, 90, 120]) {
+          for (const steer of [0, 1, -1]) {
+            const s0 = 300;
+            const smp = track.sampleAt(s0);
+            const along = Math.atan2(smp.tangent.x, smp.tangent.z);
+            const car = new VehiclePhysics(CAR_SPECS[i], track);
+            // side = 1: правая стена (нос повёрнут вправо, курс −deg); side = −1: левая
+            car.reset(smp.position.clone().addScaledVector(smp.right, side * 8.1), along - side * deg * DEG, s0);
+            let dist = 0;
+            let prev = car.state.trackS;
+            let maxBlocked = 0;
+            run(car, 2, () => ctl({ throttle: 1, steer }), () => {
+              dist += track.deltaS(prev, car.state.trackS);
+              prev = car.state.trackS;
+              maxBlocked = Math.max(maxBlocked, car.blockedTime);
+            });
+            const label = `${IDS[i]} side=${side} ${deg}° steer=${steer}`;
+            expect(Math.hypot(car.state.velocity.x, car.state.velocity.z), label).toBeGreaterThan(8);
+            expect(dist, label + ' вдоль трассы').toBeGreaterThan(5);
+            expect(car.needsRespawn, label).toBe(false);
+            expect(maxBlocked, label).toBeLessThan(2);
+            expect(Math.abs(car.state.lateral), label).toBeLessThan(track.halfWidth);
+          }
+        }
+      }
+    }
+  });
+
+  it('wallUnstick = 0 отключает доворот (машина стоит у стены) — параметр действует', () => {
+    HANDLING.razor.wallUnstick = 0;
+    const s0 = 300;
+    const smp = track.sampleAt(s0);
+    const along = Math.atan2(smp.tangent.x, smp.tangent.z);
+    const car = new VehiclePhysics(CAR_SPECS[0], track);
+    car.reset(smp.position.clone().addScaledVector(smp.right, 8.1), along - Math.PI / 2, s0);
+    run(car, 2, () => ctl({ throttle: 1 }));
+    expect(Math.hypot(car.state.velocity.x, car.state.velocity.z)).toBeLessThan(3);
   });
 });
 

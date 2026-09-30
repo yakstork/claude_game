@@ -71,8 +71,12 @@ export type HandlingConfig = {
   driftThrottleGain: number;
   /** Сила контрруления: убавка угла при руле против заноса, рад */
   driftCounterSteer: number;
-  /** Скорость набора угла заноса, 1/с */
+  /** Скорость набора угла заноса (постоянная времени), 1/с */
   driftAngleRate: number;
+  /** Предел скорости роста угла при входе в занос, рад/с (плавный вход) */
+  driftEntryRate: number;
+  /** Скорость, м/с, выше которой угол заноса сужается (до ~65% на +30 м/с) */
+  driftAngleFadeSpeed: number;
   /** Скорость выравнивания машины после выхода из заноса, 1/с */
   driftExitRate: number;
   /** Минимальный руль в сторону заноса, чтобы занос удерживался, 0..1 */
@@ -91,6 +95,8 @@ export type HandlingConfig = {
   wallHeadOnLoss: number;
   /** Скорость доворота курса вдоль стены, 1/с */
   wallAlign: number;
+  /** Скорость разворота носа вдоль трассы при упоре в стену с газом, рад/с */
+  wallUnstick: number;
 
   // ── Подвеска ────────────────────────────────────────────────────────────
   /** Жёсткость пружины на колесо, 1/с² (в покое сжатие = g·k⁻¹/4) */
@@ -112,6 +118,7 @@ const COMMON = {
   downforce: 0.3,
   wallHeadOnLoss: 0.2,
   wallAlign: 14,
+  wallUnstick: 4,
   suspStiffness: 31.4,
   suspDamping: 3.4,
   suspTravel: 0.25,
@@ -146,7 +153,9 @@ function build(): Record<string, HandlingConfig> {
       driftSteerGain: 0.24,
       driftThrottleGain: 0.2,
       driftCounterSteer: 0.6,
-      driftAngleRate: 7,
+      driftAngleRate: 8,
+      driftEntryRate: 1.65,
+      driftAngleFadeSpeed: 28,
       driftExitRate: 8,
       driftHoldSteer: 0.12,
       driftSpeedLoss: 0.16,
@@ -175,12 +184,14 @@ function build(): Record<string, HandlingConfig> {
       driftMinSpeed: 13,
       driftEntrySteer: 0.25,
       driftGrip: 1.1,
-      driftBaseAngle: 0.34,
+      driftBaseAngle: 0.32,
       driftMaxAngle: 0.85,
-      driftSteerGain: 0.28,
+      driftSteerGain: 0.24,
       driftThrottleGain: 0.22,
       driftCounterSteer: 0.5,
-      driftAngleRate: 6,
+      driftAngleRate: 8,
+      driftEntryRate: 1.7,
+      driftAngleFadeSpeed: 28,
       driftExitRate: 6.5,
       driftHoldSteer: 0.08,
       driftSpeedLoss: 0.12,
@@ -206,7 +217,7 @@ function build(): Record<string, HandlingConfig> {
       slipDamping: 10,
       understeer: 0.4,
       understeerSpeed: 22,
-      driftMinSpeed: 20,
+      driftMinSpeed: 18,
       driftEntrySteer: 0.3,
       driftGrip: 1.35,
       driftBaseAngle: 0.24,
@@ -215,6 +226,8 @@ function build(): Record<string, HandlingConfig> {
       driftThrottleGain: 0.12,
       driftCounterSteer: 0.7,
       driftAngleRate: 8,
+      driftEntryRate: 1.4,
+      driftAngleFadeSpeed: 34,
       driftExitRate: 10,
       driftHoldSteer: 0.15,
       driftSpeedLoss: 0.2,
@@ -328,6 +341,8 @@ export const HANDLING_PARAMS: TuningParam[] = [
   p('driftThrottleGain', 'Влияние газа на угол, рад', 'Дрифт', 0, 0.6, 0.01),
   p('driftCounterSteer', 'Сила контрруления, рад', 'Дрифт', 0, 1.5, 0.01),
   p('driftAngleRate', 'Скорость набора угла, 1/с', 'Дрифт', 1, 20, 0.5),
+  p('driftEntryRate', 'Плавность входа, рад/с', 'Дрифт', 0.5, 6, 0.1),
+  p('driftAngleFadeSpeed', 'Сужение угла от скорости, м/с', 'Дрифт', 20, 80, 1),
   p('driftExitRate', 'Скорость выравнивания, 1/с', 'Дрифт', 2, 20, 0.5),
   p('driftHoldSteer', 'Руль для удержания заноса', 'Дрифт', 0, 0.6, 0.01),
   p('driftSpeedLoss', 'Потеря скорости, 1/с', 'Дрифт', 0, 0.5, 0.01),
@@ -337,6 +352,8 @@ export const HANDLING_PARAMS: TuningParam[] = [
   p('wallBounce', 'Отскок от стены', 'Стены', 0, 0.8, 0.01),
   p('wallHeadOnLoss', 'Потеря при лобовом ударе', 'Стены', 0, 0.6, 0.01),
   p('wallAlign', 'Доворот вдоль стены, 1/с', 'Стены', 0, 30, 0.5),
+
+  p('wallUnstick', 'Разворот при упоре в стену, рад/с', 'Стены', 0, 8, 0.1),
 
   p('suspStiffness', 'Жёсткость подвески, 1/с²', 'Подвеска', 10, 120, 0.5),
   p('suspDamping', 'Демпфер, 1/с', 'Подвеска', 0.5, 12, 0.1),

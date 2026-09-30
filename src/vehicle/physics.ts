@@ -194,6 +194,7 @@ export class VehiclePhysics {
   private wallCooldown = 0;
   private evCount = 0;
   private lastAx = 0;
+  private throttleIn = 0;
   private readonly eventPool: VehicleEvent[] = [];
 
   constructor(
@@ -299,6 +300,7 @@ export class VehiclePhysics {
     const brake = clamp01(controls.brake);
     const steerIn = clamp(controls.steer, -1, 1);
     const handbrake = controls.handbrake;
+    this.throttleIn = throttle;
 
     if (!Number.isFinite(st.position.x + st.position.y + st.position.z + st.velocity.x + st.velocity.z)) {
       this.needsRespawn = true;
@@ -735,7 +737,9 @@ export class VehiclePhysics {
     const steerInto = steerIn * dir;
     const cosB = Math.max(0.25, Math.cos(beta));
 
-    // целевой угол: руль в занос и газ увеличивают, контрруль убавляет
+    // целевой угол: руль в занос и газ увеличивают, контрруль убавляет; на очень
+    // высокой скорости угол сужается (иначе продольная скорость «проваливается»)
+    const entry = drifting ? clamp(this.driftTime / 0.6, 0, 1) : 1;
     let aRate: number;
     let aT = 0;
     if (drifting) {
@@ -745,18 +749,21 @@ export class VehiclePhysics {
         cfg.driftCounterSteer * Math.max(-steerInto, 0) +
         cfg.driftThrottleGain * (throttle - 0.7);
       aT = clamp(aT, 0.12, cfg.driftMaxAngle);
+      aT *= 1 - 0.35 * MathUtils.smoothstep(V, cfg.driftAngleFadeSpeed, cfg.driftAngleFadeSpeed + 30);
       aRate = cfg.driftAngleRate;
     } else {
       aRate = cfg.driftExitRate;
     }
-    const rateT = clamp((aT - bd) * aRate, -MAX_ANGLE_RATE * 0.75, MAX_ANGLE_RATE);
+    // рост угла ограничен driftEntryRate и плавно «разгоняется» за первые ~0.08 с (без рывка)
+    const rampUp = drifting ? MathUtils.smoothstep(this.driftTime, 0, 0.08) : 1;
+    const rateT = clamp((aT - bd) * aRate, -MAX_ANGLE_RATE * 0.75, cfg.driftEntryRate * rampUp);
     this.angleRate += (rateT - this.angleRate) * (1 - Math.exp(-30 * dt));
     const bdDot = this.angleRate;
 
-    // скорость поворота траектории (курса скорости)
+    // скорость поворота траектории (курса скорости); при входе плавно нарастает
     let target: number;
     if (drifting) {
-      const pf = 0.8 + 0.25 * clamp(steerInto, 0, 1) + 0.25 * clamp(bd / cfg.driftMaxAngle, 0, 1);
+      const pf = (0.8 + 0.25 * clamp(steerInto, 0, 1) + 0.25 * clamp(bd / cfg.driftMaxAngle, 0, 1)) * (0.1 + 0.9 * entry);
       target = clamp((-dir * cfg.driftGrip * G_REAL * pf) / Math.max(V, 6), -2.5, 2.5);
     } else {
       // выход: GRIP берёт управление — рыскание, как при обычном повороте
@@ -765,13 +772,14 @@ export class VehiclePhysics {
       const wd = yawRateForSteer(cfg, V * cosB, this.delta);
       target = softLimit(wd, Math.max(aMax, 1) / Math.max(V, 2), cfg.understeer);
     }
-    this.pathRate += (target - this.pathRate) * (1 - Math.exp(-(drifting ? 10 : aRate) * dt));
+    const kPath = drifting ? (this.driftTime < 0.3 ? 25 : 10) : aRate;
+    this.pathRate += (target - this.pathRate) * (1 - Math.exp(-kPath * dt));
     const omega = this.pathRate - dir * bdDot;
 
     // скорость: тяга вдоль вектора скорости минус потеря на скольжении
     const ax = this.longAccel(dt, V * cosB, throttle, brake, false, nitroOn, vmax);
     this.lastAx = ax * cosB + axSlope;
-    const scrub = cfg.driftSpeedLoss * V * clamp(Math.abs(beta) / 0.6, 0, 1.2);
+    const scrub = cfg.driftSpeedLoss * V * clamp(Math.abs(beta) / 0.6, 0, 1.2) * entry * entry;
     V = Math.max(0, V + (ax * cosB + axSlope - scrub) * dt);
     psi += this.pathRate * dt;
     st.heading += omega * dt;
@@ -820,6 +828,19 @@ export class VehiclePhysics {
     const lat = pr.lateral;
     const side = lat >= 0 ? 1 : -1;
     const pen = Math.abs(lat) - limit;
+    // упор носом в стену с газом (у стены ≤ 0.25 м): нос сам доворачивается вдоль трассы
+    // («вперёд»), если угол к касательной < 150°, иначе — в ближайшую сторону; без рывков
+    if (pen > -0.25 && cfg.wallUnstick > 0 && this.throttleIn > 0.1) {
+      const inX = lat >= 0 ? -rhx : rhx;
+      const inZ = lat >= 0 ? -rhz : rhz;
+      if (Math.hypot(st.velocity.x, st.velocity.z) < 10 && fx * inX + fz * inZ < 0.15) {
+        const trackH = Math.atan2(rhz, -rhx);
+        let d = wrapPi(trackH - st.heading);
+        if (Math.abs(d) > (150 * Math.PI) / 180) d = wrapPi(d + Math.PI);
+        const maxTurn = cfg.wallUnstick * dt;
+        st.heading += clamp(d, -maxTurn, maxTurn);
+      }
+    }
     if (pen <= 0) return;
 
     // внутренняя нормаль стены (горизонтальная)
