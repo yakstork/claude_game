@@ -31,7 +31,7 @@ import { PALETTE, cssColor } from '../world/palette';
 import { InputManager, resolveTouchMode } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
-import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, specById } from '../vehicle/specs';
+import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from '../vehicle/specs';
 import { getHandling } from '../vehicle/handling';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
@@ -41,7 +41,19 @@ import { RaceManager } from '../race/raceManager';
 import { DriftScorer } from '../race/drift';
 import { UIManager } from '../ui/uiManager';
 import type { DebugPanel } from '../ui/debugPanel';
-import { HANDLING, HANDLING_DEFAULTS, HANDLING_PARAMS, INPUT_PARAMS, INPUT_TUNING, INPUT_TUNING_DEFAULTS } from '../vehicle/handling';
+import {
+  CUSTOM_BUDGET,
+  HANDLING,
+  HANDLING_DEFAULTS,
+  HANDLING_PARAMS,
+  INPUT_PARAMS,
+  INPUT_TUNING,
+  INPUT_TUNING_DEFAULTS,
+  applyCustomHandling,
+  customStats,
+  normalizeBuild,
+} from '../vehicle/handling';
+import { CUSTOM_CAR_ID } from './types';
 import { AudioManager } from '../audio/audioManager';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
@@ -132,11 +144,15 @@ export class Game {
     this.world = new World(this.scene, this.track);
     this.scene.add(this.effects.group);
 
+    this.syncCustomSpec();
     const uiRoot = document.getElementById('ui')!;
     this.ui = new UIManager(uiRoot, {
       cars: CAR_SPECS,
       settings: { ...this.settings },
       records: this.records,
+      customBuild: { ...this.customBuild },
+      customBudget: CUSTOM_BUDGET,
+      customPalette: CUSTOM_PALETTE,
       callbacks: {
         onPreviewCar: (i) => this.setPreviewCar(i),
         onStartRace: (i) => this.startRace(i),
@@ -189,12 +205,36 @@ export class Game {
   }
 
   private debugPanel: DebugPanel | null = null;
-  customBuild: CustomBuild = loadCustomBuild();
+  customBuild: CustomBuild = normalizeBuild(loadCustomBuild());
 
-  /** «Своя сборка»: сохранить (физика и превью подключаются на этапе 3) */
+  /** Индекс машины «своя сборка» в CAR_SPECS */
+  private get customIndex(): number {
+    return CAR_SPECS.findIndex((c) => c.id === CUSTOM_CAR_ID);
+  }
+
+  /** Перенести сборку в физику (HANDLING.custom) и в спецификацию машины (цвета, полоски) */
+  private syncCustomSpec(): CarSpec | null {
+    const i = this.customIndex;
+    if (i < 0) return null;
+    applyCustomHandling(this.customBuild);
+    const spec = CAR_SPECS[i];
+    spec.bodyColor = this.customBuild.bodyColor;
+    spec.neonColor = this.customBuild.neonColor;
+    spec.stats = customStats(this.customBuild);
+    return spec;
+  }
+
+  /** «Своя сборка» изменилась: физика, превью, сохранение */
   applyCustomBuild(b: CustomBuild): void {
-    this.customBuild = { ...b };
+    const prev = this.customBuild;
+    this.customBuild = normalizeBuild(b);
     saveCustomBuild(this.customBuild);
+    const spec = this.syncCustomSpec();
+    if (!spec) return;
+    this.ui.updateCarSpec(this.customIndex, spec);
+    this.ui.setCustomBuild(this.customBuild); // без колбэка: держит UI в синхроне с нормализованной сборкой
+    const colorsChanged = prev.bodyColor !== this.customBuild.bodyColor || prev.neonColor !== this.customBuild.neonColor;
+    if (this.state === 'menu' && this.selectedCar === this.customIndex && colorsChanged) this.setPreviewCar(this.customIndex);
   }
 
   /** Панель тюнинга управления (?debug). Правки сохраняются и применяются только в debug-режиме. */

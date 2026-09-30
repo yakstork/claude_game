@@ -3,6 +3,7 @@
  * Визуальные поля — ведущий. Физические числа машин — в handling.ts (HANDLING).
  */
 import type { BotProfile, CarSpec } from '../core/types';
+import { CUSTOM_CAR_ID } from '../core/types';
 import { PALETTE } from '../world/palette';
 
 export const CAR_SPECS: CarSpec[] = [
@@ -36,7 +37,24 @@ export const CAR_SPECS: CarSpec[] = [
     accentColor: PALETTE.violet,
     stats: { speed: 0.95, handling: 0.7, drift: 0.4 },
   },
+  {
+    // «Своя сборка»: цвета и stats перезаписываются из CustomBuild (game.ts), физика — customHandling()
+    id: CUSTOM_CAR_ID,
+    name: 'Stardust ST',
+    tagline: 'Своя сборка: распредели очки между скоростью, управляемостью и дрифтом и выбери цвета.',
+    model: 'custom',
+    bodyColor: PALETTE.cyan,
+    neonColor: PALETTE.magenta,
+    accentColor: PALETTE.yellow,
+    stats: { speed: 0.6, handling: 0.6, drift: 0.6 },
+  },
 ];
+
+/** Цвета, разрешённые для «своей сборки» (только палитра игры) */
+export const CUSTOM_PALETTE = {
+  body: [PALETTE.cyan, PALETTE.magenta, PALETTE.orange, PALETTE.yellow, PALETTE.lilac, PALETTE.pink, PALETTE.white, PALETTE.violet],
+  neon: [PALETTE.magenta, PALETTE.cyan, PALETTE.pink, PALETTE.orange, PALETTE.yellow, PALETTE.lilac, PALETTE.white],
+};
 
 export const BOT_PROFILES: BotProfile[] = [
   { name: 'NOVA', skill: 0.92, aggression: 0.6, lineBias: -0.2, bodyColor: PALETTE.cyan, neonColor: PALETTE.pink, carId: 'photon' },

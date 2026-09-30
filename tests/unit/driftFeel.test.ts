@@ -3,7 +3,10 @@ import { Euler } from 'three';
 import { Track } from '../../src/world/track';
 import type { ControlPoint } from '../../src/world/trackData';
 import { VehiclePhysics } from '../../src/vehicle/physics';
-import { CAR_SPECS } from '../../src/vehicle/specs';
+import { CAR_SPECS as ALL_SPECS } from '../../src/vehicle/specs';
+
+/** Только три заводские машины (у «своей сборки» — свой тест customBuild) */
+const CAR_SPECS = ALL_SPECS.filter((c) => c.id !== 'custom');
 import type { VehicleControls } from '../../src/core/types';
 
 /**

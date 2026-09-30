@@ -71,10 +71,25 @@ export class Nav {
     else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 6;
   }
 
+  /** Элемент скрыт (сам или контейнер внутри экрана): фокус и активация его пропускают. */
+  private static isHidden(e: HTMLElement): boolean {
+    for (let p: HTMLElement | null = e; p && !p.classList.contains('screen'); p = p.parentElement) {
+      if (p.hidden) return true;
+    }
+    return false;
+  }
+
   move(dir: -1 | 1): void {
     const n = this.items.length;
     if (n === 0) return;
-    this.focusAt((this.index + dir + n) % n, true);
+    let i = this.index;
+    for (let k = 0; k < n; k++) {
+      i = (i + dir + n) % n;
+      if (!Nav.isHidden(this.items[i].el)) {
+        this.focusAt(i, true);
+        return;
+      }
+    }
   }
 
   adjust(dir: -1 | 1): boolean {
@@ -83,7 +98,7 @@ export class Nav {
 
   activate(): void {
     const it = this.current;
-    if (!it?.activate) return;
+    if (!it?.activate || Nav.isHidden(it.el)) return;
     this.play('select');
     it.activate();
   }

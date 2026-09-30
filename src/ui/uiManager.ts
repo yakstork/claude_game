@@ -2,6 +2,7 @@
 import type {
   CarSpec,
   ControlMode,
+  CustomBuild,
   HudData,
   MenuAction,
   PopupTone,
@@ -12,7 +13,11 @@ import type {
   UICallbacks,
 } from '../core/types';
 import { isTouchDevice } from '../core/device';
+import { CUSTOM_CAR_ID } from '../core/types';
 import './styles.css';
+import { CustomizeScreen } from './customize';
+import { DEFAULT_BUDGET, DEFAULT_PALETTE, defaultCustomBuild } from './customLogic';
+import type { CustomPalette } from './customLogic';
 import { el } from './dom';
 import { Hud } from './hud';
 import { MainMenu } from './menu';
@@ -26,9 +31,15 @@ export interface UIOptions {
   settings: Settings;
   records: Records;
   callbacks: UICallbacks;
+  /** «Своя сборка»: текущие значения (по умолчанию — сборка «по умолчанию» экрана) */
+  customBuild?: CustomBuild;
+  /** Бюджет очков: сумма трёх слайдеров не больше (по умолчанию 2.0) */
+  customBudget?: number;
+  /** Разрешённые цвета кузова и неона (hex из палитры игры) */
+  customPalette?: CustomPalette;
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -41,6 +52,7 @@ export class UIManager {
   private readonly loading: LoadingScreen;
   private readonly menu: MainMenu;
   private readonly settings: SettingsScreen;
+  private readonly customize: CustomizeScreen;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly fpsEl: HTMLElement;
@@ -79,6 +91,17 @@ export class UIManager {
       cb,
       new Nav(play),
       () => this.openSettings('menu'),
+      () => this.showCustomize(),
+    );
+    const budget = opts.customBudget ?? DEFAULT_BUDGET;
+    const palette = opts.customPalette ?? DEFAULT_PALETTE;
+    const defaults = defaultCustomBuild(budget, palette);
+    this.customize = new CustomizeScreen(
+      this.host,
+      new Nav(play),
+      cb,
+      { build: opts.customBuild ?? defaults, budget, palette, defaults },
+      () => this.closeCustomize(),
     );
     this.settings = new SettingsScreen(
       this.host,
@@ -189,6 +212,26 @@ export class UIManager {
     this.openSettings(this.screen === 'pause' ? 'pause' : 'menu');
   }
 
+  /** Экран «Своя сборка» (из меню; выбирает машину-конструктор, если открыта другая). Во время гонки — игнорируется. */
+  showCustomize(): void {
+    if (this.screen === 'hud' || this.screen === 'pause' || this.screen === 'settings') return;
+    const idx = this.opts.cars.findIndex((c) => c.id === CUSTOM_CAR_ID);
+    if (idx < 0) return;
+    if (this.menu.index !== idx) this.menu.setCar(idx, true);
+    this.customize.onShown();
+    this.setScreen('customize');
+  }
+
+  /** Обновить значения «своей сборки» извне (без onCustomBuildChanged). */
+  setCustomBuild(b: CustomBuild): void {
+    this.customize.setBuild(b);
+  }
+
+  /** Новые stats/цвета машины (4-я машина меняется вместе со сборкой): перерисовать панель меню. */
+  updateCarSpec(index: number, spec: CarSpec): void {
+    this.menu.updateCarSpec(index, spec);
+  }
+
   /** Скрыть все экраны и HUD. */
   hideAll(): void {
     this.hud.clearTransient();
@@ -213,6 +256,12 @@ export class UIManager {
     }
   }
 
+  private closeCustomize(): void {
+    if (this.screen !== 'customize') return;
+    this.menu.nav.reset(0);
+    this.setScreen('menu');
+  }
+
   private setScreen(s: ScreenName): void {
     this.screen = s;
     const fromPause = s === 'settings' && this.settingsFrom === 'pause';
@@ -222,6 +271,7 @@ export class UIManager {
     this.loading.el.hidden = s !== 'loading';
     this.menu.el.hidden = s !== 'menu';
     this.settings.el.hidden = s !== 'settings';
+    this.customize.el.hidden = s !== 'customize';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
     this.results.el.hidden = s !== 'results';
@@ -310,6 +360,8 @@ export class UIManager {
         return this.menu.nav;
       case 'settings':
         return this.settings.nav;
+      case 'customize':
+        return this.customize.nav;
       case 'pause':
         return this.pause.nav;
       case 'results':
@@ -348,6 +400,9 @@ export class UIManager {
         if (this.screen === 'settings') {
           cb.onUiSound('back');
           this.closeSettings();
+        } else if (this.screen === 'customize') {
+          cb.onUiSound('back');
+          this.closeCustomize();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -357,6 +412,9 @@ export class UIManager {
         if (this.screen === 'settings') {
           cb.onUiSound('back');
           this.closeSettings();
+        } else if (this.screen === 'customize') {
+          cb.onUiSound('back');
+          this.closeCustomize();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();

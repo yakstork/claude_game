@@ -1,5 +1,6 @@
 /** Главное меню: логотип, выбор машины, рекорды, кнопки. Центр экрана прозрачен (3D-превью). */
 import type { CarSpec, Records, UICallbacks } from '../core/types';
+import { CUSTOM_CAR_ID } from '../core/types';
 import { cssColor } from '../world/palette';
 import { arrowIcon, el, onTap, restartAnim } from './dom';
 import { formatScore, formatTime } from './format';
@@ -38,6 +39,11 @@ export class MainMenu {
   private readonly bars: HTMLElement[] = [];
   private readonly swatchBody: HTMLElement;
   private readonly swatchNeon: HTMLElement;
+  private readonly headLabel: HTMLElement;
+  private readonly customBox: HTMLElement;
+  private readonly customBtn: HTMLElement;
+  /** Локальная копия списка: updateCarSpec не трогает массив игры */
+  private readonly cars: CarSpec[];
   private readonly carPanel: HTMLElement;
   private readonly recLap: HTMLElement;
   private readonly recRace: HTMLElement;
@@ -49,12 +55,14 @@ export class MainMenu {
 
   constructor(
     parent: HTMLElement,
-    private readonly cars: CarSpec[],
+    cars: CarSpec[],
     records: Records,
     private readonly cb: UICallbacks,
     nav: Nav,
     onSettings: () => void,
+    onCustomize: () => void = () => undefined,
   ) {
+    this.cars = cars.slice();
     this.nav = nav;
     this.records = records;
     const root = el('div', 'screen menu', undefined, parent);
@@ -86,7 +94,7 @@ export class MainMenu {
     stepL.setAttribute('aria-label', 'Предыдущая машина');
     arrowIcon('left', stepL);
     onTap(stepL, () => this.step(-1));
-    el('span', 'hud-label car-head-label', 'МАШИНА', head);
+    this.headLabel = el('span', 'hud-label car-head-label', 'МАШИНА', head);
     this.counterEl = el('span', 'car-counter', '1 / 3', head);
     const stepR = el('div', 'car-step', undefined, head);
     stepR.setAttribute('role', 'button');
@@ -106,6 +114,12 @@ export class MainMenu {
     el('span', 'hud-label', 'ЦВЕТ', sw);
     this.swatchBody = el('span', 'swatch body', undefined, sw);
     this.swatchNeon = el('span', 'swatch neon', undefined, sw);
+    // «Своя сборка»: кнопка настройки видна только у машины с id CUSTOM_CAR_ID
+    this.customBox = el('div', 'car-custom', undefined, car);
+    this.customBox.hidden = true;
+    this.customBtn = el('div', 'btn compact cyan', undefined, this.customBox);
+    this.customBtn.setAttribute('role', 'button');
+    el('span', undefined, 'НАСТРОИТЬ', this.customBtn);
 
     // рекорды (справа сверху)
     const recWrap = el('div', 'glow menu-rec-wrap', undefined, root);
@@ -132,6 +146,7 @@ export class MainMenu {
       return true;
     };
     nav.add({ el: race, activate: () => cb.onStartRace(this.index), adjust });
+    nav.add({ el: this.customBtn, activate: onCustomize, adjust });
     nav.add({ el: sett, activate: onSettings, adjust });
     // «На весь экран» — только если Fullscreen API есть (на iPhone нет)
     addFullscreenButton(btns, nav);
@@ -163,9 +178,32 @@ export class MainMenu {
     const spec = this.cars[i];
     if (!spec) return;
     this.index = i;
-    this.nameEl.textContent = spec.name;
-    this.tagEl.textContent = spec.tagline;
     this.counterEl.textContent = `${i + 1} / ${this.cars.length}`;
+    this.renderSpec(spec);
+    this.updateRecords();
+    if (notify) {
+      restartAnim(this.carPanel, 'flash');
+      this.cb.onUiSound('move');
+      this.cb.onPreviewCar(i);
+    }
+  }
+
+  /** Новые stats/цвета машины (у «своей сборки» они меняются на лету): перерисовать, если она показана. */
+  updateCarSpec(i: number, spec: CarSpec): void {
+    if (i < 0 || i >= this.cars.length) return;
+    this.cars[i] = spec;
+    if (i === this.index) this.renderSpec(spec);
+  }
+
+  private renderSpec(spec: CarSpec): void {
+    setText(this.nameEl, spec.name);
+    setText(this.tagEl, spec.tagline);
+    const custom = spec.id === CUSTOM_CAR_ID;
+    setText(this.headLabel, custom ? 'СВОЯ СБОРКА' : 'МАШИНА');
+    this.headLabel.classList.toggle('custom', custom);
+    if (this.customBox.hidden === custom) this.customBox.hidden = !custom;
+    // фокус был на скрывшейся кнопке «НАСТРОИТЬ» → на «ГОНКА»
+    if (!custom && this.nav.current?.el === this.customBtn) this.nav.reset(0);
     STAT_ROWS.forEach((row, k) => {
       this.bars[k].style.width = `${Math.round(spec.stats[row.key] * 100)}%`;
     });
@@ -175,12 +213,6 @@ export class MainMenu {
     this.swatchBody.style.boxShadow = `0 0 .5em ${body}`;
     this.swatchNeon.style.background = neon;
     this.swatchNeon.style.boxShadow = `0 0 .6em ${neon}`;
-    this.updateRecords();
-    if (notify) {
-      restartAnim(this.carPanel, 'flash');
-      this.cb.onUiSound('move');
-      this.cb.onPreviewCar(i);
-    }
   }
 
   setRecords(r: Records): void {
@@ -196,4 +228,8 @@ export class MainMenu {
     this.recDrift.textContent = formatScore(r.bestDrift);
     this.recWins.textContent = `${r.wins} / ${r.races}`;
   }
+}
+
+function setText(e: HTMLElement, t: string): void {
+  if (e.textContent !== t) e.textContent = t;
 }

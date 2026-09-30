@@ -5,7 +5,8 @@
  * их на лету. Сброс — resetHandling(): значения копируются обратно В ТЕ ЖЕ объекты.
  * Модуль не зависит от рендера и DOM (работает в Node).
  */
-import type { TuningParam } from '../core/types';
+import type { CustomBuild, TuningParam } from '../core/types';
+import { CUSTOM_CAR_ID } from '../core/types';
 import { CAR_GEOMETRY } from './specs';
 
 /** Все числа управления одной машины (плоский объект, только number). */
@@ -378,3 +379,113 @@ export const HANDLING_PARAMS: TuningParam[] = [
   p('suspTravel', 'Ход подвески, м', 'Подвеска', 0.1, 0.5, 0.01),
   p('gravityScale', 'Гравитация, ×g', 'Подвеска', 0.8, 3, 0.05),
 ];
+
+// ─── «Своя сборка» (машина id = CUSTOM_CAR_ID) ─────────────────────────────
+
+/** Бюджет: сумма трёх слайдеров не больше этого (всё на максимум не сильнее заводских) */
+export const CUSTOM_BUDGET = 2.0;
+
+/** Сборка по умолчанию на момент импорта (цвета физику не интересуют) */
+const DEFAULT_BUILD: CustomBuild = { speed: 0.6, handling: 0.6, drift: 0.6, bodyColor: 0, neonColor: 0 };
+
+/** Неизменяемые «якоря» — заводские значения, не зависят от панели тюнинга */
+const ANCHORS = build();
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/** Интерполяция через три якоря: t=0 → a, t=0.5 → b, t=1 → c */
+function tri(a: number, b: number, c: number, t: number): number {
+  return t < 0.5 ? lerp(a, b, t * 2) : lerp(b, c, t * 2 - 1);
+}
+
+function sliderValue(v: number): number {
+  return Number.isNaN(v) ? 0.5 : Math.min(1, Math.max(0, v));
+}
+
+/** Зажимает слайдеры в [0,1] (NaN → 0.5) и пропорционально сводит сумму к CUSTOM_BUDGET. Цвета не трогает. */
+export function normalizeBuild(b: CustomBuild): CustomBuild {
+  let speed = sliderValue(b.speed);
+  let handling = sliderValue(b.handling);
+  let drift = sliderValue(b.drift);
+  const sum = speed + handling + drift;
+  if (sum > CUSTOM_BUDGET) {
+    const k = CUSTOM_BUDGET / sum;
+    speed *= k;
+    handling *= k;
+    drift *= k;
+  }
+  return { speed, handling, drift, bodyColor: b.bodyColor, neonColor: b.neonColor };
+}
+
+/**
+ * Полный HandlingConfig по слайдерам (чистая функция, без аллокаций вне результата).
+ * Все значения — между заводскими якорями (Razor / Grizzly / Photon) или чуть шире.
+ * Ось «Дрифт»: 0 = Photon, 0.5 = Razor, 1 = Grizzly (проверенные наборы заноса).
+ */
+export function customHandling(b: CustomBuild): HandlingConfig {
+  const n = normalizeBuild(b);
+  const sp = n.speed;
+  const hd = n.handling;
+  const dr = n.drift;
+  const c: HandlingConfig = { ...ANCHORS.razor };
+
+  // Скорость
+  c.maxSpeed = lerp(58, 76, sp);
+  c.acceleration = lerp(8.2, 10, sp);
+  c.nitroBoost = lerp(11, 14.5, sp);
+  c.mass = lerp(1150, 1300, sp);
+
+  // Управляемость (цена скорости: чуть ленивее руль; цена дрифта: чуть меньше сцепление в GRIP)
+  c.grip = tri(1.05, 1.25, 1.35, hd) - 0.1 * dr;
+  c.steerRate = lerp(2.4, 3.6, hd) - 0.3 * sp;
+  c.yawResponse = lerp(8, 12, hd) - 1 * sp;
+  c.understeer = tri(0.65, 0.5, 0.4, hd);
+  c.slipDamping = tri(7, 9, 10, hd);
+
+  // Дрифт: Photon → Razor → Grizzly
+  c.driftMinSpeed = tri(20, 15, 13, dr);
+  c.driftEntrySteer = tri(0.3, 0.25, 0.25, dr);
+  c.driftGrip = tri(1.5, 1.25, 0.95, dr);
+  c.driftBaseAngle = tri(0.28, 0.38, 0.5, dr);
+  c.driftMaxAngle = tri(0.5, 0.72, 0.95, dr);
+  c.driftSteerGain = tri(0.14, 0.22, 0.3, dr);
+  c.driftThrottleGain = tri(0.1, 0.2, 0.2, dr);
+  c.driftCounterSteer = tri(0.7, 0.6, 0.5, dr);
+  c.driftAngleRate = tri(16, 13, 12, dr);
+  c.driftEntryRate = tri(3.8, 6, 5.5, dr);
+  c.driftAngleFadeSpeed = tri(50, 46, 46, dr);
+  c.driftExitRate = tri(12, 8, 6.5, dr);
+  c.driftHoldSteer = tri(0.15, 0.12, 0.06, dr);
+  c.driftSpeedLoss = tri(0.2, 0.16, 0.12, dr);
+  c.driftChargeRate = tri(0.24, 0.32, 0.42, dr);
+  c.driftSelfAlign = tri(2.0, 1.2, 0.08, dr);
+  c.driftSelfAlignFull = tri(0.67, 0.27, 0.04, dr);
+  c.driftNod = tri(0.085, 0.095, 0.1, dr);
+  return c;
+}
+
+/** Характеристики 0..1 для полосок меню (по нормализованной сборке; шкала заводских stats) */
+export function customStats(b: CustomBuild): { speed: number; handling: number; drift: number } {
+  const n = normalizeBuild(b);
+  return {
+    speed: 0.5 + 0.45 * n.speed,
+    handling: 0.45 + 0.4 * n.handling,
+    drift: tri(0.4, 0.7, 0.95, n.drift),
+  };
+}
+
+/** Записывает сборку в HANDLING и HANDLING_DEFAULTS (в те же объекты: физика и панель ?debug держат ссылки) */
+export function applyCustomHandling(b: CustomBuild): void {
+  const cfg = customHandling(b);
+  const live = HANDLING[CUSTOM_CAR_ID];
+  const def = HANDLING_DEFAULTS[CUSTOM_CAR_ID];
+  if (live) Object.assign(live, cfg);
+  else HANDLING[CUSTOM_CAR_ID] = { ...cfg };
+  if (def) Object.assign(def, cfg);
+  else HANDLING_DEFAULTS[CUSTOM_CAR_ID] = { ...cfg };
+}
+
+// Инициализация при импорте (дефолтная сборка)
+applyCustomHandling(DEFAULT_BUILD);

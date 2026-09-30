@@ -785,6 +785,74 @@
 .settings.previewing { background: transparent; }
 .settings.previewing .glow { opacity: 0.28; }
 
+/* ── «Своя сборка»: слева бюджет и слайдеры, справа цвета; центр прозрачен (3D-превью) ── */
+.customize {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1em;
+  padding: calc(env(safe-area-inset-top, 0px) + 1.4em) calc(env(safe-area-inset-right, 0px) + 1.6em) calc(env(safe-area-inset-bottom, 0px) + 1.4em) calc(env(safe-area-inset-left, 0px) + 1.6em);
+}
+.cz-side { pointer-events: auto; display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+.cz-left { width: min(24em, 46%); }
+.cz-right { width: min(19em, 40%); }
+.cz-panel { display: flex; flex-direction: column; min-height: 0; max-height: 100%; width: 100%; --c: 18px; padding: 1.1em 1.3em 1.3em; }
+.cz-title {
+  font-size: 1.6em; font-style: italic; letter-spacing: 0.16em; text-transform: uppercase; text-align: center;
+  color: var(--pink); text-shadow: 0 0 0.5em var(--magenta), 0 0 0.15em var(--magenta); margin-bottom: 0.45em;
+}
+.cz-budget { flex: none; margin-bottom: 0.5em; padding: 0.5em 0.75em 0.45em; background: rgba(13, 2, 33, 0.5); border: 1px solid rgba(185, 103, 255, 0.4); transition: border-color 0.15s, box-shadow 0.15s; }
+.cz-budget-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6em; }
+.cz-budget-val { font-size: 0.95em; font-style: italic; letter-spacing: 0.06em; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); white-space: nowrap; }
+.cz-budget-track { height: 0.75em; margin: 0.45em 0 0.35em; overflow: hidden; background: rgba(13, 2, 33, 0.85); border: 1px solid rgba(185, 103, 255, 0.5); transform: skewX(-20deg); }
+.cz-budget-fill { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--magenta)); box-shadow: 0 0 0.7em rgba(255, 42, 109, 0.6); transition: width 0.12s ease-out; }
+.cz-budget-note { font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; font-size: 0.62em; letter-spacing: 0.1em; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--lilac); }
+.cz-budget.full { border-color: var(--orange); box-shadow: 0 0 0.9em -0.2em var(--orange); }
+.cz-budget.full .cz-budget-val { color: var(--yellow); text-shadow: 0 0 0.5em var(--orange); }
+.cz-budget.full .cz-budget-fill { background: linear-gradient(90deg, var(--yellow), var(--orange)); box-shadow: 0 0 0.8em var(--orange); }
+.cz-budget.full .cz-budget-note { color: var(--orange); text-shadow: 0 0 0.6em rgba(255, 158, 61, 0.45); }
+.cz-budget.hit { animation: nr-budget-hit 0.45s ease-out; }
+@keyframes nr-budget-hit {
+  0% { transform: none; background-color: rgba(255, 158, 61, 0.45); }
+  20% { transform: translateX(-0.3em); box-shadow: 0 0 1.4em var(--orange); }
+  40% { transform: translateX(0.3em); }
+  60% { transform: translateX(-0.15em); }
+  100% { transform: none; background-color: rgba(13, 2, 33, 0.5); }
+}
+.cz-sliders, .cz-colors { flex: 1 1 auto; min-height: 0; }
+.set-row.cz-row { grid-template-columns: 1fr; row-gap: 0.25em; padding: 0.4em 0.7em 0.5em; }
+.cz-row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6em; min-width: 0; }
+.cz-row .slider-val { text-align: right; }
+.slider-cap {
+  position: absolute; right: 0; top: 50%; height: 0.55em; transform: translateY(-50%) skewX(-20deg); pointer-events: none;
+  border-left: 2px solid var(--orange);
+  background: repeating-linear-gradient(135deg, rgba(255, 158, 61, 0.6) 0 3px, transparent 3px 7px);
+}
+.cz-color-name { font-size: 0.7em; font-style: italic; letter-spacing: 0.12em; color: var(--pink); text-shadow: 0 0 0.5em rgba(255, 110, 199, 0.6); white-space: nowrap; }
+.cz-swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.55em 0.6em; padding: 0.35em 0.35em 0.35em; }
+.pick {
+  height: 2.3em; cursor: pointer; background: var(--sw); border: 2px solid rgba(245, 233, 255, 0.28); transform: skewX(-12deg);
+  box-shadow: 0 0 0.6em -0.1em var(--sw); transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s;
+}
+.pick.on { border-color: var(--white); transform: skewX(-12deg) scale(1.1); box-shadow: 0 0 0 2px var(--void), 0 0 0 4px var(--white), 0 0 1.1em 0.15em var(--sw); }
+@media (hover: hover) {
+  .pick:not(.on):hover { border-color: var(--white); box-shadow: 0 0 0.9em 0.05em var(--sw); }
+}
+.cz-actions { flex: none; display: grid; gap: 0.7em; margin-top: 0.8em; }
+.cz-actions .btn { min-width: 0; }
+.cz-hint {
+  position: absolute; left: 0; right: 0; bottom: 0.7em; text-align: center;
+  font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; font-size: 0.72em; letter-spacing: 0.06em;
+  color: rgba(245, 233, 255, 0.72); text-shadow: 0 0 0.5em var(--void), 0 0 0.2em var(--void);
+}
+.nr-touch-mode .cz-hint { display: none; }
+
+/* кнопка «НАСТРОИТЬ» в панели машины и подпись «своя сборка» */
+.car-custom { margin-top: 0.6em; }
+.btn.compact { font-size: 1em; padding: 0.45em 1em; min-width: 0; width: 100%; }
+.btn.cyan { border-color: var(--cyan); }
+.car-head-label.custom { color: var(--yellow); text-shadow: 0 0 0.6em var(--orange); }
+
 /* ── Крупные цели нажатия (тач или низкий экран) ──────────────────────────── */
 @media (pointer: coarse), (max-height: 500px) {
   .btn { min-height: 44px; display: flex; align-items: center; justify-content: center; }
@@ -945,3 +1013,28 @@
   text-shadow: 0 0 0.6em rgba(255, 158, 61, 0.45);
 }
 .nr-tc-pause-only.preview .nr-tc-group { display: block; }
+
+/* ── «Своя сборка» на низких экранах (альбомные телефоны) ─────────────────── */
+@media (max-height: 500px) {
+  .customize { gap: 8px; padding: max(6px, env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+  .cz-left { width: min(21em, 47%); }
+  .cz-right { width: min(17em, 40%); }
+  .cz-panel { --c: 12px; padding: 0.45em 0.8em 0.6em; }
+  .cz-title { font-size: 1.15em; margin-bottom: 0.25em; }
+  .cz-budget { margin-bottom: 0.25em; padding: 0.3em 0.55em 0.3em; }
+  .cz-budget-track { margin: 0.3em 0 0.25em; }
+  .set-row.cz-row { padding: 0.05em 0.5em 0.1em; margin: 0; row-gap: 0; }
+  .cz-row .set-label { font-size: 0.68em; }
+  .cz-swatches { gap: 0.4em; padding: 0.4em 0.35em 0.3em; }
+  .cz-left { width: min(20em, 46%); }
+  .cz-right { width: min(16.5em, 40%); }
+  .pick { height: 44px; }
+  .cz-actions { grid-template-columns: 1fr 1fr; gap: 0.5em; margin-top: 0.4em; }
+  .cz-actions .btn, .cz-actions .btn.big { font-size: 0.95em; min-height: 44px; padding: 0.2em 0.3em; }
+  .cz-hint { display: none; }
+  .car-custom { margin-top: 0.3em; }
+  .btn.compact { font-size: 0.95em; padding: 0.2em 0.6em; }
+}
+@media (pointer: coarse) {
+  .pick { min-height: 44px; }
+}
