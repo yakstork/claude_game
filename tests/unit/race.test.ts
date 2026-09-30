@@ -313,4 +313,36 @@ describe('RaceManager', () => {
     expect(sim.rm.raceTime).toBeCloseTo(DT, 6);
     expect(sim.rm.progress(0)).toBeCloseTo(-10, 0);
   });
+
+  it('lastCheckpointS: старт/финиш (0) до первого чекпоинта, затем s последнего пройденного', () => {
+    const sim = makeSim(2);
+    // до старта решётка позади линии: последний «пройденный» — линия старта
+    expect(sim.rm.lastCheckpointS(0)).toBe(0);
+    const cps = track.checkpoints;
+    const seen: number[] = [];
+    let last = 0;
+    for (let k = 0; k < 200000 && sim.rm.standing(0).lap < 1; k++) {
+      tick(sim, [40, 40]);
+      const v = sim.rm.lastCheckpointS(0);
+      if (v !== last) {
+        seen.push(v);
+        last = v;
+      }
+      // всегда — s одного из чекпоинтов и не дальше текущей позиции по кругу
+      expect(cps).toContain(v);
+    }
+    // проходим чекпоинты 1..7 по порядку, затем линию (0)
+    expect(seen).toEqual([...cps.slice(1), 0]);
+  });
+
+  it('lastCheckpointS не меняется при езде между чекпоинтами и не зависит от других машин', () => {
+    const sim = makeSim(2);
+    // машина 1 стоит, машина 0 едет
+    runUntil(sim, [40, 0], () => sim.rm.standing(0).nextCheckpoint === 3);
+    expect(sim.rm.lastCheckpointS(0)).toBe(track.checkpoints[2]);
+    expect(sim.rm.lastCheckpointS(1)).toBe(0);
+    const before = sim.rm.lastCheckpointS(0);
+    run(sim, [10, 0], 1);
+    expect(sim.rm.lastCheckpointS(0)).toBe(before);
+  });
 });

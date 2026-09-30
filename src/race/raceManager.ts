@@ -194,6 +194,13 @@ export class RaceManager {
     return this.raceTime + remaining / avg;
   }
 
+  /** s последнего пройденного чекпоинта машины (до первого чекпоинта — старт/финиш, 0) */
+  lastCheckpointS(car: number): number {
+    const target = this.internal[car]?.target ?? 1;
+    // target — индекс следующей цели (1..count); последний пройденный — на единицу меньше
+    return this.track.checkpoints[(target - 1) % this.track.checkpoints.length] ?? 0;
+  }
+
   isFinished(car: number): boolean {
     return this.rows[car].finished;
   }

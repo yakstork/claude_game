@@ -8,12 +8,11 @@
  */
 import { MathUtils } from 'three';
 import type { BotProfile, CarSpec, TrackSample, VehicleControls, VehicleState } from '../core/types';
-import { steerScale } from '../vehicle/physics';
+import { getHandling, steerAngleAt, steerForCurvature } from '../vehicle/handling';
 import { createSample } from '../world/track';
 import type { Track } from '../world/track';
 
 const G = 9.81;
-const WHEEL_BASE = 2.6;
 /** Отступ центра машины от стены, м */
 const WALL_MARGIN = 2.8;
 /** Горизонт просмотра скорости, м */
@@ -78,8 +77,8 @@ export class BotDriver {
     this.phase = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
     this.freq = [0.22 + rnd() * 0.12, 0.47 + rnd() * 0.2];
     this.skillN = MathUtils.clamp((profile.skill - 0.66) / 0.26, 0, 1);
-    // доля от предела сцепления: skill 0.66..0.92 → ≈ 0.82..0.97
-    this.kSkill = 0.82 + 0.15 * this.skillN;
+    // доля от предела сцепления: skill 0.66..0.92 → ≈ 0.78..0.93
+    this.kSkill = 0.78 + 0.15 * this.skillN;
     this.driftEnabled = profile.skill > 0.72;
   }
 
@@ -201,19 +200,21 @@ export class BotDriver {
     const leftD = dx * fz - dz * fx;
     const dist = Math.max(4, Math.hypot(dx, dz));
     const alpha = Math.atan2(leftD, along);
-    const deltaLeft = Math.atan((2 * WHEEL_BASE * Math.sin(alpha)) / dist);
-    const authority = spec.steerAngle * steerScale(Math.abs(speed));
-    let steerCmd = MathUtils.clamp((-deltaLeft * 1.15) / authority, -1, 1);
+    // pure pursuit: кривизна дуги к целевой точке → угол колёс той же моделью, что в физике
+    const cfg = getHandling(spec.id);
+    const deltaLeft = steerForCurvature(cfg, Math.abs(speed), (2 * Math.sin(alpha)) / dist);
+    const authority = steerAngleAt(cfg, Math.abs(speed));
+    let steerCmd = MathUtils.clamp(-deltaLeft / authority, -1, 1);
     // цель позади (развернуло): полный руль в сторону цели, медленно
     const targetBehind = along < 0;
     if (targetBehind) steerCmd = leftD >= 0 ? -1 : 1;
 
     // ── скорость: предел по кривизне вперёд ───────────────────────────────
-    // в заносе предел по поперечной силе выше (см. DRIFT_CAPACITY в physics)
-    const driftCap = spec.grip * G * 1.15;
-    const gripA = self.drifting ? driftCap * 0.92 : spec.grip * G * this.kSkill * 1.08;
-    const aBrake = spec.brakeDecel * (0.5 + 0.3 * this.skillN);
-    let vTarget = spec.maxSpeed * 1.02;
+    // в заносе боковое ускорение задаёт driftGrip (см. HandlingConfig)
+    const driftCap = cfg.driftGrip * G;
+    const gripA = self.drifting ? driftCap * 0.9 : cfg.grip * G * this.kSkill * 1.08;
+    const aBrake = cfg.brakeDecel * (0.5 + 0.3 * this.skillN);
+    let vTarget = cfg.maxSpeed * 1.02;
     let maxK = 0;
     let peakK = 0;
     let nearK = 0;
@@ -306,12 +307,14 @@ export class BotDriver {
         throttle = 0.2;
         brake = 0;
       } else if (cornerOver || this.driftTime > 4.5 || Math.abs(self.driftAngle) > 0.85) {
-        // сброс газа и нейтральный руль — assist плавно выводит из заноса
+        // сброс газа и нейтральный руль — физика плавно выводит из заноса
         steerCmd = -Math.sign(self.driftAngle || 1) * 0.1;
         throttle = 0.1;
         brake = 0;
       } else {
-        // в заносе угол держит assist физики: руль — только мягкая коррекция траектории
+        // в заносе угол задают руль и газ: держим руль в занос (иначе физика выйдет из заноса)
+        const into = Math.sign(self.driftAngle || 1);
+        steerCmd = into * Math.max(steerCmd * into, 0.45);
         if (brake === 0) throttle = Math.max(throttle, 0.45);
       }
     } else {

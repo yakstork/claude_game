@@ -30,6 +30,7 @@ import { InputManager } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, specById } from '../vehicle/specs';
+import { getHandling } from '../vehicle/handling';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
 import { BotDriver } from '../ai/botDriver';
@@ -635,7 +636,7 @@ export class Game {
       heading: st.heading,
       velocity: st.velocity,
       speed: st.speed,
-      maxSpeed: c.spec.maxSpeed,
+      maxSpeed: getHandling(c.spec.id).maxSpeed,
       nitro: st.nitroActive,
       onGround: st.onGround,
       drifting: st.drifting,

@@ -4,6 +4,7 @@
  * действия для меню/паузы/респауна.
  */
 import type { MenuAction, VehicleControls } from '../core/types';
+import { INPUT_TUNING } from '../vehicle/handling';
 
 const KEY_ACTIONS: Record<string, MenuAction> = {
   ArrowUp: 'up',
@@ -35,10 +36,6 @@ const PAD_ACTIONS: [number, MenuAction][] = [
 ];
 
 const DEADZONE = 0.15;
-/** Скорость набора руля с клавиатуры, 1/с */
-const KEY_STEER_RATE = 4.5;
-/** Скорость возврата руля к центру, 1/с */
-const KEY_STEER_RETURN = 7;
 
 export class InputManager {
   private readonly keys = new Set<string>();
@@ -115,11 +112,12 @@ export class InputManager {
     const right = this.key('KeyD', 'ArrowRight');
     const target = (right ? 1 : 0) - (left ? 1 : 0);
     if (target !== 0) {
-      // при смене направления — быстрый возврат через ноль
-      const rate = Math.sign(target) !== Math.sign(this.keySteer) && this.keySteer !== 0 ? KEY_STEER_RETURN : KEY_STEER_RATE;
+      // плавное нарастание; при смене направления — быстрый переход через ноль
+      const flip = Math.sign(target) !== Math.sign(this.keySteer) && this.keySteer !== 0;
+      const rate = flip ? INPUT_TUNING.keySteerCounter : INPUT_TUNING.keySteerRise;
       this.keySteer = approach(this.keySteer, target, rate * dt);
     } else {
-      this.keySteer = approach(this.keySteer, 0, KEY_STEER_RETURN * dt);
+      this.keySteer = approach(this.keySteer, 0, INPUT_TUNING.keySteerReturn * dt);
     }
 
     const o = this.out;
