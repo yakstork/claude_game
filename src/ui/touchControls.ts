@@ -77,6 +77,7 @@ export class TouchControls {
 
   private visible = false;
   private preview = false;
+  private pauseOnly = false;
   private size = 1;
   private opacity = 0.7;
   private cNitro = -1;
@@ -159,6 +160,14 @@ export class TouchControls {
     this.syncHidden();
   }
 
+  /** Только кнопка паузы (телефон в режиме «Клавиатура и геймпад»): остальные кнопки скрыты и не нажимаются. */
+  setPauseOnly(on: boolean): void {
+    if (this.pauseOnly === on) return;
+    this.pauseOnly = on;
+    this.root.classList.toggle('nr-tc-pause-only', on);
+    this.reset();
+  }
+
   /** Режим предпросмотра размера/прозрачности в настройках: видно, но не реагирует на касания. */
   setPreview(on: boolean): void {
     if (this.preview === on) return;
@@ -229,6 +238,8 @@ export class TouchControls {
   private applyLayout(): void {
     const k = effectiveTouchScale(this.size, window.innerWidth, window.innerHeight);
     this.root.style.setProperty('--k', k.toFixed(3));
+    // HUD (соседний элемент) берёт ширину блока кнопок из этой переменной
+    this.root.parentElement?.style.setProperty('--k', k.toFixed(3));
     this.root.style.setProperty('--op', this.opacity.toFixed(2));
   }
 
@@ -278,7 +289,7 @@ export class TouchControls {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     this.refreshRects();
     const fromPause = inRect(this.pauseRect, e.clientX, e.clientY, 0);
-    const key = fromPause ? null : this.keyAt(e.clientX, e.clientY);
+    const key = fromPause || this.pauseOnly ? null : this.keyAt(e.clientX, e.clientY);
     if (!fromPause && key === null) return;
     this.pointers.set(e.pointerId, { key, mouse: e.pointerType === 'mouse', fromPause, overPause: fromPause });
     this.syncState();

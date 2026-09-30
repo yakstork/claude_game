@@ -258,7 +258,11 @@ export class UIManager {
   }
 
   private applyTouchVisibility(): void {
-    const show = this.touchMode && this.screen === 'hud' && !this.rotate.shown;
+    // сенсорное устройство в режиме «Клавиатура и геймпад»: в гонке остаётся только кнопка паузы
+    const pauseOnly = !this.touchMode && isTouchDevice();
+    const show = (this.touchMode || pauseOnly) && this.screen === 'hud' && !this.rotate.shown;
+    this.touch.setPauseOnly(pauseOnly);
+    this.host.classList.toggle('nr-pause-only', pauseOnly);
     this.touch.setVisible(show);
     if (!show) this.touch.reset();
   }

@@ -244,7 +244,7 @@
 .rec-grid > :nth-child(odd) { white-space: nowrap; }
 .menu-rec { width: 100%; }
 .rec-grid { display: grid; grid-template-columns: 1fr auto; row-gap: 0.55em; column-gap: 0.8em; align-items: baseline; }
-.rec-val { font-size: 0.95em; font-style: italic; text-align: right; letter-spacing: 0.04em; color: var(--yellow); text-shadow: 0 0 0.5em rgba(255, 211, 25, 0.5); }
+.rec-val { white-space: nowrap; font-size: 0.95em; font-style: italic; text-align: right; letter-spacing: 0.04em; color: var(--yellow); text-shadow: 0 0 0.5em rgba(255, 211, 25, 0.5); }
 .rec-val.drift { color: var(--pink); text-shadow: 0 0 0.5em rgba(255, 110, 199, 0.5); }
 
 .menu-buttons {
@@ -828,15 +828,16 @@
   .car-tag { min-height: 2.4em; font-size: 0.78em; }
   .car-stats { margin: 0.35em 0 0.1em; gap: 0.32em; }
   .car-colors { display: none; }
-  .menu-rec-wrap { right: 0.8em; top: 0.5em; width: 15.5em; }
+  .menu-rec-wrap { right: 0.8em; top: 0.5em; width: 16.5em; }
   .menu-rec { padding: 0.5em 0.8em 0.6em; }
   .panel-title { margin-bottom: 0.3em; }
-  .rec-grid { row-gap: 0.32em; column-gap: 0.5em; }
+  .rec-grid { row-gap: 0.32em; column-gap: 0.4em; }
+  .rec-val { font-size: 0.85em; letter-spacing: 0; }
   .rec-grid > :nth-child(odd) { font-size: 0.62em; letter-spacing: 0.1em; }
   .menu-buttons { right: 1.3em; bottom: 0.8em; min-width: 0; width: 14.5em; gap: 0.55em; }
   .menu-buttons .btn { min-width: 0; padding-left: 0.4em; padding-right: 0.4em; }
   .btn.big { font-size: 1.4em; padding-top: 0.3em; padding-bottom: 0.3em; min-height: 52px; }
-  .menu-hint { left: 21.4em; right: 17.6em; bottom: 0.8em; font-size: 1em; line-height: 1.4; }
+  .menu-hint { left: 21.4em; right: 18.6em; bottom: 0.8em; font-size: 1em; line-height: 1.4; }
   .menu-hint > div { font-size: 0.66em; }
   .nr-ui:not(.nr-touch-mode) .menu-hint > :nth-child(2) { display: none; }
 
@@ -910,7 +911,14 @@
 .nr-touch-mode .speedo-num { font-size: 2.4em; }
 .nr-touch-mode .speedo-unit { margin: 0; font-size: 0.66em; letter-spacing: 0.2em; }
 
-.nr-touch-mode .hud-center { left: 18.5em; right: 18.5em; top: 3.7em; }
+/* зона попапов не заходит на правый блок кнопок: справа отступ = ширина блока (192·k px) + запас,
+   слева — тот же, если остаётся ≥ 220 px, иначе меньше (но не менее 11em). --k задаёт TouchControls. */
+.nr-touch-mode .hud-center {
+  --ci: max(18.5em, calc(192px * var(--k, 1) + 16px));
+  left: clamp(11em, calc(100% - var(--ci) - 220px), var(--ci));
+  right: var(--ci);
+  top: 3.7em;
+}
 .nr-touch-mode .hud-banner-slot { height: 2.6em; }
 .nr-touch-mode .banner-text { font-size: 1.4em; letter-spacing: 0.1em; }
 .nr-touch-mode .hud-combo-slot { height: 2.6em; margin-bottom: 0.4em; }
@@ -922,3 +930,18 @@
 .nr-touch-mode .hud-countdown.go { font-size: 7em; }
 .nr-touch-mode .hud-wrong { font-size: 1.4em; top: 48%; }
 .nr-touch-mode .fps { left: 50%; transform: translateX(-50%); bottom: 0.3em; }
+
+/* ── Телефон в режиме «Клавиатура и геймпад»: в гонке только кнопка паузы ─── */
+.nr-tc-pause-only .nr-tc-group { display: none; }
+.nr-pause-only .hud-lap { right: 6.8em; }
+.nr-pause-only .hud-center { left: 22em; right: 22em; }
+.set-hint {
+  grid-column: 1 / -1;
+  font-family: "Trebuchet MS", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.72em;
+  line-height: 1.3;
+  color: var(--orange);
+  text-shadow: 0 0 0.6em rgba(255, 158, 61, 0.45);
+}
+.nr-tc-pause-only.preview .nr-tc-group { display: block; }

@@ -1,9 +1,10 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
 import type { CarSpec, ControlMode, Quality, RaceResult, Settings, UICallbacks } from '../core/types';
+import { isTouchDevice } from '../core/device';
 import { el, onTap } from './dom';
 import {
   fractionOf,
-  formatPercent,
+  formatPercentRaw,
   formatScore,
   formatTime,
   resultTitle,
@@ -86,6 +87,7 @@ export class SettingsScreen {
   private readonly fpsBtn: HTMLElement;
   private readonly fpsVal: HTMLElement;
   private readonly list: HTMLElement;
+  private readonly modeHint: HTMLElement;
 
   constructor(
     parent: HTMLElement,
@@ -166,6 +168,9 @@ export class SettingsScreen {
       onTap(b, () => this.setControlMode(m.mode));
     }
     this.modeBtns = modeBtns as Record<ControlMode, HTMLElement>;
+    // на сенсорном устройстве в режиме «Клавиатура и геймпад» кнопок в гонке не будет
+    this.modeHint = el('div', 'set-hint', 'Кнопки на экране будут скрыты — нужен геймпад или клавиатура', mRow);
+    this.modeHint.hidden = true;
     const cycleMode = (dir: -1 | 1): void => {
       const i = CONTROL_MODES.findIndex((m) => m.mode === this.settings.controlMode);
       const n = CONTROL_MODES.length;
@@ -294,11 +299,12 @@ export class SettingsScreen {
     for (const s of this.sliders) {
       const v = this.settings[s.def.key];
       s.fill.style.width = `${fractionOf(v, s.def.min, s.def.max) * 100}%`;
-      s.val.textContent = formatPercent(v);
+      s.val.textContent = formatPercentRaw(v);
     }
     this.qualityBtns.low.classList.toggle('on', this.settings.quality === 'low');
     this.qualityBtns.high.classList.toggle('on', this.settings.quality === 'high');
     for (const m of CONTROL_MODES) this.modeBtns[m.mode].classList.toggle('on', this.settings.controlMode === m.mode);
+    this.modeHint.hidden = !(this.settings.controlMode === 'keyboard' && isTouchDevice());
     this.fpsBtn.classList.toggle('on', this.settings.showFps);
     this.fpsVal.textContent = this.settings.showFps ? 'ВКЛ' : 'ВЫКЛ';
   }

@@ -79,3 +79,8 @@ export function valueFromFraction(frac: number, min: number, max: number, step: 
 export function fractionOf(value: number, min: number, max: number): number {
   return max > min ? clamp((value - min) / (max - min), 0, 1) : 0;
 }
+
+/** Реальный процент без зажима в 0..1 (размер кнопок 0.7..1.5 → «70%».. «150%»). */
+export function formatPercentRaw(v: number): string {
+  return `${Math.round(Number.isFinite(v) ? v * 100 : 0)}%`;
+}
