@@ -8,10 +8,12 @@ import { PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three/webgpu';
 import { GameLoop } from './loop';
 import type { RenderSystem } from './renderer';
 import { ChaseCamera } from './camera';
-import { loadRecords, loadSettings, saveRecords, saveSettings } from './storage';
+import { vibrate } from './device';
+import { loadCustomBuild, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
 import type {
   BotProfile,
   CarSpec,
+  CustomBuild,
   HudData,
   MenuAction,
   MinimapDot,
@@ -109,6 +111,7 @@ export class Game {
   private previewModel: CarModel | null = null;
   private readonly previewState = createVehicleState();
   private hitWallThisStep = false;
+  private playerWasDrifting = false;
   private readonly states: VehicleState[] = [];
   private readonly physicsList: VehiclePhysics[] = [];
   private readonly hud: HudData;
@@ -143,6 +146,7 @@ export class Game {
         onRestart: () => this.startRace(this.selectedCar),
         onQuitToMenu: () => this.enterMenu(),
         onUiSound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
+        onCustomBuildChanged: (b) => this.applyCustomBuild(b),
         onFirstInteraction: () => {
           void this.audio.unlock();
         },
@@ -185,6 +189,13 @@ export class Game {
   }
 
   private debugPanel: DebugPanel | null = null;
+  customBuild: CustomBuild = loadCustomBuild();
+
+  /** «Своя сборка»: сохранить (физика и превью подключаются на этапе 3) */
+  applyCustomBuild(b: CustomBuild): void {
+    this.customBuild = { ...b };
+    saveCustomBuild(this.customBuild);
+  }
 
   /** Панель тюнинга управления (?debug). Правки сохраняются и применяются только в debug-режиме. */
   private async initDebugPanel(): Promise<void> {
@@ -498,6 +509,7 @@ export class Game {
           if (c.isPlayer) {
             if (ev.strength > 0.12) {
               this.audio.play('hit');
+              vibrate(Math.round(18 + ev.strength * 45));
               this.chase.kick(ev.strength * 0.8);
             }
             this.hitWallThisStep = this.hitWallThisStep || ev.strength > 0.15;
@@ -506,6 +518,7 @@ export class Game {
           if (ev.strength > 0.1 && near) this.effects.sparksAt(ev.point, c.physics.state.velocity, ev.strength * 0.7);
           if (c.isPlayer && ev.strength > 0.15) {
             this.audio.play('hit');
+            vibrate(Math.round(15 + ev.strength * 35));
             this.chase.kick(ev.strength * 0.6);
           }
         } else if (ev.type === 'land') {
@@ -523,6 +536,11 @@ export class Game {
         if (bot) bot.stuckTime = 0;
       }
     }
+
+    // резкий срыв в занос — короткий толчок камеры
+    const drifting = player.physics.state.drifting;
+    if (drifting && !this.playerWasDrifting) this.chase.kick(0.28);
+    this.playerWasDrifting = drifting;
 
     race.update(dt, this.states);
     for (const ev of race.events) {

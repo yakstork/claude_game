@@ -2,12 +2,24 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
     <meta name="theme-color" content="#0d0221" />
     <title>Neon Rush</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ffd319'/%3E%3Cstop offset='1' stop-color='%23ff2a6d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' fill='%230d0221'/%3E%3Ccircle cx='32' cy='36' r='20' fill='url(%23g)'/%3E%3Crect x='10' y='40' width='44' height='3' fill='%230d0221'/%3E%3Crect x='10' y='47' width='44' height='4' fill='%230d0221'/%3E%3C/svg%3E" />
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0221; }
+      html, body {
+        margin: 0; height: 100%; overflow: hidden; background: #0d0221;
+        /* мобильные: без скролла/«резинки», зума двойным тапом, выделения и меню долгого нажатия */
+        overscroll-behavior: none; touch-action: none;
+        -webkit-user-select: none; user-select: none;
+        -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+        -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+      }
+      body { position: fixed; inset: 0; }
       #app { position: fixed; inset: 0; }
       #app canvas { display: block; width: 100%; height: 100%; }
       #ui { position: fixed; inset: 0; pointer-events: none; }

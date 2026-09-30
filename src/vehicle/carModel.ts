@@ -150,6 +150,68 @@ function buildBody(look: CarLook): GeometryBuilder {
       body,
     );
     gb.box(hw * 1.9, 0.12, 0.05, TAIL, 1, T(0, 0.5, -2.26));
+  } else if (look.model === 'custom') {
+    // «Своя сборка» — ретро-футуристичный шутинг-брейк: длинная крыша до кормы,
+    // рубленая корма, крылья-обтекатели над колёсами и световая балка на крыше
+    gb.prism(
+      [
+        [-2.1, -0.14],
+        [2.2, -0.14],
+        [2.28, 0.1],
+        [2.0, 0.34],
+        [0.9, 0.46],
+        [-2.05, 0.5],
+        [-2.12, 0.3],
+      ],
+      hw,
+      body,
+      0,
+      undefined,
+      0.05,
+      bodyDark,
+    );
+    // длинная кабина-«универсал» со стеклом до самой кормы
+    gb.prism(
+      [
+        [-1.95, 0.48],
+        [0.85, 0.45],
+        [0.05, 1.0],
+        [-1.9, 1.02],
+      ],
+      hw * 0.82,
+      GLASS,
+      0,
+      undefined,
+      0.08,
+    );
+    // крыша-рама поверх стекла и световая балка
+    gb.box(hw * 1.66, 0.06, 1.95, body, 0, T(0, 1.04, -0.95));
+    gb.box(hw * 1.3, 0.12, 0.22, DARK, 0, T(0, 1.13, -0.1));
+    for (let i = -2; i <= 2; i++) gb.box(0.2, 0.08, 0.05, HEAD, 1, T(i * hw * 0.26, 1.14, 0.02));
+    // обтекатели колёс с неоновой кромкой
+    for (const side of [-1, 1]) {
+      for (const z of [1.3, -1.3]) {
+        gb.prism(
+          [
+            [z - 0.62, 0.18],
+            [z + 0.62, 0.18],
+            [z + 0.42, 0.42],
+            [z - 0.42, 0.42],
+          ],
+          0.1,
+          bodyDark,
+          0,
+          T(side * (hw + 0.06), 0, 0),
+        );
+        gb.box(0.02, 0.03, 1.1, neon, 1, T(side * (hw + 0.17), 0.2, z));
+      }
+    }
+    // решётка во всю ширину, узкие фары, корма с «мостом» стопов
+    gb.box(hw * 1.7, 0.16, 0.04, DARK, 0, T(0, 0.12, 2.27));
+    for (const side of [-1, 1]) gb.box(0.36, 0.06, 0.05, HEAD, 1, T(side * hw * 0.62, 0.24, 2.26));
+    gb.box(hw * 1.9, 0.07, 0.05, TAIL, 1, T(0, 0.42, -2.12));
+    for (const side of [-1, 1]) gb.box(0.07, 0.36, 0.05, TAIL, 1, T(side * hw * 0.9, 0.3, -2.12));
+    gb.box(hw * 1.5, 0.05, 0.3, accent, 0, T(0, 1.02, -2.02));
   } else {
     // Photon X — очень низкий гиперкар с каплевидным фонарём
     gb.prism(
@@ -208,13 +270,16 @@ function buildBody(look: CarLook): GeometryBuilder {
   }
 
   // ── общие детали: зеркала, неон окон, фары, диффузор, выхлоп, сплиттер ──
-  const [front, rear] = look.model === 'wedge' ? [2.25, -2.2] : look.model === 'muscle' ? [2.3, -2.28] : [2.35, -2.3];
+  const [front, rear] =
+    look.model === 'wedge' ? [2.25, -2.2] : look.model === 'muscle' ? [2.3, -2.28] : look.model === 'custom' ? [2.28, -2.12] : [2.35, -2.3];
   const cab =
     look.model === 'wedge'
       ? { z0: -1.15, z1: 0.9, y: 0.5, zm: 0.55, ym: 0.62, w: hw * 0.74 }
       : look.model === 'muscle'
         ? { z0: -1.7, z1: 0.42, y: 0.63, zm: 0.2, ym: 0.78, w: hw * 0.8 }
-        : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
+        : look.model === 'custom'
+          ? { z0: -1.95, z1: 0.85, y: 0.48, zm: 0.55, ym: 0.62, w: hw * 0.82 }
+          : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
   for (const side of [-1, 1]) {
     // зеркала на стойке
     gb.box(0.05, 0.05, 0.12, DARK, 0, T(side * (cab.w + 0.08), cab.ym - 0.04, cab.zm));
@@ -236,6 +301,8 @@ function buildBody(look: CarLook): GeometryBuilder {
       gb.cylinder(0.1, 0.1, 0.04, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * hw * 0.42, 0.33, 2.3)));
       for (const k of [0.62, 0.36]) gb.box(0.24, 0.12, 0.05, TAIL, 1, T(side * hw * k, 0.5, -2.29));
     }
+  } else if (look.model === 'custom') {
+    // своя сборка: детали уже в основном блоке
   } else {
     // гиперкар: центральный стоп и заборник на крыше
     gb.box(0.3, 0.05, 0.05, TAIL, 1, T(0, 0.5, -2.2));
@@ -348,7 +415,7 @@ export class CarModel {
 
     // пламя нитро (два конуса из выхлопа)
     const fg = new GeometryBuilder();
-    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : -2.3;
+    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : -2.3;
     for (const side of [-EXHAUST_X, EXHAUST_X]) {
       fg.cylinder(0.0, 0.16, 1.4, 6, PALETTE.cyan, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.95)));
       fg.cylinder(0.0, 0.09, 0.8, 6, PALETTE.white, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.62)));
