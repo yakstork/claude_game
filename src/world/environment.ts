@@ -17,6 +17,7 @@ import type { Track } from './track';
 import { PALETTE } from './palette';
 import { GeometryBuilder } from './geometryBuilder';
 import { uprightFrame } from './trackMesh';
+import { SUN_DIR } from './sky';
 
 /** Детерминированный ГПСЧ (mulberry32) */
 export function rng(seed: number): () => number {
@@ -216,8 +217,8 @@ export class Environment {
       const dist = this.field.distance(x, z);
       if (dist < r + 16) return;
       const rot = rand() < 0.7 ? Math.round(rand() * 4) * (Math.PI / 2) + (rand() - 0.5) * 0.08 : rand() * Math.PI;
-      let h = 14 + rand() * 38 + Math.min(120, Math.max(0, dist - 40) * 0.35);
-      if (!near) h += 40 + rand() * 120;
+      let h = 9 + rand() * 24 + Math.min(80, Math.max(0, dist - 30) * 0.28);
+      if (!near) h += 50 + rand() * 110;
       if (rand() < 0.06) h *= 1.8;
       base.set(BUILDING_COLORS[Math.floor(rand() * BUILDING_COLORS.length)]);
       accent.set(ACCENTS[Math.floor(rand() * ACCENTS.length)]);
@@ -237,19 +238,23 @@ export class Environment {
       if (h > 130) bb.tier(x, z, 1.2, 1.2, h, h + 18, rot, base, accent, seed + 99);
     };
 
-    // Ближний город вокруг трассы
-    for (let gx = -760; gx <= 640; gx += 42) {
+    // Ближний город вокруг трассы. К востоку от трассы (x > 330) — пусто:
+    // неоновая сетка уходит к горизонту прямо под солнце.
+    const sunAz = Math.atan2(SUN_DIR.z, SUN_DIR.x);
+    for (let gx = -760; gx <= 330; gx += 42) {
       for (let gz = -560; gz <= 520; gz += 42) {
         const x = gx + (rand() - 0.5) * 22;
         const z = gz + (rand() - 0.5) * 22;
-        if (rand() < 0.18) continue;
+        if (rand() < 0.32) continue;
         place(x, z, true);
       }
     }
-    // Дальний скайлайн по кольцу
-    for (let i = 0; i < 150; i++) {
+    // Дальний скайлайн по кольцу — вне сектора солнца
+    for (let i = 0; i < 170; i++) {
       const a = rand() * Math.PI * 2;
-      const r = 850 + rand() * 650;
+      const da = Math.abs(Math.atan2(Math.sin(a - sunAz), Math.cos(a - sunAz)));
+      if (da < 0.75) continue;
+      const r = 850 + rand() * 450;
       place(Math.cos(a) * r - 60, Math.sin(a) * r, false);
     }
 
@@ -314,8 +319,8 @@ function addPalm(gb: GeometryBuilder, base: Vector3, rand: () => number): void {
   const lx = Math.cos(dir);
   const lz = Math.sin(dir);
   const segs = 7;
-  const trunkA = new Color(0x3d1a4f);
-  const trunkB = new Color(0x2e1240);
+  const trunkA = new Color(0x5a2a6e);
+  const trunkB = new Color(0x40195a);
   let prev = base.clone();
   const m = new Matrix4();
   const up = new Vector3(0, 1, 0);
@@ -338,8 +343,8 @@ function addPalm(gb: GeometryBuilder, base: Vector3, rand: () => number): void {
   gb.cylinder(0.42, 0.3, 0.4, 6, PALETTE.cyan, 0.6, new Matrix4().makeTranslation(top.x, top.y - 0.2, top.z), true);
   // листья
   const fronds = 8;
-  const leafA = new Color(0x23104a);
-  const leafB = new Color(0x341665);
+  const leafA = new Color(0x3b1670);
+  const leafB = new Color(0x52208f);
   for (let k = 0; k < fronds; k++) {
     const a = (k / fronds) * Math.PI * 2 + rand() * 0.4;
     const len = 4.2 + rand() * 1.6;
@@ -359,6 +364,7 @@ function addPalm(gb: GeometryBuilder, base: Vector3, rand: () => number): void {
     gb.tri(midP, tip, r1, col, 0);
     // светящаяся прожилка у кончика
     const rib = midP.clone().lerp(tip, 0.55);
-    gb.tri(rib, tip, rib.clone().add(new Vector3(px * 0.12, 0.05, pz * 0.12)), PALETTE.magenta, 0.7);
+    gb.tri(rib, tip, rib.clone().add(new Vector3(px * 0.2, 0.06, pz * 0.2)), PALETTE.pink, 0.9);
+    gb.tri(rib, rib.clone().add(new Vector3(-px * 0.2, 0.06, -pz * 0.2)), tip, PALETTE.pink, 0.9);
   }
 }

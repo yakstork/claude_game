@@ -89,7 +89,7 @@ export class TrackMesh {
     const edgeDist = hw.sub(alat);
 
     // асфальт: тёмный фиолетовый с зерном и лёгкими поперечными стыками
-    const grain = hash(floor(positionWorld.x.mul(4.0)).add(floor(positionWorld.z.mul(4.0)).mul(31.7))).mul(0.06);
+    const grain = hash(floor(positionWorld.x.mul(7.0)).add(floor(positionWorld.z.mul(7.0)).mul(31.7))).mul(0.022);
     const seams = smoothstep(0.03, 0.0, abs(fract(s.div(24.0)).sub(0.5)).sub(0.49)).mul(0.03);
     const asphalt = color(PALETTE.asphalt).add(grain).add(seams);
 

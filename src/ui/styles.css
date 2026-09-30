@@ -475,7 +475,7 @@
 @keyframes nr-wrong { 0% { opacity: 1; } 50% { opacity: 0.25; } }
 
 /* спидометр */
-.hud-speedo { position: absolute; left: 50%; bottom: 0.9em; width: 18em; transform: translateX(-50%); }
+.hud-speedo { position: absolute; left: 1.6em; bottom: 0.9em; width: 16.5em; }
 .speedo-svg { display: block; width: 100%; height: auto; overflow: visible; }
 .speedo-track { fill: none; stroke: rgba(26, 11, 59, 0.85); stroke-width: 12; stroke-linecap: round; }
 .speedo-track { filter: none; stroke: rgba(43, 15, 84, 0.9); }

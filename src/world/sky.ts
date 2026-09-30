@@ -43,7 +43,7 @@ import { setGlow } from './materials';
 /** Направление на солнце (над восточным горизонтом — по стартовой прямой) */
 export const SUN_DIR = new Vector3(1, 0.075, 0.12).normalize();
 
-const SKY_RADIUS = 3200;
+const SKY_RADIUS = 1500;
 
 export class Sky {
   readonly group = new Group();
@@ -134,7 +134,7 @@ function createMountains(): Mesh {
   const positions: number[] = [];
   const colors: number[] = [];
   const glow: number[] = [];
-  const R = 2300;
+  const R = 1420;
   const segs = 160;
   const base = new Color(PALETTE.void);
   const face = new Color(PALETTE.purple);
@@ -153,7 +153,7 @@ function createMountains(): Mesh {
     const sunA = Math.atan2(SUN_DIR.z, SUN_DIR.x);
     const da = Math.abs(Math.atan2(Math.sin(a - sunA), Math.cos(a - sunA)));
     const sunDip = 0.35 + 0.65 * Math.min(1, da / 0.6);
-    return (90 + 110 * (n * 0.5 + 0.5)) * sunDip;
+    return (55 + 70 * (n * 0.5 + 0.5)) * sunDip;
   };
 
   const push = (x: number, y: number, z: number, c: Color, g: number) => {
@@ -173,7 +173,7 @@ function createMountains(): Mesh {
     const z1 = Math.sin(a1) * R;
     const shade = face.clone().lerp(base, ((i * 31) % 7) / 10);
     // тело хребта (два треугольника, внутренняя сторона смотрит на центр)
-    push(x0, -40, z0, base, 0);
+    push(x0, -30, z0, base, 0);
     push(x1, -40, z1, base, 0);
     push(x0, h0, z0, shade, 0);
     push(x1, -40, z1, base, 0);

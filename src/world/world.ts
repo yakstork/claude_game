@@ -17,7 +17,7 @@ export class World {
   readonly ground = new Ground();
   readonly trackMesh: TrackMesh;
   readonly environment: Environment;
-  readonly fog = new Fog(FOG_COLOR, 120, 1500);
+  readonly fog = new Fog(FOG_COLOR, 120, 1350);
   readonly sun: DirectionalLight;
 
   constructor(
@@ -44,7 +44,7 @@ export class World {
 
   setQuality(q: Quality): void {
     this.fog.near = q === 'high' ? 120 : 80;
-    this.fog.far = q === 'high' ? 1500 : 900;
+    this.fog.far = q === 'high' ? 1350 : 950;
     this.ground.fadeDistance.value = q === 'high' ? 1300 : 800;
   }
 

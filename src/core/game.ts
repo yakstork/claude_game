@@ -75,7 +75,7 @@ const _proj = createProjection();
 
 export class Game {
   readonly scene = new Scene();
-  readonly camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 3000);
+  readonly camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 2000);
   readonly chase = new ChaseCamera(this.camera);
   readonly track = new Track(SUNSET_LOOP);
   readonly world: World;
@@ -213,7 +213,7 @@ export class Game {
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
     this.effects.density = s.quality === 'high' ? 1 : 0.5;
-    this.camera.far = s.quality === 'high' ? 3000 : 1600;
+    this.camera.far = s.quality === 'high' ? 2000 : 1600;
     this.camera.updateProjectionMatrix();
     this.ui.setFps(s.showFps ? Math.round(this.loop?.fps ?? 60) : null);
     if (persist) saveSettings(this.settings);
