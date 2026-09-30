@@ -12,7 +12,8 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:4173',
-    viewport: { width: 1280, height: 720 },
+    // небольшой вьюпорт: в CI/облаке рендер программный (SwiftShader)
+    viewport: { width: 960, height: 540 },
     launchOptions: {
       ...(executablePath ? { executablePath } : {}),
       args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],

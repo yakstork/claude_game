@@ -16,8 +16,10 @@ export class GameLoop {
   private acc = 0;
   private last = -1;
   private running = false;
-  /** Сглаженный FPS */
+  /** FPS за последние ~0.5 с */
   fps = 60;
+  private fpsFrames = 0;
+  private fpsTime = 0;
   /** Масштаб времени симуляции (1 — норма) */
   timeScale = 1;
 
@@ -41,9 +43,17 @@ export class GameLoop {
   private tick(timeMs: number): void {
     const t = timeMs / 1000;
     if (this.last < 0) this.last = t;
-    const frameDt = Math.min(MAX_FRAME, Math.max(0, t - this.last));
+    const realDt = Math.max(0, t - this.last);
+    const frameDt = Math.min(MAX_FRAME, realDt);
     this.last = t;
-    if (frameDt > 0) this.fps += (1 / frameDt - this.fps) * 0.05;
+    // FPS — по окну 0.5 с реального (не ограниченного) времени
+    this.fpsFrames++;
+    this.fpsTime += realDt;
+    if (this.fpsTime >= 0.5) {
+      this.fps = this.fpsFrames / this.fpsTime;
+      this.fpsFrames = 0;
+      this.fpsTime = 0;
+    }
 
     this.acc += frameDt * this.timeScale;
     let steps = 0;
