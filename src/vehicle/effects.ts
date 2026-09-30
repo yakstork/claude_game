@@ -359,11 +359,12 @@ export class EffectsManager {
 
   /** Пыль/дым при приземлении */
   landingPuff(point: Vector3, strength: number): void {
-    const n = Math.ceil(6 + strength * 10);
+    // небольшое кольцо пыли у колёс: не должно закрывать обзор камере
+    const n = Math.ceil(4 + strength * 5);
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2;
-      _v.set(Math.cos(a) * 5, 1 + Math.random(), Math.sin(a) * 5);
-      this.smoke.spawn(point, _v, 0.8, 0.5 + strength * 0.5);
+      _v.set(Math.cos(a) * 4, 0.5 + Math.random() * 0.6, Math.sin(a) * 4);
+      this.smoke.spawn(point, _v, 0.55, 0.22 + strength * 0.22);
     }
   }
 
