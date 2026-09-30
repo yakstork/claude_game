@@ -797,7 +797,7 @@ export class Game {
       fps: Math.round(this.loop.fps),
       drawCalls: this.render.drawCalls(),
       quality: this.settings.quality,
-      speedKmh: p ? Math.round(Math.abs(p.speed) * 3.6) : 0,
+      speedKmh: p ? Math.round(Math.hypot(p.velocity.x, p.velocity.z) * 3.6) : 0,
       nitro: p ? p.nitro : 0,
       drifting: p ? p.drifting : false,
       lap: this.race ? this.race.standing(PLAYER_SLOT).lap : 0,

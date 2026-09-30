@@ -36,6 +36,8 @@ const PAD_ACTIONS: [number, MenuAction][] = [
 ];
 
 const DEADZONE = 0.15;
+/** Скорость набора руля с клавиатуры при зажатом Space, 1/с */
+const DRIFT_STEER_RISE = 10;
 
 export class InputManager {
   private readonly keys = new Set<string>();
@@ -118,7 +120,9 @@ export class InputManager {
     if (target !== 0) {
       // плавное нарастание; при смене направления — быстрый переход через ноль
       const flip = Math.sign(target) !== Math.sign(this.keySteer) && this.keySteer !== 0;
-      const rate = flip ? INPUT_TUNING.keySteerCounter : INPUT_TUNING.keySteerRise;
+      let rate = flip ? INPUT_TUNING.keySteerCounter : INPUT_TUNING.keySteerRise;
+      // с зажатым дрифтом руль набирается быстрее — срыв зада не ждёт плавного нарастания
+      if (this.key('Space')) rate = Math.max(rate, DRIFT_STEER_RISE);
       this.keySteer = approach(this.keySteer, target, rate * dt);
     } else {
       this.keySteer = approach(this.keySteer, 0, INPUT_TUNING.keySteerReturn * dt);
