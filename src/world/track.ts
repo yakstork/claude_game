@@ -5,6 +5,7 @@
 import { CatmullRomCurve3, MathUtils, Vector3 } from 'three';
 import type { Pose, TrackProjection, TrackSample } from '../core/types';
 import type { TrackDefinition } from './trackData';
+import { BARRIER_OFFSET } from './constants';
 
 const UP = new Vector3(0, 1, 0);
 /** Шаг дискретизации трассы, м */
@@ -92,8 +93,27 @@ export class Track {
 
     // Сплайн может «проседать» ниже нуля у перепадов высот — дорога не должна
     // уходить под землю: зажимаем высоту и слегка сглаживаем профиль.
+    // На виражах нижний край полотна опускается на halfWidth·sin(bank): поднимаем
+    // осевую, чтобы любой край дороги был выше земли (GROUND_Y + ROAD_CLEARANCE).
     const ys = new Float32Array(count);
-    for (let i = 0; i < count; i++) ys[i] = Math.max(0, this.positions[i * 3 + 1]);
+    for (let i = 0; i < count; i++) {
+      const edgeDrop = (this.halfWidths[i] + BARRIER_OFFSET + 0.6) * Math.sin(Math.abs(this.banks[i]));
+      ys[i] = Math.max(0, this.positions[i * 3 + 1], edgeDrop);
+    }
+    // «подъём» на вираже растягиваем на соседние участки (максимум в окне ±25 м)
+    {
+      const src = ys.slice();
+      const win = Math.ceil(25 / this.step);
+      for (let i = 0; i < count; i++) {
+        let m = src[i];
+        for (let k = -win; k <= win; k++) {
+          const v = src[(i + k + count) % count];
+          const fall = 1 - Math.abs(k) / (win + 1);
+          if (v * fall > m) m = v * fall;
+        }
+        ys[i] = m;
+      }
+    }
     for (let pass = 0; pass < 3; pass++) {
       const src = ys.slice();
       for (let i = 0; i < count; i++) {
@@ -203,14 +223,14 @@ export class Track {
    * hintS (прошлое значение s) — эстакада проходит над другим участком трассы.
    * Без подсказки ищется ближайшая точка по всей трассе в 3D.
    */
-  project(p: Vector3, hintS?: number, out: TrackProjection = createProjection()): TrackProjection {
+  project(p: Vector3, hintS?: number, out: TrackProjection = createProjection(), window = HINT_WINDOW): TrackProjection {
     let first: number;
     let n: number;
     if (hintS === undefined || !Number.isFinite(hintS)) {
       first = 0;
       n = this.count;
     } else {
-      const w = Math.ceil(HINT_WINDOW / this.step);
+      const w = Math.ceil(window / this.step);
       first = Math.floor(this.wrapS(hintS) / this.step) - w;
       n = w * 2 + 1;
     }

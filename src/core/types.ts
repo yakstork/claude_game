@@ -335,3 +335,18 @@ export type SfxName =
   | 'uiBack';
 
 export type MusicTrack = 'menu' | 'race';
+
+// ─── Тюнинг (панель ?debug) ────────────────────────────────────────────────
+
+/** Описание настраиваемого числового параметра для панели тюнинга */
+export interface TuningParam {
+  /** Ключ в объекте конфига */
+  key: string;
+  /** Подпись (рус.) */
+  label: string;
+  /** Группа в панели, напр. «Руль», «Сцепление», «Дрифт» */
+  group: string;
+  min: number;
+  max: number;
+  step: number;
+}

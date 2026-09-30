@@ -35,8 +35,8 @@ import type { Track } from './track';
 import { PALETTE } from './palette';
 import { GeometryBuilder, frameMatrix } from './geometryBuilder';
 
-/** Отступ ограждения от края полотна, м */
-export const BARRIER_OFFSET = 0.3;
+import { BARRIER_OFFSET } from './constants';
+export { BARRIER_OFFSET };
 const BARRIER_HEIGHT = 1.05;
 const BARRIER_THICK = 0.55;
 const DECK = 1.3;
