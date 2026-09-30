@@ -108,15 +108,19 @@ export class Hud {
     el('span', 'hud-label', 'ВСЕГО', rows);
     this.raceTime = el('span', 'hud-time', formatTime(0), rows);
 
-    // ── комбо дрифта (центр сверху)
-    this.combo = el('div', 'hud-combo', undefined, root);
+    // ── центральная колонка сверху: баннер → комбо → попапы. Flex-колонка с
+    // зарезервированной высотой слотов гарантирует, что зоны не пересекаются
+    // ни на каком размере окна (все размеры — в em от вьюпорта).
+    const centerCol = el('div', 'hud-center', undefined, root);
+    this.bannerSlot = el('div', 'hud-banner-slot', undefined, centerCol);
+    const comboSlot = el('div', 'hud-combo-slot', undefined, centerCol);
+    this.combo = el('div', 'hud-combo', undefined, comboSlot);
     this.comboPts = el('span', 'hud-combo-pts', '+0', this.combo);
     this.comboMult = el('span', 'hud-combo-mult', 'x1', this.combo);
+    this.popups = el('div', 'hud-popups', undefined, centerCol);
 
-    // ── попапы, плашка «не туда», баннер, отсчёт
-    this.popups = el('div', 'hud-popups', undefined, root);
+    // ── плашка «не туда», отсчёт
     this.wrongWay = el('div', 'hud-wrong', 'НЕ ТУДА!', root);
-    this.bannerSlot = el('div', 'hud-banner-slot', undefined, root);
     this.countdown = el('div', 'hud-countdown', undefined, root);
 
     // ── спидометр (центр снизу)

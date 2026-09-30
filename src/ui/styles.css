@@ -404,10 +404,22 @@
 .hud-time { font-size: 0.9em; font-style: italic; }
 .hud-time.best { color: var(--yellow); text-shadow: 0 0 0.5em rgba(255, 211, 25, 0.5); }
 
+/* Центральная колонка сверху (между панелями позиции и круга):
+   баннер → комбо → попапы. Слоты имеют зарезервированную высоту, поэтому
+   зоны не пересекаются на любом размере окна (720x420 … 1920x1080). */
+.hud-center {
+  position: absolute; left: 16em; right: 16em; top: 1.2em;
+  display: flex; flex-direction: column; align-items: center; gap: 0.4em;
+  pointer-events: none;
+}
+.hud-banner-slot { width: 100%; height: 3.3em; display: flex; align-items: stretch; justify-content: center; }
+.hud-combo-slot { width: 100%; height: 3.2em; display: flex; justify-content: center; align-items: flex-start; margin-bottom: 1em; }
+.hud-popups { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.3em; }
+
 /* комбо дрифта */
 .hud-combo {
-  position: absolute; left: 50%; top: 1.4em; display: flex; align-items: baseline; gap: 0.5em; white-space: nowrap;
-  --s: 1; transform: translateX(-50%) scale(var(--s)); transform-origin: 50% 0;
+  display: flex; align-items: baseline; gap: 0.5em; white-space: nowrap;
+  --s: 1; transform: scale(var(--s)); transform-origin: 50% 0;
   opacity: 0; transition: opacity 0.15s, transform 0.12s ease-out;
   font-style: italic; color: var(--pink);
   text-shadow: 0 0 0.35em var(--magenta), 0 0 0.9em var(--magenta), 0 0.06em 0 var(--violet);
@@ -417,10 +429,9 @@
 .hud-combo-mult { font-size: 1.9em; color: var(--yellow); text-shadow: 0 0 0.4em var(--orange), 0 0.06em 0 var(--magenta); }
 
 /* попапы (стек до 3) */
-.hud-popups { position: absolute; left: 50%; top: 8.6em; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 0.5em; }
 .popup { --tone: var(--pink); text-align: center; white-space: nowrap; font-style: italic; animation: nr-popup 1.65s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
-.popup-text { font-size: 1.7em; letter-spacing: 0.1em; color: var(--white); text-shadow: 0 0 0.35em var(--tone), 0 0 0.8em var(--tone), 0 0.05em 0 var(--violet); }
-.popup-sub { font-size: 1.2em; letter-spacing: 0.08em; color: var(--tone); text-shadow: 0 0 0.5em var(--tone); }
+.popup-text { font-size: 1.5em; letter-spacing: 0.1em; color: var(--white); text-shadow: 0 0 0.35em var(--tone), 0 0 0.8em var(--tone), 0 0.05em 0 var(--violet); }
+.popup-sub { font-size: 1.05em; letter-spacing: 0.08em; color: var(--tone); text-shadow: 0 0 0.5em var(--tone); }
 .tone-pink { --tone: var(--pink); }
 .tone-cyan { --tone: var(--cyan); }
 .tone-orange { --tone: var(--orange); }
@@ -433,12 +444,11 @@
   100% { opacity: 0; transform: translateY(-0.7em) scale(0.96); }
 }
 
-/* баннер */
-.hud-banner-slot { position: absolute; left: 0; right: 0; top: 47%; display: flex; justify-content: center; }
-.banner { --tone: var(--pink); width: 100%; padding: 0.5em 0; text-align: center; animation: nr-banner 2.05s ease-out both;
-  background: linear-gradient(90deg, transparent, rgba(26, 11, 59, 0.82) 18%, rgba(26, 11, 59, 0.82) 82%, transparent);
+/* баннер: своя полоса сверху между панелями позиции и круга */
+.banner { --tone: var(--pink); width: 100%; display: flex; align-items: center; justify-content: center; text-align: center; animation: nr-banner 2.05s ease-out both;
+  background: linear-gradient(90deg, transparent, rgba(26, 11, 59, 0.82) 14%, rgba(26, 11, 59, 0.82) 86%, transparent);
   border-top: 2px solid var(--tone); border-bottom: 2px solid var(--tone); }
-.banner-text { display: inline-block; font-size: 2.4em; font-style: italic; letter-spacing: 0.22em; text-transform: uppercase; color: var(--white);
+.banner-text { display: inline-block; white-space: nowrap; font-size: 1.9em; font-style: italic; letter-spacing: 0.16em; text-transform: uppercase; color: var(--white);
   text-shadow: 0 0 0.35em var(--tone), 0 0 0.9em var(--tone); }
 @keyframes nr-banner {
   0% { opacity: 0; transform: scaleY(0.1); }
@@ -507,3 +517,37 @@
 .hud-map { position: absolute; right: 1.4em; bottom: 1.2em; --c: 14px; width: 13.6em; height: 13.6em; padding: 0.3em; --edge: var(--cyan); --edge-a: rgba(5, 217, 232, 0.3); }
 .hud-map-canvas { display: block; width: 100%; height: 100%; }
 
+
+/* ── Отладочная панель тюнинга (?debug, lil-gui) ─────────────────────────────
+   Цвета lil-gui переопределены палитрой §4.1; панель справа сверху над HUD. */
+.lil-gui.nr-debug {
+  --background-color: rgba(26, 11, 59, 0.96);
+  --text-color: var(--white);
+  --title-background-color: var(--magenta);
+  --title-text-color: #fff;
+  --widget-color: var(--purple);
+  --hover-color: #3d1673;
+  --focus-color: var(--violet);
+  --number-color: var(--cyan);
+  --string-color: var(--yellow);
+  --font-family: "Trebuchet MS", "Arial Black", system-ui, sans-serif;
+  --font-size: 11px;
+  --input-font-size: 11px;
+  --name-width: 50%;
+  pointer-events: auto;
+  z-index: 10000;
+  top: 8px;
+  right: 8px;
+  border: 1px solid var(--magenta);
+  box-shadow: 0 0 14px rgba(255, 42, 109, 0.45), inset 0 0 12px rgba(122, 4, 235, 0.25);
+  font-style: italic;
+  letter-spacing: 0.04em;
+}
+.lil-gui.nr-debug > .lil-title { letter-spacing: 0.18em; text-shadow: 0 0 6px rgba(255, 255, 255, 0.6); }
+.lil-gui.nr-debug .lil-gui > .lil-title { color: var(--cyan); background: rgba(5, 217, 232, 0.12); text-shadow: 0 0 6px var(--cyan); }
+.lil-gui.nr-debug .lil-controller.lil-function .lil-name { color: var(--pink); }
+.lil-gui.nr-debug .lil-controller.lil-function button { border: 1px solid var(--magenta); }
+.lil-gui.nr-debug .lil-controller.lil-function button:hover { background: var(--magenta); color: #fff; box-shadow: 0 0 8px var(--magenta); }
+.lil-gui.nr-debug .lil-controller.lil-disabled { opacity: 1; }
+.lil-gui.nr-debug .lil-controller.lil-string input:disabled { color: var(--yellow); }
+.lil-gui.nr-debug .lil-controller.lil-number .lil-slider { border: 1px solid rgba(5, 217, 232, 0.35); }
