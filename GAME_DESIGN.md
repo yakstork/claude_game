@@ -349,6 +349,17 @@ class InputManager {
 Enter — подтвердить. Геймпад (Standard mapping): RT газ, LT тормоз, левый стик
 руль, A/X — ручник, B/RB — нитро, Y — респаун, Start — пауза.
 
+### 6.8.1 Расширения контрактов (добавлены при реализации)
+- `VehiclePhysics.needsRespawn` — машина застряла/улетела/NaN → ведущий делает респаун;
+  `blockedTime`, `driftMode`, `pushEvent(type, strength, point)` (события из пула —
+  ссылки не хранить). `steerScale(v)` — чувствительность руля от скорости.
+- `BotDriver.stuckTime` (с без движения > 4 м/с) и `driftEnabled`.
+- `RaceManager.hasStarted`, `finishedCount`; `driftLabel(points)` в `race/drift.ts`.
+- `UIManager.showSettings()`, `hideAll()`.
+- `Game.debugSimulate(seconds)` и `window.__neonRush.info()` — для e2e/QA.
+- Конвенции: `driftAngle > 0` — нос правее вектора скорости; `wheels[].steerAngle > 0` —
+  колесо повёрнуто влево; `gear` 1..6, 0 — задний ход.
+
 ### 6.9 Интеграция (`core/game.ts`, Opus)
 Каждый шаг физики: input → `BotDriver.update` → `VehiclePhysics.step` →
 `resolveCarCollisions` → события → `RaceManager.update` → `DriftScorer.update`.

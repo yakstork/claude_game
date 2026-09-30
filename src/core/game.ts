@@ -25,7 +25,7 @@ import type {
 import { Track, createProjection } from '../world/track';
 import { SUNSET_LOOP } from '../world/trackData';
 import { World } from '../world/world';
-import { cssColor } from '../world/palette';
+import { PALETTE, cssColor } from '../world/palette';
 import { InputManager } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
@@ -302,7 +302,7 @@ export class Game {
         physics,
         model,
         bot: profile ? new BotDriver(this.track, profile, 1000 + slot * 77) : null,
-        color: cssColor(profile ? profile.bodyColor : playerSpec.neonColor),
+        color: profile ? cssColor(profile.bodyColor) : cssColor(PALETTE.white),
         isPlayer: !profile,
         prevPos: physics.state.position.clone(),
         prevQuat: physics.state.quaternion.clone(),
