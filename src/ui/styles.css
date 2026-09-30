@@ -152,7 +152,7 @@
 
 .car-arrow {
   position: absolute;
-  top: 50%;
+  top: 42%;
   width: 3.2em;
   height: 4.6em;
   display: grid;
@@ -168,8 +168,8 @@
   transition: background-color 0.12s, transform 0.12s, box-shadow 0.12s;
 }
 .car-arrow > span { transform: skewX(12deg); }
-.car-arrow.left { left: 17%; }
-.car-arrow.right { right: 17%; }
+.car-arrow.left { left: 25%; }
+.car-arrow.right { right: 25%; }
 .car-arrow:hover, .car-arrow:active {
   background: var(--cyan);
   color: var(--void);

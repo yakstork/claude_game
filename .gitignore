@@ -4,3 +4,5 @@ test-results/
 playwright-report/
 *.log
 .DS_Store
+_qa_*.mjs
+_*.mjs
