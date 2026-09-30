@@ -78,6 +78,11 @@ export class UIManager {
     this.setScreen('loading');
   }
 
+  /** Выбрать машину в меню без уведомления (синхронизация с игрой) */
+  setSelectedCar(i: number): void {
+    this.menu.setCar(i, false);
+  }
+
   showMainMenu(): void {
     this.hud.clearTransient();
     this.menu.nav.reset(0);

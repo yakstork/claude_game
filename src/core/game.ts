@@ -230,6 +230,7 @@ export class Game {
     this.audio.updateEngine(null);
     this.audio.playMusic('menu');
     this.ui.setCountdown(null);
+    this.ui.setSelectedCar(this.selectedCar);
     this.ui.showMainMenu();
     this.setPreviewCar(this.selectedCar);
   }
