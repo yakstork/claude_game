@@ -8,6 +8,7 @@ import type { Camera, Scene } from 'three/webgpu';
 import { emissive, mrt, output, pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { Quality } from './types';
+import { setGlowEnabled } from '../world/materials';
 
 export class RenderSystem {
   readonly renderer: WebGPURenderer;
@@ -60,13 +61,15 @@ export class RenderSystem {
     this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(dpr, 2) : Math.min(dpr, 1));
     this.pipeline?.dispose();
     this.pipeline = null;
-    if (!this.scene || !this.camera || this.quality === 'low') return;
+    const bloomOn = this.quality !== 'low';
+    setGlowEnabled(bloomOn);
+    if (!this.scene || !this.camera || !bloomOn) return;
 
     const scenePass = pass(this.scene, this.camera);
     scenePass.setMRT(mrt({ output, emissive }));
     const color = scenePass.getTextureNode('output');
     const glow = scenePass.getTextureNode('emissive');
-    const bloomPass = bloom(glow, 1.15, 0.55, 0.0);
+    const bloomPass = bloom(glow, 0.85, 0.45, 0.0);
     const pipeline = new RenderPipeline(this.renderer);
     pipeline.outputNode = color.add(bloomPass);
     this.pipeline = pipeline;

@@ -200,7 +200,10 @@ export class UIManager {
         }
         break;
       case 'pause':
-        if (this.screen === 'pause') {
+        if (this.screen === 'settings') {
+          cb.onUiSound('back');
+          this.closeSettings();
+        } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
         }

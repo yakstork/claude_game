@@ -249,3 +249,21 @@ describe('DriftScorer', () => {
     expect(ev).toHaveLength(0);
   });
 });
+
+describe('DriftScorer.flush', () => {
+  it('банкует активное комбо (например, на финише)', () => {
+    const sc = new DriftScorer();
+    const st = createVehicleState();
+    st.drifting = true;
+    st.speed = 30;
+    st.driftAngle = 0.6;
+    st.onGround = true;
+    for (let i = 0; i < 240; i++) sc.update(1 / 120, st, false);
+    expect(sc.combo.active).toBe(true);
+    const ev = sc.flush();
+    expect(sc.combo.active).toBe(false);
+    expect(sc.total).toBeGreaterThan(0);
+    expect(ev.some((e) => e.type === 'comboEnd')).toBe(true);
+    expect(sc.flush()).toEqual([]);
+  });
+});

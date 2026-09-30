@@ -85,6 +85,22 @@ export class DriftScorer {
     return out;
   }
 
+  /** Завершить активное комбо сейчас (например, на финише) и начислить очки */
+  flush(): DriftEvent[] {
+    const out = this.out;
+    out.length = 0;
+    const combo = this.combo;
+    if (combo.active) {
+      const result = Math.round(combo.points * combo.multiplier);
+      this.total += result;
+      if (result >= MIN_REPORT_POINTS) {
+        out.push({ type: 'comboEnd', points: result, multiplier: combo.multiplier, label: driftLabel(result) });
+      }
+      this.clearCombo();
+    }
+    return out;
+  }
+
   reset(): void {
     this.total = 0;
     this.out.length = 0;

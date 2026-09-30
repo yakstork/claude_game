@@ -474,6 +474,9 @@ export class Game {
       } else if (ev.type === 'finish') {
         this.state = 'finished';
         this.finishT = 0;
+        for (const d of this.drift.flush()) {
+          if (d.type === 'comboEnd') this.ui.popup(d.label, `+${d.points.toLocaleString('ru-RU')}`, 'pink');
+        }
         this.audio.play('finish');
         this.ui.banner(ev.position === 1 ? 'ПОБЕДА!' : `ФИНИШ · ${ev.position}-Е МЕСТО`, ev.position === 1 ? 'yellow' : 'pink');
       }
@@ -566,7 +569,8 @@ export class Game {
         this.ui.handleAction(a);
         continue;
       }
-      if (a === 'pause' || a === 'back') this.pause();
+      // 'back' (Backspace / B на геймпаде) в гонке не ставит паузу: B — это нитро
+      if (a === 'pause') this.pause();
       else if (a === 'reset' && this.state === 'racing') this.respawn(this.player);
     }
   }

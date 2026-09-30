@@ -152,7 +152,7 @@
 
 .car-arrow {
   position: absolute;
-  top: 40%;
+  top: 50%;
   width: 3.2em;
   height: 4.6em;
   display: grid;
@@ -221,7 +221,8 @@
 .swatch { width: 1.7em; height: 0.9em; border: 2px solid var(--white); transform: skewX(-20deg); }
 .swatch.neon { border-color: transparent; }
 
-.menu-rec-wrap { position: absolute; right: 2.2em; top: 2.2em; width: 17em; }
+.menu-rec-wrap { position: absolute; right: 2.2em; top: 2.2em; width: 19.5em; }
+.rec-grid > :nth-child(odd) { white-space: nowrap; }
 .menu-rec { width: 100%; }
 .rec-grid { display: grid; grid-template-columns: 1fr auto; row-gap: 0.55em; column-gap: 0.8em; align-items: baseline; }
 .rec-val { font-size: 0.95em; font-style: italic; text-align: right; letter-spacing: 0.04em; color: var(--yellow); text-shadow: 0 0 0.5em rgba(255, 211, 25, 0.5); }

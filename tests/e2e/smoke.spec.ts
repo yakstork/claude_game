@@ -14,6 +14,8 @@ function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
+    // ошибки WebGL Chrome пишет предупреждениями
+    else if (m.type() === 'warning' && /GL_INVALID|WebGL:/.test(m.text())) errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   return errors;
