@@ -1,14 +1,16 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
-import type { CarSpec, Quality, RaceResult, Settings, UICallbacks } from '../core/types';
-import { el } from './dom';
+import type { CarSpec, ControlMode, Quality, RaceResult, Settings, UICallbacks } from '../core/types';
+import { el, onTap } from './dom';
 import {
-  clamp,
+  fractionOf,
   formatPercent,
   formatScore,
   formatTime,
   resultTitle,
-  stepSlider,
+  stepRange,
+  valueFromFraction,
 } from './format';
+import { addFullscreenButton } from './fullscreen';
 import { buildLogo } from './menu';
 import { Nav } from './nav';
 
@@ -43,16 +45,47 @@ export class LoadingScreen {
 
 // ─── Настройки ──────────────────────────────────────────────────────────────
 
-type VolumeKey = 'masterVolume' | 'musicVolume' | 'sfxVolume';
+type SliderKey = 'masterVolume' | 'musicVolume' | 'sfxVolume' | 'touchSize' | 'touchOpacity';
+
+interface SliderDef {
+  key: SliderKey;
+  label: string;
+  min: number;
+  max: number;
+  /** Шаг клавиатуры/геймпада */
+  step: number;
+  /** Шаг привязки при перетаскивании пальцем/мышью */
+  snap: number;
+  /** При перетаскивании показывать предпросмотр сенсорных кнопок */
+  preview?: boolean;
+}
+
+const SLIDERS: SliderDef[] = [
+  { key: 'masterVolume', label: 'ОБЩАЯ ГРОМКОСТЬ', min: 0, max: 1, step: 0.1, snap: 0.01 },
+  { key: 'musicVolume', label: 'МУЗЫКА', min: 0, max: 1, step: 0.1, snap: 0.01 },
+  { key: 'sfxVolume', label: 'ЭФФЕКТЫ', min: 0, max: 1, step: 0.1, snap: 0.01 },
+];
+const TOUCH_SLIDERS: SliderDef[] = [
+  { key: 'touchSize', label: 'РАЗМЕР КНОПОК', min: 0.7, max: 1.5, step: 0.1, snap: 0.05, preview: true },
+  { key: 'touchOpacity', label: 'ПРОЗРАЧНОСТЬ КНОПОК', min: 0.2, max: 1, step: 0.1, snap: 0.05, preview: true },
+];
+
+const CONTROL_MODES: { mode: ControlMode; full: string; short: string }[] = [
+  { mode: 'auto', full: 'АВТО', short: 'АВТО' },
+  { mode: 'keyboard', full: 'КЛАВИАТУРА И ГЕЙМПАД', short: 'КЛАВИАТУРА' },
+  { mode: 'touch', full: 'СЕНСОРНЫЕ КНОПКИ', short: 'КНОПКИ' },
+];
 
 export class SettingsScreen {
   readonly el: HTMLElement;
   readonly nav: Nav;
   private settings: Settings;
-  private readonly sliders: { key: VolumeKey; fill: HTMLElement; val: HTMLElement }[] = [];
+  private readonly sliders: { def: SliderDef; fill: HTMLElement; val: HTMLElement }[] = [];
   private readonly qualityBtns: Record<Quality, HTMLElement>;
+  private readonly modeBtns: Record<ControlMode, HTMLElement>;
   private readonly fpsBtn: HTMLElement;
   private readonly fpsVal: HTMLElement;
+  private readonly list: HTMLElement;
 
   constructor(
     parent: HTMLElement,
@@ -60,6 +93,8 @@ export class SettingsScreen {
     nav: Nav,
     private readonly cb: UICallbacks,
     onBack: () => void,
+    /** Предпросмотр сенсорных кнопок, пока палец на слайдере размера/прозрачности */
+    private readonly onPreview: (active: boolean) => void = () => undefined,
   ) {
     this.nav = nav;
     this.settings = { ...settings };
@@ -70,25 +105,24 @@ export class SettingsScreen {
     const wrap = el('div', 'glow', undefined, root);
     const panel = el('div', 'panel settings-panel', undefined, wrap);
     el('div', 'screen-title', 'НАСТРОЙКИ', panel);
+    // список может прокручиваться (маленький экран): контейнер .nr-scroll разрешён guard'ом main.ts
+    const listBox = el('div', 'set-list nr-scroll', undefined, panel);
+    this.list = listBox;
+    // две колонки на низких экранах (звук/графика | управление); на высоких — одна
+    const list = el('div', 'set-col', undefined, listBox);
+    const list2 = el('div', 'set-col', undefined, listBox);
 
-    const sliderDefs: { key: VolumeKey; label: string }[] = [
-      { key: 'masterVolume', label: 'ОБЩАЯ ГРОМКОСТЬ' },
-      { key: 'musicVolume', label: 'МУЗЫКА' },
-      { key: 'sfxVolume', label: 'ЭФФЕКТЫ' },
-    ];
-    for (const def of sliderDefs) this.addSlider(panel, def.key, def.label);
+    for (const def of SLIDERS) this.addSlider(list, def);
 
     // качество
-    const qRow = el('div', 'set-row', undefined, panel);
+    const qRow = el('div', 'set-row', undefined, list);
     el('span', 'set-label', 'КАЧЕСТВО', qRow);
     const seg = el('div', 'segments', undefined, qRow);
-    const low = el('div', 'seg', undefined, seg);
-    el('span', undefined, 'НИЗКОЕ', low);
-    const high = el('div', 'seg', undefined, seg);
-    el('span', undefined, 'ВЫСОКОЕ', high);
+    const low = this.addSeg(seg, 'НИЗКОЕ');
+    const high = this.addSeg(seg, 'ВЫСОКОЕ');
     this.qualityBtns = { low, high };
-    low.addEventListener('click', () => this.setQuality('low'));
-    high.addEventListener('click', () => this.setQuality('high'));
+    onTap(low, () => this.setQuality('low'));
+    onTap(high, () => this.setQuality('high'));
     nav.add({
       el: qRow,
       noClick: true,
@@ -100,13 +134,17 @@ export class SettingsScreen {
     });
 
     // FPS
-    const fRow = el('div', 'set-row', undefined, panel);
+    const fRow = el('div', 'set-row', undefined, list);
     el('span', 'set-label', 'ПОКАЗЫВАТЬ FPS', fRow);
     this.fpsBtn = el('div', 'toggle', undefined, fRow);
     el('span', 'toggle-knob', undefined, this.fpsBtn);
     this.fpsVal = el('span', 'slider-val', '', fRow);
     const toggleFps = (): void => this.setFps(!this.settings.showFps);
-    this.fpsBtn.addEventListener('click', toggleFps);
+    // вся строка — цель нажатия (на телефоне сам переключатель мал)
+    onTap(fRow, () => {
+      this.nav.focusAt(this.nav.items.findIndex((it) => it.el === fRow), false);
+      toggleFps();
+    });
     nav.add({
       el: fRow,
       noClick: true,
@@ -117,41 +155,107 @@ export class SettingsScreen {
       activate: toggleFps,
     });
 
+    // тип управления
+    const mRow = el('div', 'set-row wide', undefined, list2);
+    el('span', 'set-label', 'ТИП УПРАВЛЕНИЯ', mRow);
+    const mSeg = el('div', 'segments', undefined, mRow);
+    const modeBtns: Partial<Record<ControlMode, HTMLElement>> = {};
+    for (const m of CONTROL_MODES) {
+      const b = this.addSeg(mSeg, m.full, m.short);
+      modeBtns[m.mode] = b;
+      onTap(b, () => this.setControlMode(m.mode));
+    }
+    this.modeBtns = modeBtns as Record<ControlMode, HTMLElement>;
+    const cycleMode = (dir: -1 | 1): void => {
+      const i = CONTROL_MODES.findIndex((m) => m.mode === this.settings.controlMode);
+      const n = CONTROL_MODES.length;
+      this.setControlMode(CONTROL_MODES[(i + dir + n) % n].mode);
+    };
+    nav.add({
+      el: mRow,
+      noClick: true,
+      adjust: (dir) => {
+        cycleMode(dir);
+        return true;
+      },
+      activate: () => cycleMode(1),
+    });
+
+    for (const def of TOUCH_SLIDERS) this.addSlider(list2, def);
+
     const back = makeButton(el('div', 'set-actions', undefined, panel), 'НАЗАД');
     nav.add({ el: back, activate: onBack });
 
     this.refresh();
   }
 
-  private addSlider(parent: HTMLElement, key: VolumeKey, label: string): void {
+  /** Сброс прокрутки при открытии. */
+  onShown(): void {
+    this.list.scrollTop = 0;
+  }
+
+  private addSeg(parent: HTMLElement, full: string, short?: string): HTMLElement {
+    const seg = el('div', 'seg', undefined, parent);
+    seg.setAttribute('role', 'button');
+    const inner = el('span', undefined, undefined, seg);
+    if (short === undefined) {
+      inner.textContent = full;
+    } else {
+      el('span', 's-full', full, inner);
+      el('span', 's-short', short, inner);
+    }
+    return seg;
+  }
+
+  private addSlider(parent: HTMLElement, def: SliderDef): void {
     const row = el('div', 'set-row', undefined, parent);
-    el('span', 'set-label', label, row);
+    el('span', 'set-label', def.label, row);
     const track = el('div', 'slider', undefined, row);
     const fill = el('div', 'slider-fill', undefined, track);
     el('div', 'slider-thumb', undefined, fill);
     const val = el('span', 'slider-val', '', row);
-    this.sliders.push({ key, fill, val });
+    this.sliders.push({ def, fill, val });
 
     const fromPointer = (e: PointerEvent): void => {
       const r = track.getBoundingClientRect();
-      const v = clamp((e.clientX - r.left) / Math.max(1, r.width), 0, 1);
-      this.setVolume(key, Math.round(v * 100) / 100);
+      const frac = (e.clientX - r.left) / Math.max(1, r.width);
+      this.setSlider(def.key, valueFromFraction(frac, def.min, def.max, def.snap));
     };
+    const endPreview = (): void => {
+      if (previewing) {
+        previewing = false;
+        this.onPreview(false);
+      }
+    };
+    let previewing = false;
+    // дорожка — цель высотой ≥ 44 px с touch-action: none; остальная строка не мешает прокрутке списка
     track.addEventListener('pointerdown', (e) => {
-      track.setPointerCapture(e.pointerId);
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      try {
+        track.setPointerCapture(e.pointerId);
+      } catch {
+        /* pointerId уже неактивен */
+      }
       const idx = this.nav.items.findIndex((it) => it.el === row);
       this.nav.focusAt(idx, false);
       this.cb.onUiSound('move');
+      if (def.preview && !previewing) {
+        previewing = true;
+        this.onPreview(true);
+      }
       fromPointer(e);
     });
     track.addEventListener('pointermove', (e) => {
       if (track.hasPointerCapture(e.pointerId)) fromPointer(e);
     });
+    track.addEventListener('pointerup', endPreview);
+    track.addEventListener('pointercancel', endPreview);
+    track.addEventListener('lostpointercapture', endPreview);
     this.nav.add({
       el: row,
       noClick: true,
       adjust: (dir) => {
-        this.setVolume(key, stepSlider(this.settings[key], dir));
+        this.setSlider(def.key, stepRange(this.settings[def.key], dir, def.min, def.max, def.step));
         this.cb.onUiSound('move');
         return true;
       },
@@ -163,7 +267,7 @@ export class SettingsScreen {
     this.cb.onSettingsChanged({ ...this.settings });
   }
 
-  private setVolume(key: VolumeKey, v: number): void {
+  private setSlider(key: SliderKey, v: number): void {
     if (this.settings[key] === v) return;
     this.settings = { ...this.settings, [key]: v };
     this.emit();
@@ -175,6 +279,12 @@ export class SettingsScreen {
     this.emit();
   }
 
+  private setControlMode(m: ControlMode): void {
+    if (this.settings.controlMode === m) return;
+    this.settings = { ...this.settings, controlMode: m };
+    this.emit();
+  }
+
   private setFps(v: boolean): void {
     this.settings = { ...this.settings, showFps: v };
     this.emit();
@@ -182,12 +292,13 @@ export class SettingsScreen {
 
   private refresh(): void {
     for (const s of this.sliders) {
-      const v = this.settings[s.key];
-      s.fill.style.width = `${v * 100}%`;
+      const v = this.settings[s.def.key];
+      s.fill.style.width = `${fractionOf(v, s.def.min, s.def.max) * 100}%`;
       s.val.textContent = formatPercent(v);
     }
     this.qualityBtns.low.classList.toggle('on', this.settings.quality === 'low');
     this.qualityBtns.high.classList.toggle('on', this.settings.quality === 'high');
+    for (const m of CONTROL_MODES) this.modeBtns[m.mode].classList.toggle('on', this.settings.controlMode === m.mode);
     this.fpsBtn.classList.toggle('on', this.settings.showFps);
     this.fpsVal.textContent = this.settings.showFps ? 'ВКЛ' : 'ВЫКЛ';
   }
@@ -217,11 +328,13 @@ export class PauseScreen {
       { text: 'ПРОДОЛЖИТЬ', run: () => cb.onResume() },
       { text: 'РЕСТАРТ', run: () => cb.onRestart() },
       { text: 'НАСТРОЙКИ', run: onSettings },
-      { text: 'В МЕНЮ', run: () => cb.onQuitToMenu() },
     ];
     for (const it of items) {
       nav.add({ el: makeButton(list, it.text), activate: it.run });
     }
+    // «На весь экран» — только если Fullscreen API есть (на iPhone нет)
+    addFullscreenButton(list, nav);
+    nav.add({ el: makeButton(list, 'В МЕНЮ'), activate: () => cb.onQuitToMenu() });
   }
 }
 
@@ -245,7 +358,8 @@ export class ResultsScreen {
     this.el = root;
     const wrap = el('div', 'glow', undefined, root);
     const panel = el('div', 'panel results-panel', undefined, wrap);
-    this.body = el('div', 'results-body', undefined, panel);
+    // на низких экранах таблица прокручивается, кнопки остаются на виду
+    this.body = el('div', 'results-body nr-scroll', undefined, panel);
     this.btnRow = el('div', 'results-actions', undefined, panel);
     const again = makeButton(this.btnRow, 'ЕЩЁ РАЗ', 'big');
     const menu = makeButton(this.btnRow, 'В МЕНЮ');
@@ -256,6 +370,7 @@ export class ResultsScreen {
   show(r: RaceResult): void {
     const body = this.body;
     body.replaceChildren();
+    body.scrollTop = 0;
     const win = r.playerPosition === 1;
     const head = el('div', 'results-head', undefined, body);
     el('div', `results-title${win ? ' win' : ''}`, resultTitle(r.playerPosition), head);

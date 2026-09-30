@@ -8,7 +8,7 @@ import { PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three/webgpu';
 import { GameLoop } from './loop';
 import type { RenderSystem } from './renderer';
 import { ChaseCamera } from './camera';
-import { vibrate } from './device';
+import { isTouchDevice, vibrate } from './device';
 import { loadCustomBuild, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
 import type {
   BotProfile,
@@ -28,7 +28,7 @@ import { Track, createProjection } from '../world/track';
 import { SUNSET_LOOP } from '../world/trackData';
 import { World } from '../world/world';
 import { PALETTE, cssColor } from '../world/palette';
-import { InputManager } from '../input/input';
+import { InputManager, resolveTouchMode } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, specById } from '../vehicle/specs';
@@ -264,8 +264,15 @@ export class Game {
 
   // ─── Настройки ─────────────────────────────────────────────────────────
 
+  /** Сенсорные кнопки активны (настройка «Тип управления» + тип устройства) */
+  touchMode = false;
+
   applySettings(s: Settings, persist: boolean): void {
     this.settings = { ...s };
+    this.touchMode = resolveTouchMode(s.controlMode, isTouchDevice());
+    this.ui.setTouchMode(this.touchMode);
+    this.ui.setTouchLayout(s.touchSize, s.touchOpacity);
+    this.input.setTouchSource(this.touchMode ? this.ui.touchState : null);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
@@ -797,6 +804,8 @@ export class Game {
       fps: Math.round(this.loop.fps),
       drawCalls: this.render.drawCalls(),
       quality: this.settings.quality,
+      touchMode: this.touchMode,
+      controlMode: this.settings.controlMode,
       speedKmh: p ? Math.round(Math.hypot(p.velocity.x, p.velocity.z) * 3.6) : 0,
       nitro: p ? p.nitro : 0,
       drifting: p ? p.drifting : false,

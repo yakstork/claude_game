@@ -18,17 +18,8 @@ function installMobileGuards(): void {
   window.addEventListener('contextmenu', prevent);
   // iOS Safari: pinch-zoom через gesture*-события
   for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, prevent, { passive: false });
-  // двойной тап (на случай, если touch-action проигнорирован)
-  let lastTouchEnd = 0;
-  document.addEventListener(
-    'touchend',
-    (e) => {
-      const now = performance.now();
-      if (now - lastTouchEnd < 320 && e.cancelable) e.preventDefault();
-      lastTouchEnd = now;
-    },
-    { passive: false },
-  );
+  // зум двойным тапом запрещён через touch-action/viewport; dblclick на всякий случай
+  document.addEventListener('dblclick', prevent, { passive: false });
   // скролл/зум страницы; внутренняя прокрутка разрешена только в контейнерах .nr-scroll
   document.addEventListener(
     'touchmove',

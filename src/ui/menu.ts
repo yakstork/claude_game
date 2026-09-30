@@ -1,14 +1,18 @@
 /** Главное меню: логотип, выбор машины, рекорды, кнопки. Центр экрана прозрачен (3D-превью). */
 import type { CarSpec, Records, UICallbacks } from '../core/types';
 import { cssColor } from '../world/palette';
-import { el, restartAnim } from './dom';
+import { arrowIcon, el, onTap, restartAnim } from './dom';
 import { formatScore, formatTime } from './format';
+import { addFullscreenButton } from './fullscreen';
 import { Nav } from './nav';
 
 export const HINT_KEYS =
   'W/↑ газ · S/↓ тормоз · A D / ← → руль · Space ручник · Shift нитро · R на трассу · Esc пауза';
 export const HINT_PAD =
   'Геймпад: RT газ · LT тормоз · стик руль · A ручник · B нитро · Y на трассу · Start пауза';
+/** Подсказка для сенсорного управления (вместо клавиатуры и геймпада). */
+export const HINT_TOUCH_1 = 'Руль — слева · ГАЗ, ТОРМОЗ, ДРИФТ, НИТРО — справа';
+export const HINT_TOUCH_2 = 'II сверху — пауза';
 
 const STAT_ROWS: { label: string; key: 'speed' | 'handling' | 'drift' }[] = [
   { label: 'СКОРОСТЬ', key: 'speed' },
@@ -39,6 +43,8 @@ export class MainMenu {
   private readonly recRace: HTMLElement;
   private readonly recDrift: HTMLElement;
   private readonly recWins: HTMLElement;
+  private readonly hint1: HTMLElement;
+  private readonly hint2: HTMLElement;
   private records: Records;
 
   constructor(
@@ -57,21 +63,36 @@ export class MainMenu {
 
     buildLogo(root, 'menu-logo');
 
-    // стрелки по бокам от центра
+    // стрелки по бокам от центра (SVG: глифы ◀ ▶ на iOS превращаются в эмодзи)
     const left = el('div', 'car-arrow left', undefined, root);
-    el('span', undefined, '◀', left);
-    left.addEventListener('click', () => this.step(-1));
+    left.setAttribute('role', 'button');
+    left.setAttribute('aria-label', 'Предыдущая машина');
+    arrowIcon('left', el('span', undefined, undefined, left));
+    onTap(left, () => this.step(-1));
     const right = el('div', 'car-arrow right', undefined, root);
-    el('span', undefined, '▶', right);
-    right.addEventListener('click', () => this.step(1));
+    right.setAttribute('role', 'button');
+    right.setAttribute('aria-label', 'Следующая машина');
+    arrowIcon('right', el('span', undefined, undefined, right));
+    onTap(right, () => this.step(1));
 
     // панель машины (слева снизу)
     const carWrap = el('div', 'glow menu-car-wrap', undefined, root);
     const car = el('div', 'panel menu-car', undefined, carWrap);
     this.carPanel = car;
     const head = el('div', 'car-head', undefined, car);
-    el('span', 'hud-label', 'МАШИНА', head);
+    // кнопки листания внутри панели — для низких экранов (боковые стрелки там скрыты)
+    const stepL = el('div', 'car-step', undefined, head);
+    stepL.setAttribute('role', 'button');
+    stepL.setAttribute('aria-label', 'Предыдущая машина');
+    arrowIcon('left', stepL);
+    onTap(stepL, () => this.step(-1));
+    el('span', 'hud-label car-head-label', 'МАШИНА', head);
     this.counterEl = el('span', 'car-counter', '1 / 3', head);
+    const stepR = el('div', 'car-step', undefined, head);
+    stepR.setAttribute('role', 'button');
+    stepR.setAttribute('aria-label', 'Следующая машина');
+    arrowIcon('right', stepR);
+    onTap(stepR, () => this.step(1));
     this.nameEl = el('div', 'car-name', '', car);
     this.tagEl = el('div', 'car-tag', '', car);
     const stats = el('div', 'car-stats', undefined, car);
@@ -112,13 +133,23 @@ export class MainMenu {
     };
     nav.add({ el: race, activate: () => cb.onStartRace(this.index), adjust });
     nav.add({ el: sett, activate: onSettings, adjust });
+    // «На весь экран» — только если Fullscreen API есть (на iPhone нет)
+    addFullscreenButton(btns, nav);
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);
-    el('div', undefined, HINT_KEYS, hint);
-    el('div', undefined, HINT_PAD, hint);
+    this.hint1 = el('div', undefined, HINT_KEYS, hint);
+    this.hint2 = el('div', undefined, HINT_PAD, hint);
 
     this.setCar(0, false);
+  }
+
+  /** Подсказка управления: кнопки на экране (сенсорный режим) или клавиатура/геймпад. */
+  setTouchHint(touch: boolean): void {
+    const a = touch ? HINT_TOUCH_1 : HINT_KEYS;
+    const b = touch ? HINT_TOUCH_2 : HINT_PAD;
+    if (this.hint1.textContent !== a) this.hint1.textContent = a;
+    if (this.hint2.textContent !== b) this.hint2.textContent = b;
   }
 
   /** Листание: wrap, звук 'move', onPreviewCar. */

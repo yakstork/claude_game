@@ -1,5 +1,6 @@
 /** Список фокусируемых элементов экрана: клавиатура/геймпад/мышь работают через него. */
 import type { UiSound } from '../core/types';
+import { onTap } from './dom';
 
 export interface NavItem {
   el: HTMLElement;
@@ -9,6 +10,8 @@ export interface NavItem {
   activate?(): void;
   /** Не активировать по клику мыши (слайдер сам обрабатывает указатель). */
   noClick?: boolean;
+  /** Активировать строго по click (действия, требующие жеста браузера: полноэкранный режим). */
+  viaClick?: boolean;
 }
 
 export class Nav {
@@ -20,12 +23,20 @@ export class Nav {
   add(item: NavItem): NavItem {
     const i = this.items.length;
     this.items.push(item);
-    item.el.addEventListener('mouseenter', () => this.focusAt(i, true));
-    item.el.addEventListener('click', () => {
-      if (item.noClick) return;
-      this.focusAt(i, false);
-      this.activate();
+    // наведение — только мышью (на тач-экране эмулированный hover давал бы лишний звук)
+    item.el.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'mouse') this.focusAt(i, true);
     });
+    if (!item.noClick) {
+      onTap(
+        item.el,
+        () => {
+          this.focusAt(i, false);
+          this.activate();
+        },
+        item.viaClick === true,
+      );
+    }
     return item;
   }
 
@@ -46,7 +57,18 @@ export class Nav {
     }
     const moved = i !== this.index;
     this.index = i;
+    this.scrollToItem(this.items[i].el);
     if (sound && moved && changed) this.play('move');
+  }
+
+  /** Фокус клавиатурой/геймпадом в прокручиваемом списке: подвинуть прокрутку контейнера (.nr-scroll). */
+  private scrollToItem(e: HTMLElement): void {
+    const box = e.closest<HTMLElement>('.nr-scroll');
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const b = box.getBoundingClientRect();
+    const r = e.getBoundingClientRect();
+    if (r.top < b.top) box.scrollTop += r.top - b.top - 6;
+    else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 6;
   }
 
   move(dir: -1 | 1): void {

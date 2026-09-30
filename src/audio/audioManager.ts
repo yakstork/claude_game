@@ -27,7 +27,6 @@ const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.min(1, Math.ma
 export class AudioManager {
   private ctx: AudioContext | null = null;
   private unavailable = false;
-  private unlocking: Promise<void> | null = null;
 
   private master: GainNode | null = null;
   private musicBus: GainNode | null = null;
@@ -45,19 +44,26 @@ export class AudioManager {
   private paused = false;
 
   private visibilityBound = false;
+  private gestureBound = false;
 
-  /** Создать/возобновить AudioContext. Вызывать на первом жесте пользователя. */
+  /**
+   * Создать/возобновить AudioContext. Вызывать в обработчике жеста (pointerdown/keydown, а для iOS —
+   * touchend/click). Всё, что требует жеста (создание контекста, resume(), тихий буфер), выполняется
+   * синхронно до первого await — иначе iOS/Safari не считает вызов частью жеста.
+   */
   unlock(): Promise<void> {
     if (this.unavailable) return Promise.resolve();
-    if (this.ctx) {
-      return this.resumeContext();
+    let resumed: Promise<void>;
+    try {
+      if (!this.ctx && !this.createContext()) return Promise.resolve();
+      resumed = this.kick();
+    } catch {
+      // Web Audio недоступен или сломан — тихий no-op
+      this.teardownAfterFailure();
+      return Promise.resolve();
     }
-    if (!this.unlocking) {
-      this.unlocking = this.doUnlock().finally(() => {
-        this.unlocking = null;
-      });
-    }
-    return this.unlocking;
+    // resume() без жеста может не завершиться — не ждём дольше секунды
+    return Promise.race([resumed, new Promise<void>((r) => setTimeout(r, 1000))]);
   }
 
   setVolumes(master: number, music: number, sfx: number): void {
@@ -95,24 +101,74 @@ export class AudioManager {
 
   // ---------------------------------------------------------------------------
 
-  private async doUnlock(): Promise<void> {
-    try {
-      const w = globalThis as unknown as WebkitWindow & { AudioContext?: typeof AudioContext };
-      const Ctor = w.AudioContext ?? w.webkitAudioContext;
-      if (!Ctor) {
-        this.unavailable = true;
-        return;
+  /** Создать контекст и граф (синхронно). false — Web Audio нет. */
+  private createContext(): boolean {
+    const w = globalThis as unknown as WebkitWindow & { AudioContext?: typeof AudioContext };
+    const Ctor = w.AudioContext ?? w.webkitAudioContext;
+    if (!Ctor) {
+      this.unavailable = true;
+      return false;
+    }
+    const ctx = new Ctor({ latencyHint: 'interactive' });
+    this.ctx = ctx;
+    this.buildGraph(ctx);
+    this.bindVisibility();
+    this.bindGestureResume();
+    // запомненный трек стартует, как только контекст пошёл (и при любом последующем возобновлении)
+    ctx.onstatechange = () => {
+      if (ctx.state === 'running') this.safe(() => this.music?.setTrack(this.wantedTrack));
+    };
+    return true;
+  }
+
+  /**
+   * Возобновить контекст прямо в обработчике жеста: resume() синхронно + классический
+   * iOS-unlock — проиграть тихий буфер в 1 сэмпл.
+   */
+  private kick(): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx) return Promise.resolve();
+    let p: Promise<void> = Promise.resolve();
+    if (ctx.state !== 'running') {
+      try {
+        p = ctx.resume().catch(() => undefined);
+      } catch {
+        /* контекст закрыт или запрещён — остаёмся тихими */
       }
-      const ctx = new Ctor({ latencyHint: 'interactive' });
-      this.ctx = ctx;
-      this.buildGraph(ctx);
-      this.bindVisibility();
-      await this.resumeContext();
-      // запомненный трек — запускаем после unlock
-      this.music?.setTrack(this.wantedTrack);
+      this.playSilentBuffer(ctx);
+    }
+    return p.then(() => {
+      this.safe(() => this.music?.setTrack(this.wantedTrack));
+    });
+  }
+
+  private playSilentBuffer(ctx: AudioContext): void {
+    try {
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);
+      src.connect(ctx.destination);
+      src.start(0);
     } catch {
-      // Web Audio недоступен или сломан — тихий no-op
-      this.teardownAfterFailure();
+      /* не критично */
+    }
+  }
+
+  /** Если контекст снова приостановлен (iOS: звонок, блокировка экрана) — следующий жест его возобновит. */
+  private bindGestureResume(): void {
+    if (this.gestureBound || typeof window === 'undefined') return;
+    this.gestureBound = true;
+    const handler = (): void => {
+      const ctx = this.ctx;
+      if (ctx && ctx.state !== 'running' && ctx.state !== 'closed') {
+        try {
+          void this.kick();
+        } catch {
+          /* игнорируем */
+        }
+      }
+    };
+    for (const ev of ['touchend', 'pointerup', 'click', 'keydown']) {
+      window.addEventListener(ev, handler, { capture: true, passive: true });
     }
   }
 
@@ -142,19 +198,6 @@ export class AudioManager {
     this.sfx = new SfxPlayer(ctx, sfxBus);
     this.music = new MusicSequencer(ctx, musicBus);
     this.applyVolumes(true);
-  }
-
-  private async resumeContext(): Promise<void> {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    try {
-      if (ctx.state !== 'running') {
-        // resume() без жеста может не завершиться — не ждём дольше секунды
-        await Promise.race([ctx.resume(), new Promise<void>((r) => setTimeout(r, 1000))]);
-      }
-    } catch {
-      /* контекст закрыт или запрещён — остаёмся тихими */
-    }
   }
 
   private applyVolumes(immediate: boolean): void {
