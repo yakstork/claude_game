@@ -90,6 +90,20 @@ export class Track {
       this.banks[i] = MathUtils.degToRad(MathUtils.lerp(b0, b1, f));
     }
 
+    // Сплайн может «проседать» ниже нуля у перепадов высот — дорога не должна
+    // уходить под землю: зажимаем высоту и слегка сглаживаем профиль.
+    const ys = new Float32Array(count);
+    for (let i = 0; i < count; i++) ys[i] = Math.max(0, this.positions[i * 3 + 1]);
+    for (let pass = 0; pass < 3; pass++) {
+      const src = ys.slice();
+      for (let i = 0; i < count; i++) {
+        let sum = 0;
+        for (let k = -3; k <= 3; k++) sum += src[(i + k + count) % count];
+        ys[i] = sum / 7;
+      }
+    }
+    for (let i = 0; i < count; i++) this.positions[i * 3 + 1] = ys[i];
+
     // Касательные (центральные разности), right/up с учётом виража
     const t = new Vector3();
     const r = new Vector3();
