@@ -137,6 +137,21 @@ export async function createDebugPanel(opts: DebugPanelOptions): Promise<DebugPa
   const gui = new GUI({ title: 'NEON RUSH · ТЮНИНГ', width: 300 });
   gui.domElement.classList.add('nr-debug');
   const root = gui.domElement;
+  // Игровые клавиши (буквы, пробел, Shift) в числовом поле не печатаем: снимаем фокус,
+  // а событие всплывает дальше — до игрового ввода на window.
+  root.addEventListener(
+    'keydown',
+    (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement)) return;
+      const isGameKey = /^Key[A-Z]$/.test(e.code) || e.code === 'Space' || e.code.startsWith('Shift');
+      if (isGameKey) {
+        e.preventDefault();
+        t.blur();
+      }
+    },
+    true,
+  );
 
   // ── выбор машины
   const carIds = Object.keys(opts.configs);

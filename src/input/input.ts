@@ -102,10 +102,14 @@ export class InputManager {
     return this.actions.splice(0, this.actions.length);
   }
 
-  /** Управление машиной на текущий момент (руль с клавиатуры сглаживается) */
-  controls(): VehicleControls {
+  /**
+   * Управление машиной на текущий момент (руль с клавиатуры сглаживается).
+   * simDt — шаг симуляции: при вызове из фиксированного шага сглаживание идёт по
+   * времени симуляции (не по реальному), без ступенек при нескольких шагах за кадр.
+   */
+  controls(simDt?: number): VehicleControls {
     const now = performance.now();
-    const dt = Math.min(0.1, (now - this.lastTime) / 1000);
+    const dt = simDt ?? Math.min(0.1, (now - this.lastTime) / 1000);
     this.lastTime = now;
 
     const left = this.key('KeyA', 'ArrowLeft');

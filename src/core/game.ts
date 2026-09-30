@@ -475,7 +475,7 @@ export class Game {
           if (!this.playerAutopilot) this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5);
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
         } else {
-          controls = this.input.controls();
+          controls = this.input.controls(dt);
         }
       } else if (c.bot) {
         controls = this.state === 'countdown' ? NO_CONTROLS : c.bot.update(dt, c.physics.state, c.spec, this.states);
