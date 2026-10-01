@@ -131,6 +131,9 @@ export class Game {
   private readonly states: VehicleState[] = [];
   private readonly physicsList: VehiclePhysics[] = [];
   private readonly hud: HudData;
+  /** Отслеживание буста игрока (для HUD и звука) */
+  private boostPrev = 0;
+  private boostTotal = 0;
   private readonly dots: MinimapDot[] = [];
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
@@ -839,6 +842,15 @@ export class Game {
     h.raceTime = race.raceTime;
     h.driftTotal = Math.round(this.drift.total);
     h.wrongWay = st.wrongWay && this.state === 'racing';
+    // буст: новый — когда boostTime вырос; доля = остаток / начальная длительность
+    if (ps.boostTime > this.boostPrev + 1e-4) {
+      this.boostTotal = ps.boostTime;
+      this.audio.playBoost(ps.boostPower);
+    }
+    this.boostPrev = ps.boostTime;
+    h.boost = ps.boostTime > 0 && this.boostTotal > 0 ? Math.min(1, ps.boostTime / this.boostTotal) : 0;
+    h.boostPower = ps.boostTime > 0 ? ps.boostPower : 0;
+    this.audio.setBoostLevel(this.paused ? 0 : h.boostPower * h.boost);
     const dots = this.dots;
     for (let i = 0; i < this.cars.length; i++) {
       const c = this.cars[i];
