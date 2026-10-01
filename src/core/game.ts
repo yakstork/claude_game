@@ -56,6 +56,7 @@ import {
 import { CUSTOM_CAR_ID, recordKey } from './types';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
+import { StartBoostJudge, START_BOOST } from './startBoost';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
 
@@ -120,6 +121,8 @@ export class Game {
   selectedCar = 0;
 
   private countdownT = 0;
+  /** Стартовый буст (дополнение): оценка нажатия газа на «GO» */
+  private readonly startJudge = new StartBoostJudge();
   private lastCount = 0;
   private finishT = 0;
   private resultsShown = false;
@@ -470,6 +473,7 @@ export class Game {
     this.paused = false;
     this.uiMode = null;
     this.countdownT = COUNTDOWN;
+    this.startJudge.reset();
     this.lastCount = 0;
     this.finishT = 0;
     this.resultsShown = false;
@@ -566,6 +570,7 @@ export class Game {
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
         } else {
           controls = this.input.controls(dt);
+          this.judgeStart(c, controls);
         }
       } else if (c.bot) {
         controls = this.state === 'countdown' ? NO_CONTROLS : c.bot.update(dt, c.physics.state, c.spec, this.states);
@@ -815,11 +820,26 @@ export class Game {
       }
       return;
     }
-    const n = Math.ceil(this.countdownT - 0.6);
+    // ровный ритм 3-2-1-GO по секунде (первые 0.6 с — пауза на облёт камеры)
+    const n = Math.ceil(this.countdownT);
     if (n >= 1 && n <= 3 && n !== this.lastCount) {
       this.lastCount = n;
       this.ui.setCountdown(n as 1 | 2 | 3);
       this.audio.play('countdown');
+    }
+  }
+
+  /** Стартовый буст: газ точно на «GO» — короткий рывок */
+  private judgeStart(c: RaceCar, controls: VehicleControls): void {
+    if (this.state !== 'countdown' && this.state !== 'racing') return;
+    const t = this.state === 'countdown' ? -this.countdownT : this.race?.raceTime ?? 0;
+    const grade = this.startJudge.update(controls.throttle > 0.5, t);
+    if (grade === 'perfect' || grade === 'good') {
+      const [sec, power] = START_BOOST[grade];
+      c.physics.applyBoost(sec, power);
+      this.ui.popup(grade === 'perfect' ? 'ИДЕАЛЬНЫЙ СТАРТ' : 'ХОРОШИЙ СТАРТ', undefined, grade === 'perfect' ? 'yellow' : 'cyan');
+    } else if (grade === 'early') {
+      this.ui.popup('РАНО', 'жми газ на «GO»', 'orange');
     }
   }
 
