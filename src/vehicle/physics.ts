@@ -21,6 +21,12 @@
  *    контрруль) — фаза EXIT: угол экспоненциально сводится к нулю, затем GRIP берёт
  *    управление без рывка и «маятника».
  *
+ * Буст за дрифт: во время заноса копится «качество» ∫ (угол/макс.угол)·(скорость/опорная)·dt;
+ * при чистом завершении заноса (по воле игрока, не от удара) качество с насыщением
+ * переводится во временное ускорение state.boostTime/boostPower (доп. тяга и +N% к максималке
+ * с плавным затуханием). Сильный удар о стену (strength > 0.15) в заносе сжигает качество.
+ * Тот же механизм — публичный applyBoost(seconds, power) (стартовый буст и т.п.).
+ *
  * Вертикаль: 4 пружины-демпфера, у каждого колеса свой луч вниз (высота дороги под
  * КОНКРЕТНЫМ колесом через Track.project), тангаж и крен кузова — из разницы высот
  * контактов. Жёсткое ограничение: колесо и днище никогда не ниже дороги.
@@ -94,6 +100,25 @@ const SELF_ALIGN_FULL_STEER = 0.75;
 const MAX_DYN_ROLL = 0.115;
 /** Первые DRIFT_SKID_HOLD с заноса задние шины визжат на полную */
 const DRIFT_SKID_HOLD = 0.3;
+
+/** Опорная скорость для оценки качества дрифта, м/с (на ней и при полном угле качество копится 1 ед./с) */
+const BOOST_REF_SPEED = 40;
+/** Предел множителя угла в качестве (заметно за максимальный угол не награждаем) */
+const BOOST_ANGLE_CAP = 1.15;
+/** Удар о стену с такой силой в заносе сжигает накопленное качество */
+const BOOST_WALL_BURN = 0.15;
+/** Нарастание буста в начале, с */
+const BOOST_ATTACK = 0.12;
+/** Максимальная длина плавного затухания в конце, с (для коротких бустов — до 45% их длительности) */
+const BOOST_FADE = 0.6;
+/** Показатель насыщения качества: sat = 1 − exp(−(q/ref)^γ); γ > 1 — короткие заносы дают заметно меньше длинных */
+const BOOST_SAT_EXP = 1.25;
+/** После буста скорость выше текущей максималки гасится ∝ превышению, 1/с (иначе прибавка «висела» бы десятки секунд) */
+const BOOST_BLEED = 0.8;
+/** Окно после конца буста, в течение которого действует это гашение, с */
+const BOOST_TAIL = 4;
+/** Доля мощности буста при минимальном качестве (остальное добавляет насыщающийся рост) */
+const BOOST_POWER_FLOOR = 0.3;
 
 // ─── Временные объекты уровня модуля (без аллокаций в step) ────────────────
 
@@ -212,6 +237,14 @@ export class VehiclePhysics {
   private driftCooldown = 0;
   private pathRate = 0;
   private angleRate = 0;
+  /** Накопленное качество текущего заноса (сгорает при ударе о стену) */
+  private driftQ = 0;
+  /** Буст: полная длительность, номинальная мощность и текущая эффективная доля (0..1 с учётом огибающей) */
+  private boostTotal = 0;
+  private boostNom = 0;
+  private boostEff = 0;
+  /** Сколько ещё секунд после буста гасить скорость выше максималки */
+  private boostTail = 0;
   /** «Устойчивость» заноса 1..0: при удержании только рулём тает со скоростью driftSelfAlign */
   private stability = 1;
   // «кивок» кузова на входе в занос (только визуал): время с начала и сторона заноса
@@ -243,6 +276,54 @@ export class VehiclePhysics {
     return this.phase !== PHASE_GRIP;
   }
 
+  /** Полная длительность текущего буста, с (для HUD: доля = state.boostTime / boostDuration); 0 — буста нет */
+  get boostDuration(): number {
+    return this.state.boostTime > 0 ? this.boostTotal : 0;
+  }
+
+  /**
+   * Временное ускорение: seconds — длительность, с; power — сила 0..1. Эффект: доп. тяга и +% к максималке
+   * (boostThrust / boostSpeedPct машины × power) с плавным затуханием в конце. Не суммируется: новый буст
+   * замещает текущий, только если он «сильнее» (power × seconds больше оставшегося у текущего).
+   */
+  applyBoost(seconds: number, power: number): void {
+    if (!(seconds > 0) || !(power > 0)) return;
+    const p = clamp01(power);
+    const st = this.state;
+    if (st.boostTime > 0 && p * seconds <= this.boostNom * st.boostTime) return;
+    this.boostTotal = seconds;
+    this.boostNom = p;
+    st.boostTime = seconds;
+    this.updateBoostEnvelope();
+  }
+
+  /** Эффективная сила буста по огибающей: быстрое нарастание, плато, плавное затухание */
+  private updateBoostEnvelope(): void {
+    const st = this.state;
+    if (st.boostTime <= 0) {
+      this.boostTotal = this.boostNom = this.boostEff = 0;
+      st.boostTime = 0;
+      st.boostPower = 0;
+      return;
+    }
+    const elapsed = this.boostTotal - st.boostTime;
+    const fade = Math.min(BOOST_FADE, this.boostTotal * 0.45);
+    const attack = MathUtils.smoothstep(elapsed, 0, Math.min(BOOST_ATTACK, this.boostTotal * 0.3));
+    const release = MathUtils.smoothstep(st.boostTime, 0, fade);
+    this.boostEff = this.boostNom * attack * release;
+    // для HUD/звука: номинальная сила с затуханием, без нарастания (в кадре старта уже полная)
+    st.boostPower = this.boostNom * release;
+  }
+
+  /** Качество заноса → буст (вызывается при чистом выходе из заноса) */
+  private grantDriftBoost(): void {
+    const cfg = this.cfg;
+    const q = this.driftQ;
+    if (!(q >= cfg.boostMinQuality) || cfg.boostDuration <= 0 || cfg.boostPower <= 0) return;
+    const sat = 1 - Math.exp(-Math.pow(q / Math.max(cfg.boostQualityRef, 0.05), BOOST_SAT_EXP));
+    this.applyBoost(cfg.boostDuration * sat, clamp01(cfg.boostPower * (BOOST_POWER_FLOOR + (1 - BOOST_POWER_FLOOR) * sat)));
+  }
+
   /** Центр колеса i (0..3 = FL, FR, RL, RR) в мировых координатах */
   wheelCenter(i: number, out: Vector3): Vector3 {
     const c = this.state.wheels[i].contact;
@@ -267,6 +348,11 @@ export class VehiclePhysics {
     st.driftIntensity = 0;
     st.nitro = 0.25;
     st.nitroActive = false;
+    st.boostTime = 0;
+    st.boostPower = 0;
+    this.boostTotal = this.boostNom = this.boostEff = 0;
+    this.boostTail = 0;
+    this.driftQ = 0;
     st.trackS = s;
     this.needsRespawn = false;
     this.blockedTime = 0;
@@ -365,6 +451,15 @@ export class VehiclePhysics {
       st.airTime += dt;
     }
 
+    // ── буст за дрифт / старт: таймер и огибающая (на старте с места не тратится) ──
+    if (st.boostTime > 0) {
+      if (!this.frozen) st.boostTime -= dt;
+      this.updateBoostEnvelope();
+      this.boostTail = BOOST_TAIL;
+    } else if (this.boostTail > 0) {
+      this.boostTail -= dt;
+    }
+
     // ── нитро ──────────────────────────────────────────────────────────────
     const h0 = st.heading;
     const sinH0 = Math.sin(h0);
@@ -397,7 +492,8 @@ export class VehiclePhysics {
     } else if (grounded) {
       const gf = Math.min(1, contacts / 3);
       this.updatePhase(dt, controls, throttle, brake, steerIn, u, w, gf);
-      const vmax = cfg.maxSpeed * (nitroOn ? cfg.nitroSpeedMul : 1);
+      // максималка: нитро (×) и буст (+доля) складываются в множитель
+      const vmax = cfg.maxSpeed * ((nitroOn ? cfg.nitroSpeedMul : 1) + cfg.boostSpeedPct * this.boostEff);
       // склоны: гравитация вдоль поверхности
       const nx = pr.normal.x;
       const nz = pr.normal.z;
@@ -588,6 +684,7 @@ export class VehiclePhysics {
   // ── Режимы GRIP / DRIFT / EXIT ────────────────────────────────────────────
 
   private endDrift(cooldown: number): void {
+    this.driftQ = 0;
     this.phase = PHASE_GRIP;
     this.driftDir = 0;
     this.driftTime = 0;
@@ -640,6 +737,9 @@ export class VehiclePhysics {
     const steerInto = steerIn * this.driftDir;
     if (this.phase === PHASE_DRIFT) {
       this.driftTime += dt;
+      // качество заноса: угол (от макс. угла машины) × скорость (от опорной) × время
+      this.driftQ +=
+        Math.min(Math.abs(beta) / cfg.driftMaxAngle, BOOST_ANGLE_CAP) * Math.min(V / BOOST_REF_SPEED, 1.4) * dt;
       // занос держится, пока игрок «вложен»: Space, либо руль в занос + газ/тормоз
       // без Space устойчивость тает тем быстрее, чем слабее руль в занос (driftSelfAlign)
       let held = c.handbrake;
@@ -663,7 +763,11 @@ export class VehiclePhysics {
         this.phase = PHASE_DRIFT;
         if (c.handbrake) this.stability = 1;
       }
-      else if (bd < EXIT_DONE_ANGLE || V < 3) this.endDrift(0.15);
+      else if (bd < EXIT_DONE_ANGLE || V < 3) {
+        // чистый выход (машина выровнялась) — награда за занос
+        if (V >= 3) this.grantDriftBoost();
+        this.endDrift(0.15);
+      }
     }
     if (this.phase !== PHASE_GRIP && (u <= 1 || bd > MAX_SLIDE_ANGLE)) this.endDrift(0.4);
   }
@@ -689,11 +793,15 @@ export class VehiclePhysics {
   ): number {
     const cfg = this.cfg;
     const A = cfg.acceleration * this.powerScale;
+    // доп. тяга буста — только при газе
+    const boostAx = cfg.boostThrust * this.boostEff * clamp01(throttle * 3);
     let ax = 0;
     if (u > 0.5) {
       const k = Math.max(0, 1 - (u / vmax) * (u / vmax));
       ax = throttle * A * k;
       if (nitroOn) ax += cfg.nitroBoost * k;
+      ax += boostAx * k;
+      if (this.boostTail > 0 && u > vmax) ax -= (u - vmax) * BOOST_BLEED;
       ax -= brake * cfg.brakeDecel;
       ax -= 0.4 + (throttle < 0.05 ? 0.6 + 0.0004 * u * u : 0);
     } else if (u < -0.5) {
@@ -701,7 +809,7 @@ export class VehiclePhysics {
       if (throttle > 0.05) ax += throttle * cfg.brakeDecel * 0.7;
       ax += 0.5;
     } else if (throttle >= brake) {
-      ax = throttle * A;
+      ax = throttle * A + boostAx;
       if (throttle < 0.05) ax = -clamp(u / dt, -0.5, 0.5);
     } else {
       ax = -brake * A * 0.6;
@@ -962,6 +1070,7 @@ export class VehiclePhysics {
       // прижаты к стене без встречной скорости: скольжение, искры
       strength = clamp(vh / 120, 0.03, 0.2);
     }
+    if (strength > BOOST_WALL_BURN && this.phase !== PHASE_GRIP) this.driftQ = 0;
     if (strength > 0 && (this.wallCooldown <= 0 || strength > 0.25)) {
       _v.set(st.position.x - nx * ext, st.position.y, st.position.z - nz * ext);
       this.pushEvent('wall', strength, _v);

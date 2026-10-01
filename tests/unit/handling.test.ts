@@ -86,7 +86,7 @@ describe('HandlingConfig: единый конфиг и метаданные дл
   });
 
   it('min ≤ значение по умолчанию ≤ max, step > 0, подписи и группы заданы', () => {
-    const groups = new Set(['Двигатель', 'Руль', 'Сцепление', 'Дрифт', 'Стены', 'Нитро', 'Подвеска']);
+    const groups = new Set(['Двигатель', 'Руль', 'Сцепление', 'Дрифт', 'Буст', 'Стены', 'Нитро', 'Подвеска']);
     for (const p of HANDLING_PARAMS) {
       expect(p.min, p.key).toBeLessThan(p.max);
       expect(p.step, p.key).toBeGreaterThan(0);

@@ -105,6 +105,23 @@ export type HandlingConfig = {
   /** «Кивок» кузова на входе в занос: крен наружу, рад (клевок носом — ~40% от него; только визуал) */
   driftNod: number;
 
+  // ── Буст за дрифт ───────────────────────────────────────────────────────
+  // При чистом выходе из заноса накопленное «качество» q = ∫ (угол/макс.угол)·(скорость/40 м/с)·dt
+  // даёт sat = 1 − exp(−(q / boostQualityRef)^1.25); буст: длительность boostDuration·sat, мощность
+  // boostPower·(0.3 + 0.7·sat). Эффект мощности p: +boostThrust·p м/с² тяги и +boostSpeedPct·p к максималке.
+  /** Длительность буста при насыщенном качестве (очень длинный хороший занос), с */
+  boostDuration: number;
+  /** Мощность буста при насыщенном качестве, 0..1 */
+  boostPower: number;
+  /** Прибавка к максимальной скорости при мощности 1, доля (0.12 = +12%) */
+  boostSpeedPct: number;
+  /** Дополнительная тяга при мощности 1, м/с² */
+  boostThrust: number;
+  /** Минимальное качество заноса для буста (меньше — случайный занос, награды нет), «секунды полного заноса» */
+  boostMinQuality: number;
+  /** Масштаб насыщения качества: при q = ref буст ≈ 63% от максимума («секунды полного заноса») */
+  boostQualityRef: number;
+
   // ── Стены ───────────────────────────────────────────────────────────────
   /** Трение скольжения вдоль стены (доля погашенной нормальной скорости) */
   wallFriction: number;
@@ -188,15 +205,21 @@ function build(): Record<string, HandlingConfig> {
       driftSelfAlignFull: 0.27,
       driftNod: 0.095,
       driftChargeRate: 0.32,
+      boostDuration: 3.0,
+      boostPower: 0.8,
+      boostSpeedPct: 0.15,
+      boostThrust: 20,
+      boostMinQuality: 0.15,
+      boostQualityRef: 1.6,
       wallFriction: 0.1,
       wallBounce: 0.25,
     },
     // Grizzly V8: тяжёлый руль, самый длинный и лёгкий занос, быстрый заряд нитро
     grizzly: {
       ...COMMON,
-      maxSpeed: 68,
-      acceleration: 8.6,
-      brakeDecel: 24,
+      maxSpeed: 69,
+      acceleration: 9.2,
+      brakeDecel: 26,
       handbrakeDecel: 7,
       mass: 1550,
       nitroBoost: 13,
@@ -204,7 +227,7 @@ function build(): Record<string, HandlingConfig> {
       steerAngleHigh: 0.1,
       steerFalloffSpeed: 30,
       steerRate: 2.4,
-      grip: 1.05,
+      grip: 1.08,
       yawResponse: 8,
       slipDamping: 7,
       understeer: 0.65,
@@ -233,15 +256,21 @@ function build(): Record<string, HandlingConfig> {
       driftSelfAlignFull: 0.04,
       driftNod: 0.1,
       driftChargeRate: 0.42,
+      boostDuration: 3.4,
+      boostPower: 1,
+      boostSpeedPct: 0.15,
+      boostThrust: 20,
+      boostMinQuality: 0.12,
+      boostQualityRef: 1.3,
       wallFriction: 0.1,
       wallBounce: 0.2,
     },
     // Photon X: самый быстрый и цепкий; занос требует скорости и короче
     photon: {
       ...COMMON,
-      maxSpeed: 76,
-      acceleration: 9.9,
-      brakeDecel: 30,
+      maxSpeed: 75,
+      acceleration: 9.7,
+      brakeDecel: 29,
       handbrakeDecel: 9,
       mass: 1250,
       nitroBoost: 14,
@@ -249,7 +278,7 @@ function build(): Record<string, HandlingConfig> {
       steerAngleHigh: 0.09,
       steerFalloffSpeed: 30,
       steerRate: 3.0,
-      grip: 1.35,
+      grip: 1.31,
       yawResponse: 10,
       slipDamping: 10,
       understeer: 0.4,
@@ -278,7 +307,14 @@ function build(): Record<string, HandlingConfig> {
       driftSelfAlignFull: 0.67,
       driftNod: 0.085,
       driftChargeRate: 0.24,
+      boostDuration: 1.6,
+      boostPower: 0.5,
+      boostSpeedPct: 0.15,
+      boostThrust: 20,
+      boostMinQuality: 0.22,
+      boostQualityRef: 1.8,
       wallFriction: 0.09,
+      wallHeadOnLoss: 0.27,
       wallBounce: 0.25,
     },
   };
@@ -403,6 +439,13 @@ export const HANDLING_PARAMS: TuningParam[] = [
   p('driftSelfAlignFull', 'Самовыравнивание на полном руле, 1/с', 'Дрифт', 0, 3, 0.01),
   p('driftNod', 'Кивок кузова на входе, рад', 'Дрифт', 0, 0.15, 0.005),
 
+  p('boostDuration', 'Длительность буста (макс.), с', 'Буст', 0, 6, 0.1),
+  p('boostPower', 'Мощность буста (макс.)', 'Буст', 0, 1, 0.01),
+  p('boostSpeedPct', 'Прибавка к макс. скорости, доля', 'Буст', 0, 0.4, 0.01),
+  p('boostThrust', 'Доп. тяга буста, м/с²', 'Буст', 0, 30, 0.5),
+  p('boostMinQuality', 'Порог заноса для буста', 'Буст', 0, 1.5, 0.01),
+  p('boostQualityRef', 'Насыщение качества заноса, с', 'Буст', 0.3, 5, 0.05),
+
   p('wallFriction', 'Трение о стену', 'Стены', 0, 0.6, 0.01),
   p('wallBounce', 'Отскок от стены', 'Стены', 0, 0.8, 0.01),
   p('wallHeadOnLoss', 'Потеря при лобовом ударе', 'Стены', 0, 0.6, 0.01),
@@ -467,14 +510,14 @@ export function customHandling(b: CustomBuild): HandlingConfig {
   const dr = n.drift;
   const c: HandlingConfig = { ...ANCHORS.razor };
 
-  // Скорость
-  c.maxSpeed = lerp(58, 76, sp);
-  c.acceleration = lerp(8.2, 10, sp);
+  // Скорость (цена управляемости: чем выше сцепление, тем ленивее разгон с места)
+  c.maxSpeed = lerp(62, 75, sp);
+  c.acceleration = lerp(9.0, 10.2, sp) - 0.5 * hd;
   c.nitroBoost = lerp(11, 14.5, sp);
   c.mass = lerp(1150, 1300, sp);
 
   // Управляемость (цена скорости: чуть ленивее руль; цена дрифта: чуть меньше сцепление в GRIP)
-  c.grip = tri(1.05, 1.25, 1.35, hd) - 0.1 * dr;
+  c.grip = tri(1.08, 1.25, 1.31, hd) - 0.1 * dr;
   c.steerRate = lerp(2.4, 3.6, hd) - 0.3 * sp;
   c.yawResponse = lerp(8, 12, hd) - 1 * sp;
   c.understeer = tri(0.65, 0.5, 0.4, hd);
@@ -505,6 +548,18 @@ export function customHandling(b: CustomBuild): HandlingConfig {
   c.driftSelfAlign = tri(2.0, 1.2, 0.08, dr);
   c.driftSelfAlignFull = tri(0.67, 0.27, 0.04, dr);
   c.driftNod = tri(0.085, 0.095, 0.1, dr);
+  // Цена сцепления: лобовой удар о стену сильнее гасит скорость у цепких машин (Photon 0.27, как при «Управляемость» = 1)
+  c.wallHeadOnLoss = 0.18 + 0.09 * hd;
+
+  // Буст за дрифт: по оси «Дрифт» Photon → Razor → Grizzly; цена сцепления: чем выше «Управляемость»,
+  // тем меньше бонус за занос (на 0.5 множитель 1 — якоря совпадают с заводскими машинами)
+  const bk = 1.125 - 0.25 * hd;
+  c.boostDuration = tri(1.6, 3.0, 3.4, dr) * bk;
+  c.boostPower = Math.min(1, tri(0.5, 0.8, 1, dr) * bk);
+  c.boostSpeedPct = 0.15;
+  c.boostThrust = 20;
+  c.boostMinQuality = tri(0.22, 0.15, 0.12, dr);
+  c.boostQualityRef = tri(1.8, 1.6, 1.3, dr);
   return c;
 }
 
