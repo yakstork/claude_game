@@ -14,6 +14,7 @@ import {
 import { addFullscreenButton } from './fullscreen';
 import { buildLogo } from './menu';
 import { Nav } from './nav';
+import { trackLabel } from './trackLogic';
 
 /** Кнопка со скосом: внутренний span выпрямляет текст. */
 export function makeButton(parent: HTMLElement, text: string, cls = ''): HTMLElement {
@@ -28,12 +29,13 @@ export function makeButton(parent: HTMLElement, text: string, cls = ''): HTMLEle
 export class LoadingScreen {
   readonly el: HTMLElement;
   private readonly text: HTMLElement;
+  private readonly sub: HTMLElement;
 
-  constructor(parent: HTMLElement) {
+  constructor(parent: HTMLElement, trackName?: string) {
     const root = el('div', 'screen loading', undefined, parent);
     root.hidden = true;
     this.el = root;
-    buildLogo(root, 'loading-logo');
+    this.sub = buildLogo(root, 'loading-logo', trackName).sub;
     this.text = el('div', 'loading-text', 'Загрузка…', root);
     const bar = el('div', 'loading-bar', undefined, root);
     el('div', 'loading-bar-fill', undefined, bar);
@@ -41,6 +43,12 @@ export class LoadingScreen {
 
   setText(t: string): void {
     this.text.textContent = t;
+  }
+
+  /** Подпись под логотипом — имя выбранной трассы. */
+  setTrack(name: string | undefined): void {
+    const t = trackLabel(name);
+    if (this.sub.textContent !== t) this.sub.textContent = t;
   }
 }
 
@@ -373,7 +381,8 @@ export class ResultsScreen {
     nav.add({ el: menu, activate: () => cb.onQuitToMenu() });
   }
 
-  show(r: RaceResult): void {
+  /** trackName — имя трассы (мелко рядом с машиной); не задано — не показывается. */
+  show(r: RaceResult, trackName?: string): void {
     const body = this.body;
     body.replaceChildren();
     body.scrollTop = 0;
@@ -381,7 +390,10 @@ export class ResultsScreen {
     const head = el('div', 'results-head', undefined, body);
     el('div', `results-title${win ? ' win' : ''}`, resultTitle(r.playerPosition), head);
     const car = this.cars.find((c) => c.id === r.carId);
-    if (car) el('div', 'results-car', car.name, head);
+    if (car || trackName) {
+      const line = el('div', 'results-car', car ? car.name : '', head);
+      if (trackName) el('span', 'results-track', `${car ? ' · ' : ''}${trackName}`, line);
+    }
 
     const badges = el('div', 'badges', undefined, body);
     if (r.newBestLap) el('div', 'badge yellow', 'НОВЫЙ РЕКОРД КРУГА', badges);

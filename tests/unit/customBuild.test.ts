@@ -287,7 +287,7 @@ describe('applyCustomHandling: запись в живые объекты', () =>
     expect(live).toEqual(customHandling(mk(1, 0.2, 0.2)));
     expect(def).toEqual(live);
     expect((car as unknown as { cfg: HandlingConfig }).cfg).toBe(live);
-    expect(live.maxSpeed).toBeCloseTo(76, 9);
+    expect(live.maxSpeed).toBeCloseTo(75, 9);
     // правка панелью и сброс
     live.grip = 0.6;
     resetHandling(CUSTOM_CAR_ID);

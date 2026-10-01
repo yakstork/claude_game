@@ -35,7 +35,9 @@ export function createProjection(): TrackProjection {
 }
 
 export class Track {
+  readonly id: string;
   readonly name: string;
+  readonly def: TrackDefinition;
   readonly length: number;
   /** Номинальная полуширина (минимальная по трассе) */
   readonly halfWidth: number;
@@ -54,7 +56,9 @@ export class Track {
   readonly curvatures: Float32Array;
 
   constructor(def: TrackDefinition) {
+    this.id = def.id ?? def.name;
     this.name = def.name;
+    this.def = def;
     const pts = def.points.map(([x, y, z]) => new Vector3(x, y, z));
     const curve = new CatmullRomCurve3(pts, true, 'centripetal');
     curve.arcLengthDivisions = pts.length * 200;

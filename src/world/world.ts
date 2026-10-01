@@ -1,7 +1,7 @@
 /**
  * World — сборка мира: небо, земля, трасса, окружение, свет, туман.
  */
-import { Color, DirectionalLight, Fog, HemisphereLight, type Scene, type Vector3 } from 'three/webgpu';
+import { Color, DirectionalLight, Fog, HemisphereLight, Mesh, type Scene, type Vector3 } from 'three/webgpu';
 import type { Quality } from '../core/types';
 import type { Track } from './track';
 import { Sky, SUN_DIR } from './sky';
@@ -15,14 +15,14 @@ export const FOG_COLOR = 0x4a1268;
 export class World {
   readonly sky = new Sky();
   readonly ground = new Ground();
-  readonly trackMesh: TrackMesh;
-  readonly environment: Environment;
+  trackMesh: TrackMesh;
+  environment: Environment;
   readonly fog = new Fog(FOG_COLOR, 120, 1350);
   readonly sun: DirectionalLight;
 
   constructor(
     readonly scene: Scene,
-    readonly track: Track,
+    public track: Track,
   ) {
     this.trackMesh = new TrackMesh(track);
     this.environment = new Environment(track);
@@ -40,6 +40,26 @@ export class World {
     scene.add(rim);
 
     scene.add(this.sky.group, this.ground.mesh, this.trackMesh.group, this.environment.group);
+  }
+
+  /** Сменить трассу: старые дорога и окружение удаляются и освобождаются */
+  setTrack(track: Track): void {
+    if (track === this.track) return;
+    for (const g of [this.trackMesh.group, this.environment.group]) {
+      this.scene.remove(g);
+      g.traverse((o) => {
+        if (o instanceof Mesh) {
+          o.geometry.dispose();
+          const m = o.material;
+          if (Array.isArray(m)) m.forEach((x) => x.dispose());
+          else m.dispose();
+        }
+      });
+    }
+    this.track = track;
+    this.trackMesh = new TrackMesh(track);
+    this.environment = new Environment(track);
+    this.scene.add(this.trackMesh.group, this.environment.group);
   }
 
   setQuality(q: Quality): void {

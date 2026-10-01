@@ -104,6 +104,10 @@ export interface VehicleState {
   trackS: number;
   /** Смещение от осевой, м (+ вправо) */
   lateral: number;
+  /** Временное ускорение (бонус за дрифт / старт): оставшееся время, с */
+  boostTime: number;
+  /** Сила текущего ускорения 0..1 (0 — нет) */
+  boostPower: number;
 }
 
 export type VehicleEventType = 'wall' | 'car' | 'land';
@@ -279,6 +283,9 @@ export interface HudData {
   driftTotal: number;
   wrongWay: boolean;
   minimap: MinimapDot[];
+  /** Временное ускорение: оставшаяся доля 0..1 (0 — нет) и сила 0..1 */
+  boost: number;
+  boostPower: number;
 }
 
 export interface ResultRow {
@@ -321,6 +328,8 @@ export interface UICallbacks {
   onFirstInteraction(): void;
   /** «Своя сборка» изменилась (живое превью и сохранение) */
   onCustomBuildChanged(build: CustomBuild): void;
+  /** Выбор трассы в меню */
+  onSelectTrack(index: number): void;
 }
 
 // ─── Звук ──────────────────────────────────────────────────────────────────
@@ -365,4 +374,23 @@ export interface TuningParam {
   min: number;
   max: number;
   step: number;
+}
+
+// ─── Трассы ────────────────────────────────────────────────────────────────
+
+export interface TrackInfo {
+  id: string;
+  name: string;
+  /** Подзаголовок/характер трассы (рус.) */
+  tagline: string;
+  /** Длина круга, км */
+  lengthKm: number;
+}
+
+/**
+ * Ключ рекорда в Records.bestLap/bestRace: `${trackId}/${carId}`.
+ * Для исходной трассы 'sunset' поддерживается старый ключ без префикса (только carId).
+ */
+export function recordKey(trackId: string, carId: string): string {
+  return `${trackId}/${carId}`;
 }

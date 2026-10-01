@@ -63,6 +63,20 @@ export function computeEngineTargets(p: EngineAudioParams, out: EngineTargets): 
   return out;
 }
 
+/**
+ * Ускорение (бонус за дрифт/старт): тон мотора чуть выше, поверх — мягкое «шипение» через нитро-слой.
+ * Меняет out на месте (без аллокаций); boost 0 — без изменений. boost — сила ускорения 0..1.
+ */
+export function applyBoost(out: EngineTargets, boost: number): EngineTargets {
+  const b = clamp(Number.isFinite(boost) ? boost : 0, 0, 1);
+  if (b <= 0) return out;
+  out.freq *= 1 + 0.06 * b;
+  out.cutoff = clamp(out.cutoff * (1 + 0.2 * b), 200, 9000);
+  out.nitroGain = Math.max(out.nitroGain, 0.04 + 0.05 * b);
+  out.nitroFreq = Math.max(out.nitroFreq, 2400 + 900 * b);
+  return out;
+}
+
 export function makeEngineTargets(): EngineTargets {
   return { freq: 55, cutoff: 400, gain: 0, nitroGain: 0, nitroFreq: 2200, skidGain: 0, skidFreq: 1200 };
 }

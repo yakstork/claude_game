@@ -10,6 +10,7 @@ import type {
   Records,
   Settings,
   TouchState,
+  TrackInfo,
   UICallbacks,
 } from '../core/types';
 import { isTouchDevice } from '../core/device';
@@ -23,6 +24,7 @@ import { Hud } from './hud';
 import { MainMenu } from './menu';
 import { Nav } from './nav';
 import { RotatePrompt } from './rotatePrompt';
+import { clampIndex } from './trackLogic';
 import { LoadingScreen, PauseScreen, ResultsScreen, SettingsScreen } from './screens';
 import { TouchControls } from './touchControls';
 
@@ -37,6 +39,10 @@ export interface UIOptions {
   customBudget?: number;
   /** Разрешённые цвета кузова и неона (hex из палитры игры) */
   customPalette?: CustomPalette;
+  /** Трассы для выбора в меню (если больше одной — в меню появляется переключатель) */
+  tracks?: TrackInfo[];
+  /** Индекс выбранной трассы (по умолчанию 0) */
+  trackIndex?: number;
 }
 
 type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'hud' | 'pause' | 'results';
@@ -83,15 +89,24 @@ export class UIManager {
       },
       onFirstInteraction: () => cb.onFirstInteraction(),
     });
-    this.loading = new LoadingScreen(this.host);
+    const tracks = opts.tracks ?? [];
+    this.loading = new LoadingScreen(this.host, tracks[clampIndex(opts.trackIndex, tracks.length)]?.name);
     this.menu = new MainMenu(
       this.host,
       opts.cars,
       opts.records,
-      cb,
+      // смена трассы в меню: подпись на экране загрузки тоже следует за выбором
+      Object.assign(Object.create(cb) as UICallbacks, {
+        onSelectTrack: (i: number) => {
+          this.loading.setTrack(this.menu.trackName);
+          cb.onSelectTrack(i);
+        },
+      }),
       new Nav(play),
       () => this.openSettings('menu'),
       () => this.showCustomize(),
+      tracks,
+      opts.trackIndex ?? 0,
     );
     const budget = opts.customBudget ?? DEFAULT_BUDGET;
     const palette = opts.customPalette ?? DEFAULT_PALETTE;
@@ -174,9 +189,15 @@ export class UIManager {
     this.menu.setCar(i, false);
   }
 
+  /** Выбрать трассу в меню без уведомления (синхронизация с игрой): подпись под логотипом и рекорды. */
+  setTrackIndex(i: number): void {
+    this.menu.setTrack(i, false);
+    this.loading.setTrack(this.menu.trackName);
+  }
+
   showMainMenu(): void {
     this.hud.clearTransient();
-    this.menu.nav.reset(0);
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
     this.setScreen('menu');
     // синхронизируем 3D-превью с выбранной в меню машиной
     this.opts.callbacks.onPreviewCar(this.menu.index);
@@ -203,7 +224,7 @@ export class UIManager {
 
   showResults(r: RaceResult): void {
     this.hud.clearTransient();
-    this.results.show(r);
+    this.results.show(r, this.menu.hasTrackChoice ? this.menu.trackName : undefined);
     this.setScreen('results');
   }
 
@@ -251,14 +272,14 @@ export class UIManager {
       this.pause.nav.reset(0);
       this.setScreen('pause');
     } else {
-      this.menu.nav.reset(0);
+      this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
       this.setScreen('menu');
     }
   }
 
   private closeCustomize(): void {
     if (this.screen !== 'customize') return;
-    this.menu.nav.reset(0);
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
     this.setScreen('menu');
   }
 

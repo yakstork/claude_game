@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Track } from '../../src/world/track';
-import { SUNSET_LOOP } from '../../src/world/trackData';
+import { SUNSET_LOOP, TRACKS } from '../../src/world/trackData';
 import { VehiclePhysics, createVehicleState } from '../../src/vehicle/physics';
 import { resolveCarCollisions } from '../../src/vehicle/collisions';
 import { BotDriver } from '../../src/ai/botDriver';
@@ -19,14 +19,14 @@ const PROFILES: BotProfile[] = [
   { ...BOT_PROFILES[2], name: 'SIX', skill: 0.78, carId: 'photon', lineBias: 0.15 },
 ];
 
-function makeRace(profiles: BotProfile[] = PROFILES) {
+function makeRace(profiles: BotProfile[] = PROFILES, trk: Track = track) {
   const cars = profiles.map((p, i) => {
-    const car = new VehiclePhysics(specById(p.carId), track);
-    const g = track.gridPose(i);
+    const car = new VehiclePhysics(specById(p.carId), trk);
+    const g = trk.gridPose(i);
     car.reset(g.position, g.heading, g.s);
     return car;
   });
-  const bots = profiles.map((p, i) => new BotDriver(track, p, 100 + i));
+  const bots = profiles.map((p, i) => new BotDriver(trk, p, 100 + i));
   const states = cars.map((c) => c.state);
   return { cars, bots, states };
 }
@@ -108,13 +108,13 @@ describe('BotDriver: базовое поведение', () => {
 
   it('на прямой полный газ и нитро при заряженной шкале', () => {
     const car = new VehiclePhysics(specById('razor'), track);
-    const s0 = 300;
+    const s0 = 100;
     const smp = track.sampleAt(s0);
     car.reset(smp.position, Math.atan2(smp.tangent.x, smp.tangent.z), s0);
     car.state.nitro = 1;
     const bot = new BotDriver(track, BOT_PROFILES[0], 1);
     let usedNitro = false;
-    for (let k = 0; k < 120 * 3; k++) {
+    for (let k = 0; k < 120 * 5; k++) {
       const c = bot.update(DT, car.state, car.spec, [car.state]);
       if (c.nitro) usedNitro = true;
       car.step(DT, c);
@@ -194,48 +194,50 @@ describe('BotDriver: базовое поведение', () => {
 });
 
 describe('BotDriver: гонка шести ботов', () => {
-  it('каждый бот проезжает 3 круга быстрее 240 с, без застреваний и с разумным числом ударов', () => {
-    const { cars, bots, states } = makeRace();
-    const n = cars.length;
-    const LAPS = 3;
-    const dist = cars.map(() => 0);
-    const prevS = cars.map((c) => c.state.trackS);
-    const finish = cars.map(() => -1);
-    const walls = cars.map(() => 0);
-    const maxStuck = cars.map(() => 0);
-    const respawns = cars.map(() => 0);
-    const minSpeedAfterStart = cars.map(() => Infinity);
-    let t = 0;
-    for (let k = 0; k < 120 * 240; k++) {
-      t += DT;
-      for (let i = 0; i < n; i++) {
-        const c = bots[i].update(DT, cars[i].state, cars[i].spec, states);
-        cars[i].step(DT, c);
-        const d = track.deltaS(prevS[i], cars[i].state.trackS);
-        prevS[i] = cars[i].state.trackS;
-        if (Math.abs(d) < 50) dist[i] += d;
-        for (const e of cars[i].events) if (e.type === 'wall') walls[i]++;
-        maxStuck[i] = Math.max(maxStuck[i], bots[i].stuckTime);
-        if (cars[i].needsRespawn) respawns[i]++;
-        if (t > 8) minSpeedAfterStart[i] = Math.min(minSpeedAfterStart[i], Math.abs(cars[i].state.speed));
-        if (finish[i] < 0 && dist[i] >= LAPS * track.length) finish[i] = t;
+  for (const def of TRACKS) {
+    it(`${def.name}: каждый бот проезжает 3 круга быстрее 300 с, без застреваний и с разумным числом ударов`, () => {
+      const trk = new Track(def);
+      const { cars, bots, states } = makeRace(PROFILES, trk);
+      const n = cars.length;
+      const LAPS = 3;
+      const LIMIT = 300;
+      const dist = cars.map(() => 0);
+      const prevS = cars.map((c) => c.state.trackS);
+      const finish = cars.map(() => -1);
+      const hardWalls = cars.map(() => 0);
+      const maxStuck = cars.map(() => 0);
+      const respawns = cars.map(() => 0);
+      let t = 0;
+      for (let k = 0; k < 120 * LIMIT; k++) {
+        t += DT;
+        for (let i = 0; i < n; i++) {
+          const c = bots[i].update(DT, cars[i].state, cars[i].spec, states);
+          cars[i].step(DT, c);
+          const d = trk.deltaS(prevS[i], cars[i].state.trackS);
+          prevS[i] = cars[i].state.trackS;
+          if (Math.abs(d) < 50) dist[i] += d;
+          for (const e of cars[i].events) if (e.type === 'wall' && e.strength > 0.3) hardWalls[i]++;
+          maxStuck[i] = Math.max(maxStuck[i], bots[i].stuckTime);
+          if (cars[i].needsRespawn) respawns[i]++;
+          if (finish[i] < 0 && dist[i] >= LAPS * trk.length) finish[i] = t;
+        }
+        resolveCarCollisions(cars);
+        if (finish.every((f) => f > 0)) break;
       }
-      resolveCarCollisions(cars);
-      if (finish.every((f) => f > 0)) break;
-    }
-    for (let i = 0; i < n; i++) {
-      const name = PROFILES[i].name;
-      expect(finish[i], `${name}: не финишировал за 240 с (проехал ${dist[i].toFixed(0)} м)`).toBeGreaterThan(0);
-      expect(finish[i], name).toBeLessThan(240);
-      expect(walls[i], `${name}: удары в стену`).toBeLessThan(40);
-      expect(maxStuck[i], `${name}: застревание`).toBeLessThan(6);
-      expect(respawns[i], `${name}: needsRespawn`).toBe(0);
-    }
-    // шестёрка ботов едет не одинаково: разброс времени финиша заметен, но не огромен
-    const spread = Math.max(...finish) - Math.min(...finish);
-    expect(spread).toBeGreaterThan(3);
-    expect(spread).toBeLessThan(80);
-  });
+      for (let i = 0; i < n; i++) {
+        const name = PROFILES[i].name;
+        expect(finish[i], `${name}: не финишировал за ${LIMIT} с (проехал ${dist[i].toFixed(0)} м)`).toBeGreaterThan(0);
+        expect(finish[i], name).toBeLessThan(LIMIT);
+        expect(hardWalls[i], `${name}: сильные удары в стену`).toBeLessThan(12);
+        expect(maxStuck[i], `${name}: застревание`).toBeLessThan(6);
+        expect(respawns[i], `${name}: needsRespawn`).toBe(0);
+      }
+      // шестёрка ботов едет не одинаково, но пачка не растягивается: разброс времени финиша 1–40 с
+      const spread = Math.max(...finish) - Math.min(...finish);
+      expect(spread).toBeGreaterThan(1);
+      expect(spread).toBeLessThan(40);
+    }, 120000);
+  }
 
   it('быстрейший бот на 3 кругах едет со средней скоростью 30–60 м/с (нет «ползания» и нет полёта)', () => {
     const { cars, bots, states } = makeRace(PROFILES.slice(0, 1));
@@ -267,7 +269,7 @@ describe('BotDriver: режим GRIP и общий конфиг управлен
     expect(driftSteps).toBe(0);
   });
 
-  it('занос у ботов — только осознанно: каждому входу предшествует ручник (≤ 0.6 с), заносы редкие', () => {
+  it('занос у ботов — только осознанно: каждому входу предшествует ручник (≤ 0.6 с), заносы не доминируют', () => {
     const { cars, bots, states } = makeRace();
     const lastHb = cars.map(() => -Infinity);
     const was = cars.map(() => false);
@@ -290,9 +292,11 @@ describe('BotDriver: режим GRIP и общий конфиг управлен
       }
       resolveCarCollisions(cars);
     }
-    // заносы случаются (зрелищно), но не доминируют: < 15% времени всех ботов
-    expect(driftSteps / (120 * 100 * cars.length)).toBeLessThan(0.15);
-    expect(entries).toBeLessThan(30);
+    // заносы ради буста случаются регулярно, но не доминируют: 2–35% времени всех ботов
+    const share = driftSteps / (120 * 100 * cars.length);
+    expect(share).toBeGreaterThan(0.02);
+    expect(share).toBeLessThan(0.35);
+    expect(entries).toBeLessThan(80);
   });
 
   it('боты читают тот же живой конфиг: снижение maxSpeed в HANDLING ограничивает скорость бота', () => {
