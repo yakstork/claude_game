@@ -76,8 +76,20 @@ export type HandlingConfig = {
   driftAngleRate: number;
   /** Предел скорости роста угла при входе в занос, рад/с (резкость срыва зада) */
   driftEntryRate: number;
-  /** Скорость, м/с, выше которой угол заноса сужается (до ~65% на +30 м/с) */
-  driftAngleFadeSpeed: number;
+  /** Скорость, м/с, с которой занос начинает «заводиться» (на +40 м/с — полный эффект): угол растёт к максимуму, дуга и скраб усиливаются */
+  driftSpeedStart: number;
+  /** Скорость, м/с, с которой дуга заноса начинает усиливаться */
+  driftBoostStart: number;
+  /** Скорость, м/с, на которой усиление дуги полное */
+  driftBoostFull: number;
+  /** Влияние руля на дугу: при нейтральном руле боковое ускорение заноса меньше на эту долю (на полном руле — без изменений) */
+  driftArcSteer: number;
+  /** Рост целевого угла на полной скорости, доля (угол × (1 + gain), не выше driftMaxAngle) */
+  driftSpeedAngleGain: number;
+  /** Прибавка бокового ускорения заноса на полной скорости и полном угле, доля (a = driftGrip·g·(1 + boost)) */
+  driftTurnBoost: number;
+  /** Торможение заносом на полной скорости: ∝ sin|угол|·V, 1/с (при 75 м/с и полном угле ≈ 0.7·75·k м/с²) */
+  driftSpeedScrub: number;
   /** Скорость выравнивания машины после выхода из заноса, 1/с */
   driftExitRate: number;
   /** Минимальный руль в сторону заноса, чтобы занос удерживался, 0..1 */
@@ -162,7 +174,13 @@ function build(): Record<string, HandlingConfig> {
       driftCounterSteer: 0.6,
       driftAngleRate: 13,
       driftEntryRate: 6,
-      driftAngleFadeSpeed: 46,
+      driftSpeedStart: 35,
+      driftBoostStart: 24,
+      driftBoostFull: 58,
+      driftArcSteer: 0.4,
+      driftSpeedAngleGain: 0.16,
+      driftTurnBoost: 2.2,
+      driftSpeedScrub: 0.42,
       driftExitRate: 8,
       driftHoldSteer: 0.12,
       driftSpeedLoss: 0.16,
@@ -201,7 +219,13 @@ function build(): Record<string, HandlingConfig> {
       driftCounterSteer: 0.5,
       driftAngleRate: 12,
       driftEntryRate: 5.5,
-      driftAngleFadeSpeed: 46,
+      driftSpeedStart: 35,
+      driftBoostStart: 22,
+      driftBoostFull: 56,
+      driftArcSteer: 0.4,
+      driftSpeedAngleGain: 0.18,
+      driftTurnBoost: 3.5,
+      driftSpeedScrub: 0.45,
       driftExitRate: 6.5,
       driftHoldSteer: 0.06,
       driftSpeedLoss: 0.12,
@@ -240,7 +264,13 @@ function build(): Record<string, HandlingConfig> {
       driftCounterSteer: 0.7,
       driftAngleRate: 16,
       driftEntryRate: 3.8,
-      driftAngleFadeSpeed: 50,
+      driftSpeedStart: 35,
+      driftBoostStart: 33,
+      driftBoostFull: 50,
+      driftArcSteer: 0.4,
+      driftSpeedAngleGain: 0.16,
+      driftTurnBoost: 1.6,
+      driftSpeedScrub: 0.7,
       driftExitRate: 12,
       driftHoldSteer: 0.15,
       driftSpeedLoss: 0.2,
@@ -358,7 +388,13 @@ export const HANDLING_PARAMS: TuningParam[] = [
   p('driftCounterSteer', 'Сила контрруления, рад', 'Дрифт', 0, 1.5, 0.01),
   p('driftAngleRate', 'Скорость набора угла, 1/с', 'Дрифт', 1, 20, 0.5),
   p('driftEntryRate', 'Резкость срыва зада, рад/с', 'Дрифт', 0.5, 10, 0.1),
-  p('driftAngleFadeSpeed', 'Сужение угла от скорости, м/с', 'Дрифт', 20, 80, 1),
+  p('driftSpeedStart', 'Скорость «завода» заноса, м/с', 'Дрифт', 20, 60, 1),
+  p('driftBoostStart', 'Скорость начала усиления дуги, м/с', 'Дрифт', 5, 50, 1),
+  p('driftBoostFull', 'Скорость полного усиления дуги, м/с', 'Дрифт', 30, 90, 1),
+  p('driftArcSteer', 'Дуга от руля (шире при нейтральном руле)', 'Дрифт', 0, 0.8, 0.01),
+  p('driftSpeedAngleGain', 'Рост угла на скорости, доля', 'Дрифт', 0, 0.6, 0.01),
+  p('driftTurnBoost', 'Усиление дуги на скорости, ×', 'Дрифт', 0, 6, 0.05),
+  p('driftSpeedScrub', 'Торможение заносом на скорости, 1/с', 'Дрифт', 0, 1, 0.01),
   p('driftExitRate', 'Скорость выравнивания, 1/с', 'Дрифт', 2, 20, 0.5),
   p('driftHoldSteer', 'Руль для удержания заноса', 'Дрифт', 0, 0.6, 0.01),
   p('driftSpeedLoss', 'Потеря скорости, 1/с', 'Дрифт', 0, 0.5, 0.01),
@@ -455,7 +491,13 @@ export function customHandling(b: CustomBuild): HandlingConfig {
   c.driftCounterSteer = tri(0.7, 0.6, 0.5, dr);
   c.driftAngleRate = tri(16, 13, 12, dr);
   c.driftEntryRate = tri(3.8, 6, 5.5, dr);
-  c.driftAngleFadeSpeed = tri(50, 46, 46, dr);
+  c.driftSpeedStart = tri(35, 35, 35, dr);
+  c.driftBoostStart = tri(33, 24, 22, dr);
+  c.driftBoostFull = tri(50, 58, 56, dr);
+  c.driftArcSteer = tri(0.4, 0.4, 0.4, dr);
+  c.driftSpeedAngleGain = tri(0.16, 0.16, 0.18, dr);
+  c.driftTurnBoost = tri(1.6, 2.2, 3.5, dr);
+  c.driftSpeedScrub = tri(0.7, 0.42, 0.45, dr);
   c.driftExitRate = tri(12, 8, 6.5, dr);
   c.driftHoldSteer = tri(0.15, 0.12, 0.06, dr);
   c.driftSpeedLoss = tri(0.2, 0.16, 0.12, dr);

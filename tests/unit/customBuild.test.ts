@@ -235,11 +235,27 @@ describe('customHandling: безопасные диапазоны', () => {
     expect(dr.driftSelfAlignFull).toBeLessThan(base.driftSelfAlignFull);
     expect(dr.driftChargeRate).toBeGreaterThan(base.driftChargeRate);
     expect(dr.driftGrip).toBeLessThan(base.driftGrip);
+    // занос на скорости: больше «Дрифт» — сильнее дуга и торможение заносом на скорости
+    expect(dr.driftTurnBoost).toBeGreaterThan(base.driftTurnBoost);
+    expect(dr.driftSpeedAngleGain).toBeGreaterThanOrEqual(base.driftSpeedAngleGain);
     expect(dr.grip).toBeLessThan(base.grip); // цена дрифта в GRIP
   });
 
   it('при «Дрифт» = 0 / 0.5 / 1 набор заноса совпадает с Photon / Razor / Grizzly', () => {
-    const keys: (keyof HandlingConfig)[] = ['driftMinSpeed', 'driftGrip', 'driftBaseAngle', 'driftMaxAngle', 'driftSelfAlign', 'driftChargeRate'];
+    const keys: (keyof HandlingConfig)[] = [
+      'driftMinSpeed',
+      'driftGrip',
+      'driftBaseAngle',
+      'driftMaxAngle',
+      'driftSelfAlign',
+      'driftChargeRate',
+      'driftSpeedStart',
+      'driftBoostStart',
+      'driftBoostFull',
+      'driftSpeedAngleGain',
+      'driftTurnBoost',
+      'driftSpeedScrub',
+    ];
     const pairs: [number, HandlingConfig][] = [
       [0, HANDLING_DEFAULTS.photon],
       [0.5, HANDLING_DEFAULTS.razor],
@@ -450,6 +466,49 @@ describe('слайдеры меняют характер', () => {
     // на полном руле: длинный занос ≥ 5 с, короткий ≤ 2 с
     expect(holdTime(hi, 1)).toBeGreaterThanOrEqual(5);
     expect(holdTime(lo, 1)).toBeLessThanOrEqual(2);
+  });
+
+  /** Space + руль на скорости v (скорость задана сразу): угол, торможение (м/с²) и радиус дуги (м) за 0.5–1.0 с */
+  function driftAt(b: CustomBuild, v: number): { angle: number; decel: number; radius: number } {
+    applyCustomHandling(b);
+    const car = makeCar(wide, 300, v);
+    const st = car.state;
+    let psiPrev = Math.atan2(st.velocity.x, st.velocity.z);
+    let turned = 0;
+    let angle = 0;
+    let n = 0;
+    let v1 = 0;
+    let v2 = 0;
+    run(car, 1, () => ctl({ throttle: 1, steer: 1, handbrake: true }), (t) => {
+      const psi = Math.atan2(st.velocity.x, st.velocity.z);
+      let d = psi - psiPrev;
+      if (d > Math.PI) d -= 2 * Math.PI;
+      if (d < -Math.PI) d += 2 * Math.PI;
+      psiPrev = psi;
+      const V = Math.hypot(st.velocity.x, st.velocity.z);
+      if (t >= 0.5) {
+        turned += Math.abs(d);
+        angle += st.driftAngle;
+        n++;
+      }
+      if (Math.abs(t - 0.5) < DT / 2) v1 = V;
+      v2 = V;
+    });
+    return { angle: angle / n, decel: (v1 - v2) / 0.5, radius: ((v1 + v2) / 2) / (turned / 0.5) };
+  }
+
+  it('занос зависит от скорости: на 70 м/с «Дрифт» = 1 даёт больший угол, тугую дугу и сильное торможение, «Дрифт» = 0 — короче и мягче', () => {
+    const hi = driftAt(mk(0.5, 0.5, 1), 70);
+    const lo = driftAt(mk(1, 1, 0), 70);
+    expect(hi.angle, 'угол').toBeGreaterThan(lo.angle + 15 * DEG);
+    expect(hi.radius, 'радиус дуги').toBeLessThan(lo.radius);
+    expect(hi.radius, 'радиус дуги hi').toBeLessThan(110);
+    expect(hi.decel, 'торможение').toBeGreaterThan(lo.decel);
+    expect(hi.decel, 'торможение hi').toBeGreaterThanOrEqual(15);
+    expect(lo.decel, 'торможение lo').toBeGreaterThanOrEqual(8);
+    // угол растёт со скоростью (раньше падал)
+    const slow = driftAt(mk(0.5, 0.5, 1), 35);
+    expect(hi.angle, 'угол hi: 70 vs 35 м/с').toBeGreaterThanOrEqual(slow.angle - 1 * DEG);
   });
 
   it('«Скорость» = 1 быстрее на прямой, чем «Скорость» = 0', () => {

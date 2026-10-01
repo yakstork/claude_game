@@ -13,7 +13,9 @@
  *    Угол заноса β = ψ_v − h (курс скорости минус курс кузова) управляется газом
  *    и рулём: целевой угол растёт от руля в занос/газа, контрруль его убавляет.
  *    Траектория загибается с боковым ускорением driftGrip·g, скорость теряется
- *    умеренно. Вход резкий: зад срывается за ~0.2 с, кузов «кивает» (визуальный импульс
+ *    умеренно. Занос зависит от скорости («конвертер скорости в поворот»): выше
+ *    driftSpeedStart угол растёт к driftMaxAngle, боковое ускорение усиливается
+ *    (driftTurnBoost) и занос заметно тормозит (driftSpeedScrub ∝ sin|угол|·V). Вход резкий: зад срывается за ~0.2 с, кузов «кивает» (визуальный импульс
  *    крена/тангажа), задние шины сразу визжат. Без Space занос держится рулём + газом;
  *    слабый руль «тает» устойчивость заноса (driftSelfAlign). Выход (руль/газ отпущены,
  *    контрруль) — фаза EXIT: угол экспоненциально сводится к нулю, затем GRIP берёт
@@ -74,6 +76,13 @@ const MAX_ANGLE_RATE = 3.2;
 const MAX_SLIDE_ANGLE = 1.15;
 /** Время нарастания боковой силы и потерь скорости при входе в занос, с */
 const DRIFT_ENTRY_TIME = 0.25;
+/** Скорость, на которой «заводится» занос на скорости, растёт от driftSpeedStart на столько м/с (smoothstep) */
+const DRIFT_SPEED_SPAN = 40;
+/** Усиление дуги набирается от driftBoostStart до driftBoostFull (smoothstep) */
+/** Торможение заносом набирается быстрее (на этих м/с выше driftSpeedStart — полное) */
+const DRIFT_SCRUB_SPAN = 22;
+/** Предел скорости поворота траектории в заносе, рад/с */
+const MAX_PATH_RATE = 3.2;
 /** «Кивок» кузова на входе: пик огибающей через NOD_PEAK с, затухание ~NOD_DUR с */
 const NOD_PEAK = 0.08;
 const NOD_DUR = 0.6;
@@ -758,7 +767,8 @@ export class VehiclePhysics {
 
   /**
    * DRIFT / EXIT: угол заноса β управляется газом и рулём, траектория загибается с
-   * ускорением driftGrip·g, скорость теряется умеренно. Работает с вектором скорости
+   * ускорением driftGrip·g (на скорости — усиленным), скорость теряется умеренно, а на
+   * высокой скорости занос тормозит сильнее. Работает с вектором скорости
    * (курс скорости ψ) и курсом кузова h напрямую. Возвращает yawRate кузова.
    */
   private stepDrift(
@@ -784,9 +794,11 @@ export class VehiclePhysics {
     const steerInto = steerIn * dir;
     const cosB = Math.max(0.25, Math.cos(beta));
 
-    // целевой угол: руль в занос и газ увеличивают, контрруль убавляет; на очень
-    // высокой скорости угол сужается (иначе продольная скорость «проваливается»)
+    // целевой угол: руль в занос и газ увеличивают, контрруль убавляет; на высокой
+    // скорости угол РАСТЁТ к driftMaxAngle (занос — «конвертер скорости в поворот»)
     const entry = drifting ? clamp(this.driftTime / DRIFT_ENTRY_TIME, 0, 1) : 1;
+    const speedT = MathUtils.smoothstep(V, cfg.driftSpeedStart, cfg.driftSpeedStart + DRIFT_SPEED_SPAN);
+    const boostT = MathUtils.smoothstep(V, cfg.driftBoostStart, cfg.driftBoostFull);
     let aRate: number;
     let aT = 0;
     if (drifting) {
@@ -796,7 +808,7 @@ export class VehiclePhysics {
         cfg.driftCounterSteer * Math.max(-steerInto, 0) +
         cfg.driftThrottleGain * (throttle - 0.7);
       aT = clamp(aT, 0.12, cfg.driftMaxAngle);
-      aT *= 1 - 0.35 * MathUtils.smoothstep(V, cfg.driftAngleFadeSpeed, cfg.driftAngleFadeSpeed + 30);
+      aT = Math.min(cfg.driftMaxAngle, aT * (1 + cfg.driftSpeedAngleGain * speedT));
       // самовыравнивание: когда занос держится лишь слабым рулём, угол сужается
       aT *= 0.65 + 0.35 * clamp(this.stability, 0, 1);
       aRate = cfg.driftAngleRate;
@@ -812,8 +824,13 @@ export class VehiclePhysics {
     // скорость поворота траектории (курса скорости); при входе плавно нарастает
     let target: number;
     if (drifting) {
-      const pf = (0.8 + 0.25 * clamp(steerInto, 0, 1) + 0.25 * clamp(bd / cfg.driftMaxAngle, 0, 1)) * (0.1 + 0.9 * entry);
-      target = clamp((-dir * cfg.driftGrip * G_REAL * pf) / Math.max(V, 6), -2.5, 2.5);
+      const angN = clamp(bd / cfg.driftMaxAngle, 0, 1);
+      const pf = (0.8 + 0.25 * clamp(steerInto, 0, 1) + 0.25 * angN) * (0.1 + 0.9 * entry);
+      // боковое ускорение растёт со скоростью и углом: на 70–80 м/с дуга реально загибается
+      // дугой управляет руль в занос: при нейтральном руле — базовая дуга (без усиления и чуть шире)
+      const ss = clamp(steerInto, 0, 1);
+      const aLat = cfg.driftGrip * G_REAL * pf * (1 - cfg.driftArcSteer * (1 - ss)) * (1 + cfg.driftTurnBoost * boostT * angN * ss);
+      target = clamp((-dir * aLat) / Math.max(V, 6), -MAX_PATH_RATE, MAX_PATH_RATE);
     } else {
       // выход: GRIP берёт управление — рыскание, как при обычном повороте
       const sp = Math.min(1.3, V / cfg.maxSpeed);
@@ -828,7 +845,13 @@ export class VehiclePhysics {
     // скорость: тяга вдоль вектора скорости минус потеря на скольжении
     const ax = this.longAccel(dt, V * cosB, throttle, brake, false, nitroOn, vmax);
     this.lastAx = ax * cosB + axSlope;
-    const scrub = cfg.driftSpeedLoss * V * clamp(Math.abs(beta) / 0.6, 0, 1.2) * entry * entry;
+    // потеря скорости: базовая (как раньше) + на высокой скорости ∝ sin|угол|·V — занос тормозит
+    const sinB = Math.abs(Math.sin(beta));
+    const scrubT = MathUtils.smoothstep(V, cfg.driftSpeedStart, cfg.driftSpeedStart + DRIFT_SCRUB_SPAN);
+    const scrub =
+      (cfg.driftSpeedLoss * V * clamp(Math.abs(beta) / 0.6, 0, 1.2) + cfg.driftSpeedScrub * V * sinB * scrubT) *
+      entry *
+      entry;
     V = Math.max(0, V + (ax * cosB + axSlope - scrub) * dt);
     psi += this.pathRate * dt;
     st.heading += omega * dt;

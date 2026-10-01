@@ -4,6 +4,7 @@ import { Track } from '../../src/world/track';
 import type { ControlPoint } from '../../src/world/trackData';
 import { VehiclePhysics } from '../../src/vehicle/physics';
 import { CAR_SPECS as ALL_SPECS } from '../../src/vehicle/specs';
+import { getHandling } from '../../src/vehicle/handling';
 
 /** Только три заводские машины (у «своей сборки» — свой тест customBuild) */
 const CAR_SPECS = ALL_SPECS.filter((c) => c.id !== 'custom');
@@ -60,6 +61,12 @@ function accelerated(specIndex: number, speed = SPEED0): VehiclePhysics {
   const smp = wide.sampleAt(300);
   const h = Math.atan2(smp.tangent.x, smp.tangent.z);
   car.reset(smp.position, h, 300);
+  if (speed > 50) {
+    // выше 50 м/с (максималка Razor/Grizzly — 64/68) — задаём скорость сразу, как после нитро
+    car.state.velocity.set(Math.sin(h) * speed, 0, Math.cos(h) * speed);
+    car.state.speed = speed;
+    return car;
+  }
   let guard = 0;
   while (car.state.speed < speed && guard++ < 120 * 30) car.step(DT, ctl({ throttle: 1 }));
   return car;
@@ -173,7 +180,7 @@ function measure(specIndex: number): Metrics {
   };
 }
 
-const SPEEDS = [25, 35, 45, 55, 60];
+const SPEEDS = [25, 35, 45, 55, 60, 70, 80];
 const angleCache = new Map<string, number>();
 
 /** Максимальный угол заноса (°) в основном сценарии при скорости входа v */
@@ -218,7 +225,7 @@ describe('ощущение дрифта: одинаковый сценарий �
       );
     }
     // угол от скорости входа (тот же сценарий, разгон до v)
-    ROWS.push('', 'Макс. угол заноса, ° — от скорости входа, м/с:', 'машина   |    25 |    35 |    45 |    55 |    60');
+    ROWS.push('', 'Макс. угол заноса, ° — от скорости входа, м/с:', 'машина   |    25 |    35 |    45 |    55 |    60 |    70 |    80');
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const row = SPEEDS.map((v) => fmt(angleAt(i, v), 1).padStart(5));
       ROWS.push(IDS[i].padEnd(8) + ' | ' + row.join(' | '));
@@ -246,7 +253,7 @@ describe('ощущение дрифта: одинаковый сценарий �
     expect(razor).toBeGreaterThan(photon);
   });
 
-  it('углы держатся на 25–45 м/с и не проваливаются на 55–60 м/с (падение ≤ ~20%)', () => {
+  it('углы держатся на 25–45 м/с и на 60–80 м/с не меньше (растут к максимуму машины, а не падают)', () => {
     // Razor, Grizzly, Photon (порядок CAR_SPECS)
     const ranges = [
       [35, 40],
@@ -254,13 +261,20 @@ describe('ощущение дрифта: одинаковый сценарий �
       [22, 28],
     ];
     for (let i = 0; i < CAR_SPECS.length; i++) {
+      const cfg = getHandling(IDS[i]);
       for (const v of [25, 35, 45]) {
         const a = angleAt(i, v);
         expect(a, `${IDS[i]} ${v} м/с`).toBeGreaterThanOrEqual(ranges[i][0] - 1);
         expect(a, `${IDS[i]} ${v} м/с`).toBeLessThanOrEqual(ranges[i][1] + 1);
       }
       const ref = angleAt(i, 35);
-      for (const v of [55, 60]) expect(angleAt(i, v), `${IDS[i]} ${v} м/с`).toBeGreaterThanOrEqual(ref * 0.8);
+      for (const v of [55, 60, 70, 80]) {
+        // не меньше нижней границы диапазона и не меньше, чем на 35 м/с, но не выше максимума машины
+        expect(angleAt(i, v), `${IDS[i]} ${v} м/с`).toBeGreaterThanOrEqual(Math.max(ranges[i][0] - 1, ref - 0.5));
+        expect(angleAt(i, v), `${IDS[i]} ${v} м/с`).toBeLessThanOrEqual(cfg.driftMaxAngle * DEG + 1.5);
+      }
+      // на 70–80 м/с угол близок к максимуму машины
+      for (const v of [70, 80]) expect(angleAt(i, v), `${IDS[i]} ${v} м/с`).toBeGreaterThanOrEqual(cfg.driftMaxAngle * DEG * 0.9);
     }
   });
 

@@ -59,6 +59,8 @@ import { AudioManager } from '../audio/audioManager';
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
 
 const LAPS = 3;
+/** Потолок FPS на сенсорных устройствах */
+export const MOBILE_MAX_FPS = 120;
 const PLAYER_SLOT = 3;
 const COUNTDOWN = 3.6;
 const PREVIEW_S = 215;
@@ -202,6 +204,8 @@ export class Game {
       (cb) => this.render.renderer.setAnimationLoop(cb),
     );
     this.loop.timeScale = opts.timeScale;
+    // на телефонах — не чаще 120 кадров/с (батарея, нагрев); на десктопе — частота экрана
+    this.loop.maxFps = isTouchDevice() ? MOBILE_MAX_FPS : 0;
   }
 
   private debugPanel: DebugPanel | null = null;
