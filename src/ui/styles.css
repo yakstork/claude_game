@@ -489,7 +489,7 @@
    баннер → комбо → попапы. Слоты имеют зарезервированную высоту, поэтому
    зоны не пересекаются на любом размере окна (720x420 … 1920x1080). */
 .hud-center {
-  position: absolute; left: 16em; right: 16em; top: 1.2em;
+  position: absolute; left: 18.5em; right: 18.5em; top: 1.2em;
   display: flex; flex-direction: column; align-items: center; gap: 0.4em;
   pointer-events: none;
 }
@@ -1043,7 +1043,7 @@
 /* зона попапов не заходит на правый блок кнопок: справа отступ = ширина блока (192·k px) + запас,
    слева — тот же, если остаётся ≥ 220 px, иначе меньше (но не менее 11em). --k задаёт TouchControls. */
 .nr-touch-mode .hud-center {
-  --ci: max(18.5em, calc(192px * var(--k, 1) + 16px));
+  --ci: max(20.4em, calc(192px * var(--k, 1) + 16px));
   left: clamp(11em, calc(100% - var(--ci) - 220px), var(--ci));
   right: var(--ci);
   top: 3.7em;
