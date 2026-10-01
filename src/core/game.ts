@@ -165,6 +165,7 @@ export class Game {
         onQuitToMenu: () => this.enterMenu(),
         onUiSound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
         onCustomBuildChanged: (b) => this.applyCustomBuild(b),
+        onSelectTrack: (i) => this.selectTrack(i),
         onFirstInteraction: () => {
           void this.audio.unlock();
         },
@@ -187,6 +188,8 @@ export class Game {
       driftTotal: 0,
       wrongWay: false,
       minimap: this.dots,
+      boost: 0,
+      boostPower: 0,
     };
 
     window.addEventListener('resize', () => {
@@ -210,6 +213,9 @@ export class Game {
 
   private debugPanel: DebugPanel | null = null;
   customBuild: CustomBuild = paletteSafe(normalizeBuild(loadCustomBuild()));
+
+  /** Выбор трассы в меню (подключается вместе со второй трассой) */
+  selectTrack(_i: number): void {}
 
   /** Индекс машины «своя сборка» в CAR_SPECS */
   private get customIndex(): number {

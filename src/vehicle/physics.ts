@@ -155,6 +155,8 @@ export function createVehicleState(): VehicleState {
     wheels: [createWheel(), createWheel(), createWheel(), createWheel()],
     trackS: 0,
     lateral: 0,
+    boostTime: 0,
+    boostPower: 0,
   };
 }
 
