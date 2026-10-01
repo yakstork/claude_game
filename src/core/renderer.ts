@@ -9,6 +9,7 @@ import { emissive, mrt, output, pass } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { Quality } from './types';
 import { setGlowEnabled } from '../world/materials';
+import { isTouchDevice } from './device';
 
 export class RenderSystem {
   readonly renderer: WebGPURenderer;
@@ -58,7 +59,9 @@ export class RenderSystem {
 
   private rebuild(): void {
     const dpr = window.devicePixelRatio || 1;
-    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(dpr, 2) : Math.min(dpr, 1));
+    // на телефонах экраны с dpr 3 — ограничиваем сильнее (fill-rate)
+    const cap = isTouchDevice() ? (this.quality === 'high' ? 1.5 : 1) : this.quality === 'high' ? 2 : 1;
+    this.renderer.setPixelRatio(Math.min(dpr, cap));
     this.pipeline?.dispose();
     this.pipeline = null;
     const bloomOn = this.quality !== 'low';

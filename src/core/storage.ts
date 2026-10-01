@@ -1,8 +1,11 @@
 /** Настройки и рекорды в localStorage. Все обращения защищены try/catch. */
-import type { Records, Settings } from './types';
+import type { CustomBuild, Records, Settings } from './types';
+import { isTouchDevice } from './device';
+import { PALETTE } from '../world/palette';
 
 const SETTINGS_KEY = 'neonrush.settings.v1';
 const RECORDS_KEY = 'neonrush.records.v1';
+const CUSTOM_KEY = 'neonrush.custom.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.8,
@@ -10,6 +13,17 @@ export const DEFAULT_SETTINGS: Settings = {
   sfxVolume: 0.8,
   quality: 'high',
   showFps: false,
+  controlMode: 'auto',
+  touchSize: 1,
+  touchOpacity: 0.7,
+};
+
+export const DEFAULT_CUSTOM_BUILD: CustomBuild = {
+  speed: 0.65,
+  handling: 0.65,
+  drift: 0.65,
+  bodyColor: PALETTE.cyan,
+  neonColor: PALETTE.magenta,
 };
 
 export function emptyRecords(): Records {
@@ -34,14 +48,21 @@ function write(key: string, value: unknown): void {
 }
 
 export function loadSettings(): Settings {
-  const s = read<Settings>(SETTINGS_KEY) ?? {};
+  const saved = read<Settings>(SETTINGS_KEY);
+  const s = saved ?? {};
+  // на телефонах/планшетах по умолчанию — низкое качество
+  const defQuality = saved ? DEFAULT_SETTINGS.quality : isTouchDevice() ? 'low' : DEFAULT_SETTINGS.quality;
+  const range = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && v >= lo && v <= hi ? v : d);
   const clamp01 = (v: unknown, d: number) => (typeof v === 'number' && v >= 0 && v <= 1 ? v : d);
   return {
     masterVolume: clamp01(s.masterVolume, DEFAULT_SETTINGS.masterVolume),
     musicVolume: clamp01(s.musicVolume, DEFAULT_SETTINGS.musicVolume),
     sfxVolume: clamp01(s.sfxVolume, DEFAULT_SETTINGS.sfxVolume),
-    quality: s.quality === 'low' || s.quality === 'high' ? s.quality : DEFAULT_SETTINGS.quality,
+    quality: s.quality === 'low' || s.quality === 'high' ? s.quality : defQuality,
     showFps: typeof s.showFps === 'boolean' ? s.showFps : DEFAULT_SETTINGS.showFps,
+    controlMode: s.controlMode === 'keyboard' || s.controlMode === 'touch' || s.controlMode === 'auto' ? s.controlMode : 'auto',
+    touchSize: range(s.touchSize, 0.7, 1.5, DEFAULT_SETTINGS.touchSize),
+    touchOpacity: range(s.touchOpacity, 0.2, 1, DEFAULT_SETTINGS.touchOpacity),
   };
 }
 
@@ -64,4 +85,22 @@ export function loadRecords(): Records {
 
 export function saveRecords(r: Records): void {
   write(RECORDS_KEY, r);
+}
+
+export function loadCustomBuild(): CustomBuild {
+  const b = read<CustomBuild>(CUSTOM_KEY) ?? {};
+  const u = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : d);
+  const c = (v: unknown, d: number) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : d);
+  const d = DEFAULT_CUSTOM_BUILD;
+  return {
+    speed: u(b.speed, d.speed),
+    handling: u(b.handling, d.handling),
+    drift: u(b.drift, d.drift),
+    bodyColor: c(b.bodyColor, d.bodyColor),
+    neonColor: c(b.neonColor, d.neonColor),
+  };
+}
+
+export function saveCustomBuild(b: CustomBuild): void {
+  write(CUSTOM_KEY, b);
 }

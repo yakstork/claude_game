@@ -25,7 +25,19 @@ export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' |
 
 // ─── Машины ────────────────────────────────────────────────────────────────
 
-export type CarModelKind = 'wedge' | 'muscle' | 'hyper';
+export type CarModelKind = 'wedge' | 'muscle' | 'hyper' | 'custom';
+
+/** «Своя сборка»: слайдеры 0..1 и цвета (hex) — переводятся в HandlingConfig в безопасных диапазонах */
+export interface CustomBuild {
+  speed: number;
+  handling: number;
+  drift: number;
+  bodyColor: number;
+  neonColor: number;
+}
+
+/** id машины «своя сборка» */
+export const CUSTOM_CAR_ID = 'custom';
 
 export interface CarSpec {
   id: string;
@@ -209,6 +221,24 @@ export interface Settings {
   sfxVolume: number;
   quality: Quality;
   showFps: boolean;
+  /** Тип управления: авто (сенсорный экран → кнопки), клавиатура/геймпад, сенсорные кнопки */
+  controlMode: ControlMode;
+  /** Размер сенсорных кнопок, множитель 0.7..1.5 */
+  touchSize: number;
+  /** Непрозрачность сенсорных кнопок 0.2..1 */
+  touchOpacity: number;
+}
+
+export type ControlMode = 'auto' | 'keyboard' | 'touch';
+
+/** Состояние сенсорных кнопок (заполняет UI, читает InputManager) */
+export interface TouchState {
+  left: boolean;
+  right: boolean;
+  throttle: boolean;
+  brake: boolean;
+  drift: boolean;
+  nitro: boolean;
 }
 
 export interface Records {
@@ -287,8 +317,10 @@ export interface UICallbacks {
   onRestart(): void;
   onQuitToMenu(): void;
   onUiSound(kind: UiSound): void;
-  /** Первый клик/клавиша — разблокировать звук */
+  /** Первый клик/клавиша/касание — разблокировать звук (на iOS — строго в обработчике жеста) */
   onFirstInteraction(): void;
+  /** «Своя сборка» изменилась (живое превью и сохранение) */
+  onCustomBuildChanged(build: CustomBuild): void;
 }
 
 // ─── Звук ──────────────────────────────────────────────────────────────────

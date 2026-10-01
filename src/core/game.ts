@@ -8,10 +8,12 @@ import { PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three/webgpu';
 import { GameLoop } from './loop';
 import type { RenderSystem } from './renderer';
 import { ChaseCamera } from './camera';
-import { loadRecords, loadSettings, saveRecords, saveSettings } from './storage';
+import { isTouchDevice, vibrate } from './device';
+import { DEFAULT_CUSTOM_BUILD, loadCustomBuild, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
 import type {
   BotProfile,
   CarSpec,
+  CustomBuild,
   HudData,
   MenuAction,
   MinimapDot,
@@ -26,10 +28,10 @@ import { Track, createProjection } from '../world/track';
 import { SUNSET_LOOP } from '../world/trackData';
 import { World } from '../world/world';
 import { PALETTE, cssColor } from '../world/palette';
-import { InputManager } from '../input/input';
+import { InputManager, resolveTouchMode } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
-import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, specById } from '../vehicle/specs';
+import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from '../vehicle/specs';
 import { getHandling } from '../vehicle/handling';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
@@ -39,7 +41,19 @@ import { RaceManager } from '../race/raceManager';
 import { DriftScorer } from '../race/drift';
 import { UIManager } from '../ui/uiManager';
 import type { DebugPanel } from '../ui/debugPanel';
-import { HANDLING, HANDLING_DEFAULTS, HANDLING_PARAMS, INPUT_PARAMS, INPUT_TUNING, INPUT_TUNING_DEFAULTS } from '../vehicle/handling';
+import {
+  CUSTOM_BUDGET,
+  HANDLING,
+  HANDLING_DEFAULTS,
+  HANDLING_PARAMS,
+  INPUT_PARAMS,
+  INPUT_TUNING,
+  INPUT_TUNING_DEFAULTS,
+  applyCustomHandling,
+  customStats,
+  normalizeBuild,
+} from '../vehicle/handling';
+import { CUSTOM_CAR_ID } from './types';
 import { AudioManager } from '../audio/audioManager';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
@@ -109,6 +123,7 @@ export class Game {
   private previewModel: CarModel | null = null;
   private readonly previewState = createVehicleState();
   private hitWallThisStep = false;
+  private playerWasDrifting = false;
   private readonly states: VehicleState[] = [];
   private readonly physicsList: VehiclePhysics[] = [];
   private readonly hud: HudData;
@@ -129,11 +144,15 @@ export class Game {
     this.world = new World(this.scene, this.track);
     this.scene.add(this.effects.group);
 
+    this.syncCustomSpec();
     const uiRoot = document.getElementById('ui')!;
     this.ui = new UIManager(uiRoot, {
       cars: CAR_SPECS,
       settings: { ...this.settings },
       records: this.records,
+      customBuild: { ...this.customBuild },
+      customBudget: CUSTOM_BUDGET,
+      customPalette: CUSTOM_PALETTE,
       callbacks: {
         onPreviewCar: (i) => this.setPreviewCar(i),
         onStartRace: (i) => this.startRace(i),
@@ -143,6 +162,7 @@ export class Game {
         onRestart: () => this.startRace(this.selectedCar),
         onQuitToMenu: () => this.enterMenu(),
         onUiSound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
+        onCustomBuildChanged: (b) => this.applyCustomBuild(b),
         onFirstInteraction: () => {
           void this.audio.unlock();
         },
@@ -185,6 +205,37 @@ export class Game {
   }
 
   private debugPanel: DebugPanel | null = null;
+  customBuild: CustomBuild = paletteSafe(normalizeBuild(loadCustomBuild()));
+
+  /** Индекс машины «своя сборка» в CAR_SPECS */
+  private get customIndex(): number {
+    return CAR_SPECS.findIndex((c) => c.id === CUSTOM_CAR_ID);
+  }
+
+  /** Перенести сборку в физику (HANDLING.custom) и в спецификацию машины (цвета, полоски) */
+  private syncCustomSpec(): CarSpec | null {
+    const i = this.customIndex;
+    if (i < 0) return null;
+    applyCustomHandling(this.customBuild);
+    const spec = CAR_SPECS[i];
+    spec.bodyColor = this.customBuild.bodyColor;
+    spec.neonColor = this.customBuild.neonColor;
+    spec.stats = customStats(this.customBuild);
+    return spec;
+  }
+
+  /** «Своя сборка» изменилась: физика, превью, сохранение */
+  applyCustomBuild(b: CustomBuild): void {
+    const prev = this.customBuild;
+    this.customBuild = paletteSafe(normalizeBuild(b));
+    saveCustomBuild(this.customBuild);
+    const spec = this.syncCustomSpec();
+    if (!spec) return;
+    this.ui.updateCarSpec(this.customIndex, spec);
+    this.ui.setCustomBuild(this.customBuild); // без колбэка: держит UI в синхроне с нормализованной сборкой
+    const colorsChanged = prev.bodyColor !== this.customBuild.bodyColor || prev.neonColor !== this.customBuild.neonColor;
+    if (this.state === 'menu' && this.selectedCar === this.customIndex && colorsChanged) this.setPreviewCar(this.customIndex);
+  }
 
   /** Панель тюнинга управления (?debug). Правки сохраняются и применяются только в debug-режиме. */
   private async initDebugPanel(): Promise<void> {
@@ -253,8 +304,15 @@ export class Game {
 
   // ─── Настройки ─────────────────────────────────────────────────────────
 
+  /** Сенсорные кнопки активны (настройка «Тип управления» + тип устройства) */
+  touchMode = false;
+
   applySettings(s: Settings, persist: boolean): void {
     this.settings = { ...s };
+    this.touchMode = resolveTouchMode(s.controlMode, isTouchDevice());
+    this.ui.setTouchMode(this.touchMode);
+    this.ui.setTouchLayout(s.touchSize, s.touchOpacity);
+    this.input.setTouchSource(this.touchMode ? this.ui.touchState : null);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
@@ -498,6 +556,7 @@ export class Game {
           if (c.isPlayer) {
             if (ev.strength > 0.12) {
               this.audio.play('hit');
+              vibrate(Math.round(18 + ev.strength * 45));
               this.chase.kick(ev.strength * 0.8);
             }
             this.hitWallThisStep = this.hitWallThisStep || ev.strength > 0.15;
@@ -506,6 +565,7 @@ export class Game {
           if (ev.strength > 0.1 && near) this.effects.sparksAt(ev.point, c.physics.state.velocity, ev.strength * 0.7);
           if (c.isPlayer && ev.strength > 0.15) {
             this.audio.play('hit');
+            vibrate(Math.round(15 + ev.strength * 35));
             this.chase.kick(ev.strength * 0.6);
           }
         } else if (ev.type === 'land') {
@@ -523,6 +583,11 @@ export class Game {
         if (bot) bot.stuckTime = 0;
       }
     }
+
+    // резкий срыв в занос — короткий толчок камеры
+    const drifting = player.physics.state.drifting;
+    if (drifting && !this.playerWasDrifting) this.chase.kick(0.28);
+    this.playerWasDrifting = drifting;
 
     race.update(dt, this.states);
     for (const ev of race.events) {
@@ -695,7 +760,7 @@ export class Game {
       position: st.position,
       heading: st.heading,
       velocity: st.velocity,
-      speed: st.speed,
+      speed: Math.sign(st.speed || 1) * Math.hypot(st.velocity.x, st.velocity.z),
       maxSpeed: getHandling(c.spec.id).maxSpeed,
       nitro: st.nitroActive,
       onGround: st.onGround,
@@ -727,7 +792,8 @@ export class Game {
     const h = this.hud;
     const ps = this.player.physics.state;
     const st = race.standing(PLAYER_SLOT);
-    h.speedKmh = Math.abs(ps.speed) * 3.6;
+    // полная горизонтальная скорость: в заносе продольная составляющая падает, а машина — нет
+    h.speedKmh = Math.hypot(ps.velocity.x, ps.velocity.z) * 3.6;
     h.nitro = ps.nitro;
     h.nitroActive = ps.nitroActive;
     h.lap = Math.min(LAPS, st.lap + 1);
@@ -778,7 +844,9 @@ export class Game {
       fps: Math.round(this.loop.fps),
       drawCalls: this.render.drawCalls(),
       quality: this.settings.quality,
-      speedKmh: p ? Math.round(Math.abs(p.speed) * 3.6) : 0,
+      touchMode: this.touchMode,
+      controlMode: this.settings.controlMode,
+      speedKmh: p ? Math.round(Math.hypot(p.velocity.x, p.velocity.z) * 3.6) : 0,
       nitro: p ? p.nitro : 0,
       drifting: p ? p.drifting : false,
       lap: this.race ? this.race.standing(PLAYER_SLOT).lap : 0,
@@ -794,4 +862,13 @@ function formatTime(t: number): string {
   const m = Math.floor(t / 60);
   const s = t - m * 60;
   return `${m}:${s.toFixed(3).padStart(6, '0')}`;
+}
+
+/** Цвета «своей сборки» — только из палитры игры; чужие (например, из старого localStorage) заменяются */
+function paletteSafe(b: CustomBuild): CustomBuild {
+  return {
+    ...b,
+    bodyColor: CUSTOM_PALETTE.body.includes(b.bodyColor) ? b.bodyColor : DEFAULT_CUSTOM_BUILD.bodyColor,
+    neonColor: CUSTOM_PALETTE.neon.includes(b.neonColor) ? b.neonColor : DEFAULT_CUSTOM_BUILD.neonColor,
+  };
 }

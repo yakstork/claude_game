@@ -166,6 +166,16 @@ describe('HandlingConfig: единый конфиг и метаданные дл
     expect(razor.driftMinSpeed).toBeGreaterThan(grizzly.driftMinSpeed);
     expect(grizzly.driftChargeRate).toBeGreaterThan(razor.driftChargeRate);
     expect(razor.driftChargeRate).toBeGreaterThan(photon.driftChargeRate);
+    // характер заноса: Grizzly — широкая дуга (меньше driftGrip), держится самим рулём и почти не выравнивается;
+    // Photon — тугая дуга, высокий порог руля и сильное самовыравнивание
+    expect(grizzly.driftGrip).toBeLessThan(razor.driftGrip);
+    expect(razor.driftGrip).toBeLessThan(photon.driftGrip);
+    expect(grizzly.driftHoldSteer).toBeLessThan(razor.driftHoldSteer);
+    expect(razor.driftHoldSteer).toBeLessThan(photon.driftHoldSteer);
+    expect(grizzly.driftSelfAlign).toBeLessThan(razor.driftSelfAlign);
+    expect(razor.driftSelfAlign).toBeLessThan(photon.driftSelfAlign);
+    expect(grizzly.driftExitRate).toBeLessThan(razor.driftExitRate);
+    expect(razor.driftExitRate).toBeLessThan(photon.driftExitRate);
     // максимумы скоростей из прошлой версии: 230 / 245 / 274 км/ч
     expect(razor.maxSpeed * 3.6).toBeCloseTo(230, -1);
     expect(grizzly.maxSpeed * 3.6).toBeCloseTo(245, -1);
@@ -344,7 +354,8 @@ describe('DRIFT: вход, удержание и выход — только о�
           const car = makeCar(wide, i, 300, v);
           const nitro0 = car.state.nitro;
           let enteredAt = -1;
-          run(car, 2.5, (t) => ctl({ throttle: 1, steer: sign, handbrake: t < 0.4 }), (t) => {
+          // 1.4 с: Photon без Space на полном руле держит занос ~1.5 с (driftSelfAlignFull)
+          run(car, 1.4, (t) => ctl({ throttle: 1, steer: sign, handbrake: t < 0.4 }), (t) => {
             if (enteredAt < 0 && car.state.drifting) enteredAt = t;
           });
           const label = `${IDS[i]} v=${v} steer=${sign}`;
@@ -360,30 +371,30 @@ describe('DRIFT: вход, удержание и выход — только о�
     }
   });
 
-  it('плавный вход: 80% установившегося угла за 0.2–0.4 с, пик |yawRate| < 2 рад/с, скорость через 0.5 с ≥ 88%', () => {
+  it('резкий, но не рывком вход: 90% установившегося угла за 0.1–0.3 с, пик |yawRate| < 7 рад/с, скорость (модуль) через 0.5 с ≥ 88%', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       for (const v of [20, 30, 40, 50, 60]) {
         for (const sign of [1, -1]) {
           const car = makeCar(wide, i, 300, v);
           // W + руль (набор 0.25 с), затем Space
           run(car, 0.33, (t) => ctl({ throttle: 1, steer: sign * Math.min(1, t * 4) }));
-          const u0 = car.state.speed;
+          const v0 = Math.hypot(car.state.velocity.x, car.state.velocity.z);
           const angles: number[] = [];
           let peakYaw = 0;
-          let u05 = 0;
+          let v05 = 0;
           run(car, 1.5, () => ctl({ throttle: 1, steer: sign, handbrake: true }), () => {
             angles.push(Math.abs(car.state.driftAngle));
             peakYaw = Math.max(peakYaw, Math.abs(car.state.yawRate));
-            if (angles.length === 60) u05 = car.state.speed;
+            if (angles.length === 60) v05 = Math.hypot(car.state.velocity.x, car.state.velocity.z);
           });
           const label = `${IDS[i]} v=${v} steer=${sign}`;
           expect(car.state.drifting, label).toBe(true);
           const steady = angles[angles.length - 1];
-          const t80 = angles.findIndex((a) => a >= 0.8 * steady) * DT;
-          expect(t80, label + ' t80').toBeGreaterThanOrEqual(0.2);
-          expect(t80, label + ' t80').toBeLessThanOrEqual(0.4);
-          expect(peakYaw, label + ' yaw').toBeLessThan(2);
-          expect(u05 / u0, label + ' скорость').toBeGreaterThanOrEqual(0.88);
+          const t90 = angles.findIndex((a) => a >= 0.9 * steady) * DT;
+          expect(t90, label + ' t90').toBeGreaterThanOrEqual(0.1);
+          expect(t90, label + ' t90').toBeLessThanOrEqual(0.3);
+          expect(peakYaw, label + ' yaw').toBeLessThan(7);
+          expect(v05 / v0, label + ' скорость').toBeGreaterThanOrEqual(0.88);
         }
       }
     }
@@ -422,7 +433,9 @@ describe('DRIFT: вход, удержание и выход — только о�
   it('занос удерживается газом + рулём в сторону заноса (без Space) и одним Space', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const a = makeCar(wide, i, 300, 32);
-      run(a, 4, (t) => ctl({ throttle: 1, steer: 0.8, handbrake: t < 0.4 }));
+      // Photon короткий: без Space он сам возвращается в сцепление за ~1.5 с, Grizzly держит намного дольше
+      const hold = IDS[i] === 'grizzly' ? 8 : 1.2;
+      run(a, hold, (t) => ctl({ throttle: 1, steer: 0.8, handbrake: t < 0.4 }));
       expect(a.state.drifting, IDS[i] + ' руль+газ').toBe(true);
       const b = makeCar(wide, i, 300, 32);
       run(b, 4, (t) => ctl({ handbrake: true, steer: t < 0.5 ? 0.8 : 0 }));
@@ -434,7 +447,7 @@ describe('DRIFT: вход, удержание и выход — только о�
     for (let i = 0; i < CAR_SPECS.length; i++) {
       for (const sign of [1, -1]) {
         const car = makeCar(wide, i, 300, 32);
-        run(car, 2.5, (t) => ctl({ throttle: 1, steer: sign, handbrake: t < 0.4 }));
+        run(car, 1.2, (t) => ctl({ throttle: 1, steer: sign, handbrake: t < 0.4 }));
         expect(car.state.drifting, IDS[i]).toBe(true);
         let wrongSide = 0;
         let stillDrifting = false;
@@ -479,7 +492,8 @@ describe('DRIFT: вход, удержание и выход — только о�
       const cfg = getHandling(IDS[i]);
       const steady = (steer: number, throttle: number): number => {
         const car = makeCar(wide, i, 300, 34);
-        run(car, 3, (t) => ctl({ throttle, steer, handbrake: t < 0.4 }));
+        // 1.5 с: угол уже установился, а самовыравнивание (driftSelfAlign) слабого руля ещё не сработало
+        run(car, 1.5, (t) => ctl({ throttle, steer, handbrake: t < 0.4 }));
         return Math.abs(car.state.driftAngle);
       };
       const light = steady(0.5, 1);
@@ -491,7 +505,7 @@ describe('DRIFT: вход, удержание и выход — только о�
       expect(light, IDS[i]).toBeGreaterThan(0.12);
       // контрруль в процессе заноса убавляет угол
       const car = makeCar(wide, i, 300, 34);
-      run(car, 2.5, (t) => ctl({ throttle: 1, steer: 1, handbrake: t < 0.4 }));
+      run(car, 1.2, (t) => ctl({ throttle: 1, steer: 1, handbrake: t < 0.4 }));
       const before = Math.abs(car.state.driftAngle);
       run(car, 0.15, () => ctl({ throttle: 1, steer: -0.6 }));
       expect(Math.abs(car.state.driftAngle), IDS[i]).toBeLessThan(before - 0.05);

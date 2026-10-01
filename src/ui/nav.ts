@@ -1,5 +1,6 @@
 /** Список фокусируемых элементов экрана: клавиатура/геймпад/мышь работают через него. */
 import type { UiSound } from '../core/types';
+import { onTap } from './dom';
 
 export interface NavItem {
   el: HTMLElement;
@@ -9,6 +10,8 @@ export interface NavItem {
   activate?(): void;
   /** Не активировать по клику мыши (слайдер сам обрабатывает указатель). */
   noClick?: boolean;
+  /** Активировать строго по click (действия, требующие жеста браузера: полноэкранный режим). */
+  viaClick?: boolean;
 }
 
 export class Nav {
@@ -20,12 +23,20 @@ export class Nav {
   add(item: NavItem): NavItem {
     const i = this.items.length;
     this.items.push(item);
-    item.el.addEventListener('mouseenter', () => this.focusAt(i, true));
-    item.el.addEventListener('click', () => {
-      if (item.noClick) return;
-      this.focusAt(i, false);
-      this.activate();
+    // наведение — только мышью (на тач-экране эмулированный hover давал бы лишний звук)
+    item.el.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'mouse') this.focusAt(i, true);
     });
+    if (!item.noClick) {
+      onTap(
+        item.el,
+        () => {
+          this.focusAt(i, false);
+          this.activate();
+        },
+        item.viaClick === true,
+      );
+    }
     return item;
   }
 
@@ -46,13 +57,39 @@ export class Nav {
     }
     const moved = i !== this.index;
     this.index = i;
+    this.scrollToItem(this.items[i].el);
     if (sound && moved && changed) this.play('move');
+  }
+
+  /** Фокус клавиатурой/геймпадом в прокручиваемом списке: подвинуть прокрутку контейнера (.nr-scroll). */
+  private scrollToItem(e: HTMLElement): void {
+    const box = e.closest<HTMLElement>('.nr-scroll');
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const b = box.getBoundingClientRect();
+    const r = e.getBoundingClientRect();
+    if (r.top < b.top) box.scrollTop += r.top - b.top - 6;
+    else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 6;
+  }
+
+  /** Элемент скрыт (сам или контейнер внутри экрана): фокус и активация его пропускают. */
+  private static isHidden(e: HTMLElement): boolean {
+    for (let p: HTMLElement | null = e; p && !p.classList.contains('screen'); p = p.parentElement) {
+      if (p.hidden) return true;
+    }
+    return false;
   }
 
   move(dir: -1 | 1): void {
     const n = this.items.length;
     if (n === 0) return;
-    this.focusAt((this.index + dir + n) % n, true);
+    let i = this.index;
+    for (let k = 0; k < n; k++) {
+      i = (i + dir + n) % n;
+      if (!Nav.isHidden(this.items[i].el)) {
+        this.focusAt(i, true);
+        return;
+      }
+    }
   }
 
   adjust(dir: -1 | 1): boolean {
@@ -61,7 +98,7 @@ export class Nav {
 
   activate(): void {
     const it = this.current;
-    if (!it?.activate) return;
+    if (!it?.activate || Nav.isHidden(it.el)) return;
     this.play('select');
     it.activate();
   }

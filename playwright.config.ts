@@ -9,6 +9,8 @@ export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 90_000,
   retries: 0,
+  // программный рендер (SwiftShader) тяжёлый — параллельные браузеры замедляют друг друга
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:4173',

@@ -48,7 +48,9 @@ export class DriftScorer {
     }
 
     // «Занос» — держит комбо живым (в воздухе тоже); очки — только на земле
-    const sliding = state.drifting && Math.abs(state.speed) > MIN_SPEED;
+    // скорость — модуль горизонтального вектора (state.speed — лишь продольная компонента, в заносе она занижена)
+    const speed = Math.hypot(state.velocity.x, state.velocity.z);
+    const sliding = state.drifting && speed > MIN_SPEED;
 
     if (sliding) {
       if (!combo.active) {
@@ -62,7 +64,7 @@ export class DriftScorer {
       this.run += dt;
       if (state.onGround) {
         const factor = MathUtils.clamp(Math.abs(state.driftAngle) / REF_ANGLE, MIN_FACTOR, MAX_FACTOR);
-        combo.points += factor * Math.abs(state.speed) * dt * POINTS_SCALE;
+        combo.points += factor * speed * dt * POINTS_SCALE;
       }
       while (this.run >= MULT_STEP_TIME && combo.multiplier < MAX_MULTIPLIER) {
         this.run -= MULT_STEP_TIME;

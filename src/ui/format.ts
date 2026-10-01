@@ -61,3 +61,26 @@ export function formatPercent(v: number): string {
 export function formatSpeed(kmh: number): string {
   return String(Math.max(0, Math.round(Number.isFinite(kmh) ? kmh : 0)));
 }
+
+/** Шаг слайдера произвольного диапазона: value ± step, зажим в [min, max], без накопления ошибок float. */
+export function stepRange(value: number, dir: -1 | 1, min: number, max: number, step: number): number {
+  const v = clamp(Math.round(((value + dir * step) / step)) * step, min, max);
+  return Math.round(v * 1000) / 1000;
+}
+
+/** Положение пальца (доля 0..1 по ширине дорожки) → значение в [min, max], привязанное к шагу. */
+export function valueFromFraction(frac: number, min: number, max: number, step: number): number {
+  const f = clamp(Number.isFinite(frac) ? frac : 0, 0, 1);
+  const v = clamp(Math.round((min + f * (max - min)) / step) * step, min, max);
+  return Math.round(v * 1000) / 1000;
+}
+
+/** Значение в [min, max] → доля 0..1 для заливки слайдера. */
+export function fractionOf(value: number, min: number, max: number): number {
+  return max > min ? clamp((value - min) / (max - min), 0, 1) : 0;
+}
+
+/** Реальный процент без зажима в 0..1 (размер кнопок 0.7..1.5 → «70%».. «150%»). */
+export function formatPercentRaw(v: number): string {
+  return `${Math.round(Number.isFinite(v) ? v * 100 : 0)}%`;
+}

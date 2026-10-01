@@ -66,6 +66,8 @@ export class BotDriver {
   private driftIntent = false;
   private driftCorner = -1;
   private driftTime = 0;
+  /** Решение выйти из заноса принято: нейтральный руль и сброс газа, пока кузов не выровняется */
+  private driftOver = false;
   private cornerCooldown = 0;
 
   constructor(
@@ -306,8 +308,9 @@ export class BotDriver {
         steerCmd = -Math.sign(self.driftAngle || 1) * 0.7;
         throttle = 0.2;
         brake = 0;
-      } else if (cornerOver || this.driftTime > 4.5 || Math.abs(self.driftAngle) > 0.85) {
+      } else if (this.driftOver || cornerOver || this.driftTime > 4.5 || Math.abs(self.driftAngle) > 0.85) {
         // сброс газа и нейтральный руль — физика плавно выводит из заноса
+        this.driftOver = true;
         steerCmd = -Math.sign(self.driftAngle || 1) * 0.1;
         throttle = 0.1;
         brake = 0;
@@ -317,8 +320,14 @@ export class BotDriver {
         steerCmd = into * Math.max(steerCmd * into, 0.45);
         if (brake === 0) throttle = Math.max(throttle, 0.45);
       }
+    } else if (this.driftOver && Math.abs(self.driftAngle) > 0.1 && self.speed > 5) {
+      // выравнивание после заноса ещё идёт: не газуем и не рулим в занос (иначе физика войдёт в него снова)
+      steerCmd = -Math.sign(self.driftAngle) * 0.1;
+      throttle = 0.1;
+      brake = 0;
     } else {
       this.driftTime = 0;
+      this.driftOver = false;
       if (this.hbTimer <= 0) this.driftIntent = false;
     }
 

@@ -12,7 +12,28 @@ declare global {
   }
 }
 
+/** Глобальные мобильные защиты: контекстное меню, жесты масштабирования iOS, двойной тап */
+function installMobileGuards(): void {
+  const prevent = (e: Event) => e.preventDefault();
+  window.addEventListener('contextmenu', prevent);
+  // iOS Safari: pinch-zoom через gesture*-события
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, prevent, { passive: false });
+  // зум двойным тапом запрещён через touch-action/viewport; dblclick на всякий случай
+  document.addEventListener('dblclick', prevent, { passive: false });
+  // скролл/зум страницы; внутренняя прокрутка разрешена только в контейнерах .nr-scroll
+  document.addEventListener(
+    'touchmove',
+    (e) => {
+      const t = e.target;
+      if (t instanceof Element && t.closest('.nr-scroll') && e.touches.length === 1) return;
+      if (e.cancelable) e.preventDefault();
+    },
+    { passive: false },
+  );
+}
+
 async function boot(): Promise<void> {
+  installMobileGuards();
   const params = new URLSearchParams(location.search);
   const container = document.getElementById('app')!;
   const render = await RenderSystem.create(container, params.get('webgl') === '1');
