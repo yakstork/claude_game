@@ -90,6 +90,23 @@ export class AudioManager {
     this.safe(() => this.sfx?.play(sfx));
   }
 
+  /**
+   * Короткий восходящий «вжух» с бас-ударом при начале ускорения (бонус за дрифт / старт).
+   * power 0..1 — сила ускорения. Отдельный метод: SfxName в types.ts расширять нельзя.
+   */
+  playBoost(power: number): void {
+    if (!this.sfx) return;
+    this.safe(() => this.sfx?.playBoost(power));
+  }
+
+  /**
+   * Сила ускорения 0..1 на время его действия (можно звать каждый кадр): тон мотора чуть выше
+   * и мягкое шипение через нитро-слой. 0 — обычный звук. Без аллокаций.
+   */
+  setBoostLevel(power: number): void {
+    this.engine?.setBoost(power);
+  }
+
   setPaused(p: boolean): void {
     if (this.paused === p) return;
     this.paused = p;

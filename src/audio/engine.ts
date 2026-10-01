@@ -1,6 +1,6 @@
 /** Синтез мотора, шипения нитро и визга шин. Узлы создаются один раз, в кадре меняются только параметры. */
 import { createNoiseSource, disconnectAll } from './noise';
-import { computeEngineTargets, makeEngineTargets, makeSoftClipCurve } from './theory';
+import { applyBoost, computeEngineTargets, makeEngineTargets, makeSoftClipCurve } from './theory';
 import type { EngineAudioParams } from '../core/types';
 
 /** Постоянная времени сглаживания параметров, с. */
@@ -13,6 +13,8 @@ export class EngineSynth {
   private built = false;
   private lastUpdate = -1;
   private silenced = true;
+  /** Сила ускорения 0..1 (гул чуть выше и шипение); задаёт AudioManager.setBoostLevel. */
+  private boost = 0;
   private teardownTimer: ReturnType<typeof setTimeout> | null = null;
 
   private oscA: OscillatorNode | null = null;
@@ -33,6 +35,10 @@ export class EngineSynth {
     private readonly ctx: BaseAudioContext,
     private readonly dest: AudioNode,
   ) {}
+
+  setBoost(level: number): void {
+    this.boost = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0;
+  }
 
   /** Обновить мотор (вызывается каждый кадр). null — плавно заглушить. */
   update(p: EngineAudioParams | null): void {
@@ -56,6 +62,7 @@ export class EngineSynth {
     this.silenced = false;
 
     const t = computeEngineTargets(p, this.targets);
+    if (this.boost > 0) applyBoost(t, this.boost);
     // при старте после тишины — быстрое включение, дальше сглаживание
     const tc = wasSilent ? 0.03 : TC;
     this.oscA?.frequency.setTargetAtTime(t.freq, now, tc);
@@ -75,6 +82,7 @@ export class EngineSynth {
     const now = this.ctx.currentTime;
     if (!this.silenced) {
       this.silenced = true;
+      this.boost = 0;
       this.engineGain?.gain.setTargetAtTime(0, now, 0.06);
       this.nitroGain?.gain.setTargetAtTime(0, now, 0.05);
       this.skidGain?.gain.setTargetAtTime(0, now, 0.05);

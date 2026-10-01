@@ -19,8 +19,12 @@ export const SFX_MIN_INTERVAL_MS: Record<SfxName, number> = {
   uiBack: 60,
 };
 
+/** Минимальный интервал между «вжух» ускорения, мс. */
+const BOOST_MIN_INTERVAL_MS = 250;
+
 export class SfxPlayer {
   private readonly last = new Map<SfxName, number>();
+  private lastBoostMs = -1e9;
   /** Входной gain эффектов (общий подъём уровня относительно музыки). */
   private readonly dest: GainNode;
 
@@ -31,6 +35,28 @@ export class SfxPlayer {
     this.dest = ctx.createGain();
     this.dest.gain.value = 1.8;
     this.dest.connect(out);
+  }
+
+  /**
+   * Ускорение (бонус за дрифт/старт): восходящий «вжух» с бас-ударом; power 0..1 — сила
+   * (громче, выше свип, дольше хвост). Отдельный метод: SfxName расширять нельзя.
+   */
+  playBoost(power: number): void {
+    const ctx = this.ctx;
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastBoostMs < BOOST_MIN_INTERVAL_MS) return;
+    this.lastBoostMs = nowMs;
+    const p = Number.isFinite(power) ? Math.min(1, Math.max(0, power)) : 0;
+    const t = ctx.currentTime + 0.01;
+    const d = this.dest;
+    const dur = 0.45 + 0.25 * p;
+    // «вжух»: шум с bandpass-свипом вверх
+    playNoise(ctx, d, { filter: 'bandpass', freq: 500, freqEnd: 3800 + 2200 * p, q: 2.2, start: t, dur, gain: 0.2 + 0.2 * p, attack: 0.07 });
+    // восходящий тон-«реактивный» подъём
+    playTone(ctx, d, { type: 'sawtooth', freq: 110, freqEnd: 360 + 280 * p, start: t, dur: dur * 0.9, gain: 0.06 + 0.05 * p, attack: 0.06, cutoff: 1500 });
+    // бас-удар в начале
+    playTone(ctx, d, { type: 'sine', freq: 140, freqEnd: 40, start: t, dur: 0.3, gain: 0.34 + 0.2 * p, attack: 0.002 });
+    playNoise(ctx, d, { filter: 'lowpass', freq: 600, freqEnd: 140, q: 0.7, start: t, dur: 0.12, gain: 0.15 + 0.1 * p, attack: 0.002 });
   }
 
   play(name: SfxName): void {

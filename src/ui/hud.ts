@@ -14,6 +14,7 @@ import {
   speedFraction,
 } from './format';
 import { Minimap } from './minimap';
+import { quantize01 } from './trackLogic';
 
 const MAX_POPUPS = 3;
 const POPUP_MS = 1700;
@@ -49,6 +50,8 @@ export class Hud {
   private readonly speedNum: HTMLElement;
   private readonly nitroFill: HTMLElement;
   private readonly nitroText: HTMLElement;
+  private readonly boostEl: HTMLElement;
+  private readonly boostFill: HTMLElement;
   private readonly combo: HTMLElement;
   private readonly comboPts: HTMLElement;
   private readonly comboMult: HTMLElement;
@@ -72,6 +75,9 @@ export class Hud {
   private cArc = -1;
   private cNitro = -1;
   private cNitroState = -1;
+  private cBoostOn = false;
+  private cBoost = -1;
+  private cBoostPower = -1;
   private cComboOn = false;
   private cComboPts = -1;
   private cComboMult = -1;
@@ -157,6 +163,13 @@ export class Hud {
     const bar = el('div', 'nitro-bar', undefined, nitro);
     this.nitroFill = el('div', 'nitro-fill', undefined, bar);
     this.nitroText = el('div', 'nitro-text', 'NITRO', bar);
+    // ускорение (бонус за дрифт / старт): полоска над спидометром, видна только пока boost > 0
+    this.boostEl = el('div', 'boost', undefined, this.speedo);
+    this.boostEl.hidden = true;
+    el('div', 'boost-glow', undefined, this.boostEl);
+    const boostBar = el('div', 'boost-bar', undefined, this.boostEl);
+    this.boostFill = el('div', 'boost-fill', undefined, boostBar);
+    el('div', 'boost-text', 'BOOST', boostBar);
 
     // ── мини-карта (справа снизу)
     const map = el('div', 'panel hud-map', undefined, root);
@@ -172,6 +185,9 @@ export class Hud {
     this.cPos = this.cTotal = this.cDriftTotal = this.cLap = this.cLaps = -1;
     this.cLapTime = this.cBest = this.cLast = this.cRace = this.cSpeed = '';
     this.cArc = this.cNitro = this.cNitroState = this.cComboPts = this.cComboMult = -1;
+    this.cBoost = this.cBoostPower = -1;
+    this.cBoostOn = false;
+    this.boostEl.hidden = true;
     this.cComboOn = false;
     this.cWrong = false;
     this.combo.classList.remove('on');
@@ -262,6 +278,25 @@ export class Hud {
       this.speedo.classList.toggle('nitro-ready', state === 1);
       this.speedo.classList.toggle('nitro-active', state === 2);
       this.nitroText.textContent = state === 1 ? 'NITRO READY' : 'NITRO';
+    }
+
+    // ускорение: полоска убывает с boost (шаг 0.5%), интенсивность свечения/пульса — от boostPower (шаг 5%)
+    const boostOn = d.boost > 0;
+    if (boostOn !== this.cBoostOn) {
+      this.cBoostOn = boostOn;
+      this.boostEl.hidden = !boostOn;
+    }
+    if (boostOn) {
+      const bq = quantize01(d.boost, 200);
+      if (bq !== this.cBoost) {
+        this.cBoost = bq;
+        this.boostFill.style.transform = `scaleX(${bq})`;
+      }
+      const pq = quantize01(d.boostPower, 20);
+      if (pq !== this.cBoostPower) {
+        this.cBoostPower = pq;
+        this.boostEl.style.setProperty('--bp', String(pq));
+      }
     }
 
     // комбо

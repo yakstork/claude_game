@@ -272,6 +272,35 @@
   text-shadow: 0 0 0.5em var(--void), 0 0 0.2em var(--void);
 }
 
+/* ── Выбор трассы: панель слева сверху, зеркально рекордам ───────────────────── */
+.menu-track-wrap { position: absolute; left: 2.2em; top: 2.2em; width: 19.5em; pointer-events: auto; transition: filter 0.12s; }
+.menu .menu-track-wrap.is-focus { filter: drop-shadow(0 0 0.7em rgba(255, 42, 109, 0.8)); }
+.menu .menu-track-wrap.is-focus .menu-track { --edge: var(--magenta); --edge-a: rgba(255, 42, 109, 0.4); }
+.menu-track { --c: 12px; width: 100%; padding: 0.55em 0.65em 0.6em; }
+.menu-track.flash .track-name { animation: nr-flash 0.35s ease-out; }
+.track-head { display: flex; align-items: center; gap: 0.55em; }
+.track-step {
+  flex: none; display: grid; place-items: center; width: 2.4em; height: 2.4em; cursor: pointer; color: var(--white);
+  background: rgba(13, 2, 33, 0.6); border: 2px solid var(--cyan); transform: skewX(-12deg);
+  transition: background-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.track-step .icon-arrow { width: 0.85em; height: 0.85em; transform: skewX(12deg); }
+.track-step:active { background: var(--cyan); color: var(--void); box-shadow: 0 0 1em var(--cyan); }
+@media (hover: hover) { .track-step:hover { background: var(--cyan); color: var(--void); box-shadow: 0 0 1em var(--cyan); } }
+.track-mid { flex: 1 1 auto; min-width: 0; cursor: pointer; text-align: center; }
+.track-label { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5em; padding: 0 0.2em; }
+.track-label .car-counter { font-size: 0.7em; }
+.track-name {
+  margin-top: 0.1em; font-size: 1.05em; font-style: italic; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--white); text-shadow: 0 0 0.45em var(--cyan), 0 0 0.12em var(--cyan);
+}
+.track-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 0.7em; margin-top: 0.45em; }
+.track-tag { flex: 1 1 auto; min-width: 0; font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; font-size: 0.68em; line-height: 1.25; color: rgba(245, 233, 255, 0.82); }
+.track-len { flex: none; font-size: 0.72em; font-style: italic; letter-spacing: 0.1em; white-space: nowrap; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); }
+.rec-track { display: block; margin-top: 0.15em; font-size: 0.72em; letter-spacing: 0.14em; color: var(--lilac); text-shadow: none; }
+.rec-track:empty { display: none; }
+.results-track { color: var(--lilac); }
+
 /* ── Загрузка ─────────────────────────────────────────────────────────────── */
 .loading {
   display: flex;
@@ -564,6 +593,21 @@
 @keyframes nr-ready { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.95; } }
 @keyframes nr-ready-text { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
 @keyframes nr-active { from { opacity: 0.55; } to { opacity: 1; } }
+
+/* ускорение (бонус за дрифт/старт): жёлто-оранжевая полоска над спидометром, видна только пока boost > 0.
+   --bp (0..1) — сила ускорения: от неё зависят яркость свечения и размах пульса. */
+.boost { --bp: 1; position: absolute; left: 50%; bottom: calc(100% + 0.15em); width: 11.5em; transform: translateX(-50%); animation: nr-boost-in 0.22s ease-out both; }
+.boost-glow { position: absolute; left: -15%; right: -15%; top: -70%; bottom: -70%; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(255, 158, 61, 0.7), rgba(255, 211, 25, 0.25) 45%, transparent 70%);
+  animation: nr-boost-glow 0.34s ease-in-out infinite alternate; }
+.boost-bar { position: relative; height: 1.3em; border: 2px solid var(--yellow); background: rgba(13, 2, 33, 0.82); overflow: hidden; transform: skewX(-20deg);
+  box-shadow: 0 0 calc(0.5em + 0.9em * var(--bp)) rgba(255, 158, 61, calc(0.35 + 0.5 * var(--bp))); animation: nr-boost-pulse 0.34s ease-in-out infinite alternate; }
+.boost-fill { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, var(--orange), var(--yellow)); box-shadow: 0 0 0.8em var(--orange); }
+.boost-text { position: absolute; inset: 0; display: grid; place-items: center; font-size: 0.66em; font-style: italic; letter-spacing: 0.3em; padding-left: 0.3em; color: var(--white);
+  text-shadow: 0 0 0.3em var(--void), 0 0 0.15em var(--void), 0 0 0.15em var(--void); transform: skewX(20deg); }
+@keyframes nr-boost-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes nr-boost-glow { from { opacity: calc(0.15 + 0.3 * var(--bp)); } to { opacity: calc(0.4 + 0.6 * var(--bp)); } }
+@keyframes nr-boost-pulse { from { filter: brightness(0.92); } to { filter: brightness(calc(1.04 + 0.4 * var(--bp))); } }
 
 /* мини-карта */
 .hud-map { position: absolute; right: 1.4em; bottom: 1.2em; --c: 14px; width: 13.6em; height: 13.6em; padding: 0.3em; --edge: var(--cyan); --edge-a: rgba(5, 217, 232, 0.3); }
@@ -905,6 +949,18 @@
   .menu-buttons { right: 1.3em; bottom: 0.8em; min-width: 0; width: 14.5em; gap: 0.55em; }
   .menu-buttons .btn { min-width: 0; padding-left: 0.4em; padding-right: 0.4em; }
   .btn.big { font-size: 1.4em; padding-top: 0.3em; padding-bottom: 0.3em; min-height: 52px; }
+
+  /* выбор трассы: компактная панель в левом верхнем углу (лого начинается правее) */
+  .menu-track-wrap { left: 0.6em; top: 0.4em; width: 16.2em; }
+  .menu-track { --c: 9px; padding: 0.25em 0.3em 0.3em; }
+  .track-head { gap: 0.25em; }
+  .track-step { width: 34px; height: 44px; margin: 0 0.15em; }
+  .track-step .icon-arrow { width: 0.8em; height: 0.8em; }
+  .track-label, .track-tag { display: none; }
+  .track-name { font-size: 1.05em; margin-top: 0; letter-spacing: 0; }
+  .track-meta { margin-top: 0; justify-content: center; }
+  .track-len { font-size: 0.7em; }
+  .rec-track { display: none; }
   .menu-hint { left: 21.4em; right: 18.6em; bottom: 0.8em; font-size: 1em; line-height: 1.4; }
   .menu-hint > div { font-size: 0.66em; }
   .nr-ui:not(.nr-touch-mode) .menu-hint > :nth-child(2) { display: none; }
@@ -978,6 +1034,11 @@
 .nr-touch-mode .speedo-center { position: static; display: flex; align-items: baseline; gap: 0.4em; white-space: nowrap; }
 .nr-touch-mode .speedo-num { font-size: 2.4em; }
 .nr-touch-mode .speedo-unit { margin: 0; font-size: 0.66em; letter-spacing: 0.2em; }
+/* ускорение — слева от цифр скорости (между панелью позиции и скоростью свободно; справа панель круга,
+   снизу и по бокам — кнопки, баннеры идут ниже) */
+.nr-touch-mode .boost { left: auto; right: calc(100% + 0.9em); bottom: auto; top: 0.3em; width: 7.4em; transform: none; }
+.nr-touch-mode .boost-bar { height: 1.45em; }
+.nr-touch-mode .boost-text { letter-spacing: 0.2em; padding-left: 0.2em; }
 
 /* зона попапов не заходит на правый блок кнопок: справа отступ = ширина блока (192·k px) + запас,
    слева — тот же, если остаётся ≥ 220 px, иначе меньше (но не менее 11em). --k задаёт TouchControls. */
