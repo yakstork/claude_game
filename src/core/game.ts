@@ -422,6 +422,9 @@ export class Game {
   }
 
   startRace(carIndex: number): void {
+    // сид гонки: у ботов разные «настроение», ошибки и решения о заносе в каждой гонке (?seed= — воспроизвести)
+    const urlSeed = Number(new URLSearchParams(location.search).get('seed') ?? NaN);
+    const raceSeed = Number.isFinite(urlSeed) ? urlSeed : Math.floor(Math.random() * 100000);
     this.clearRace();
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, carIndex));
     const playerSpec = CAR_SPECS[this.selectedCar];
@@ -442,7 +445,7 @@ export class Game {
         spec,
         physics,
         model,
-        bot: profile ? new BotDriver(this.track, profile, 1000 + slot * 77) : null,
+        bot: profile ? new BotDriver(this.track, profile, raceSeed + slot * 77) : null,
         color: profile ? cssColor(profile.bodyColor) : cssColor(PALETTE.white),
         isPlayer: !profile,
         prevPos: physics.state.position.clone(),

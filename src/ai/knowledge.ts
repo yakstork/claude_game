@@ -92,7 +92,14 @@ export function trackKnowledge(track: Track): TrackKnowledge {
     const bz = i + 1 < corners.length ? b.zs : b.zs + L;
     if (a.ze > bz - 8) a.ze = bz - 8;
   }
-  for (const c of corners) c.driftable = c.s1 - c.s0 >= MIN_DRIFT_LEN && c.ze - c.zs >= 28;
+  for (let i = 0; i < corners.length; i++) {
+    const c = corners[i];
+    const nx = corners[(i + 1) % corners.length];
+    const gapNext = (i + 1 < corners.length ? nx.s0 : nx.s0 + L) - c.s1;
+    // перед встречным поворотом без паузы (шикана) занос не выйти чисто: машину выносит к стене
+    const chain = nx.dir !== c.dir && gapNext < 30;
+    c.driftable = c.s1 - c.s0 >= MIN_DRIFT_LEN && c.ze - c.zs >= 28 && !chain;
+  }
   const cells = Math.ceil(L / CELL);
   const cornerAt = new Int16Array(cells).fill(-1);
   corners.forEach((c, i) => {

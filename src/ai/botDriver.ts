@@ -1,27 +1,35 @@
 /**
  * BotDriver — ИИ бота (GAME_DESIGN.md §3.4, §6.4).
  *
- * Идеальная линия по кривизне (внутренняя сторона в поворотах, внешняя на входе),
- * pure pursuit на точку впереди, скорость — по предельной скорости в повороте с
- * учётом дистанции торможения. Поверх этого — характер и тактика:
+ * Основа: идеальная линия по кривизне (внутренняя сторона в поворотах, внешняя на входе), pure pursuit на точку
+ * впереди, скорость — по предельной скорости в повороте с учётом дистанции торможения. Поверх неё:
  *
- *  - Характер (BotProfile + seed): смелость в поворотах, склонность к заносу, нитро-политика,
- *    частота ошибок. Темп «плавает» по ходу гонки (медленный шум «формы»), без читерства по физике.
- *  - Дрифт ради буста: в подходящих поворотах (решение — по повороту и кругу, детерминированно от seed)
- *    бот заводит занос ручником, держит его по дуге и чисто выходит — физика выдаёт буст.
- *    Скорость не режется из-за превышения maxSpeed: во время буста/нитро потолок — выше.
- *  - Нитро — не постоянно: на длинных прямых по «настроению» бота, при догоне/обгоне и на последнем круге.
- *  - Обгон (смена линии при сближении сзади), защита позиции (перекрытие линии в торможении),
- *    следование за машиной впереди без столкновений.
- *  - Ошибки: поздний тормоз, широкая траектория (редко, чаще у слабых и агрессивных).
- *  - Мягкий rubber banding по положению в пачке: отстающий смелее, оторвавшийся лидер осторожнее.
+ *  - Характер (BotProfile + seed): смелость в поворотах и в заносе, склонность к заносу, нитро-политика, частота
+ *    ошибок (поздний тормоз, широкая траектория), реакция на старте. Все случайные решения — от seed (hash по
+ *    повороту и кругу), поэтому гонка воспроизводима.
+ *  - Темп (`pace`, доля возможностей машины) «плавает» по ходу гонки: медленный шум «формы» ±4–6%. Темп масштабирует
+ *    целевые скорости, потолок скорости на прямых и скорость в поворотах; физику бот не обманывает.
+ *  - Выравнивание по машине: пробный круг нейтрального бота на этой трассе (кэшируется) показывает, насколько
+ *    машина быстрее среднего заводского круга; быстрые машины едут чуть осторожнее, медленные — чуть смелее.
+ *    Иначе самая быстрая машина (Photon) всегда уезжала бы от остальных.
+ *  - Дрифт ради буста: в подходящих поворотах бот заводит занос ручником, ведёт его по дуге и чисто выходит —
+ *    физика выдаёт буст. Скорость не режется из-за превышения maxSpeed: потолок учитывает нитро и буст.
+ *    В толчее занос не начинают, не вошли за 0.5 с — отказываются от него в этом повороте.
+ *  - Нитро — не постоянно: на длинных прямых по «настроению», при догоне/обгоне, при полной шкале и на последнем круге.
+ *  - Обгон (смена линии при сближении сзади, нырок внутрь), защита позиции (перекрытие линии в сторону атакующего
+ *    перед торможением), боковой зазор с соседями, следование без столкновений.
+ *  - Rubber banding по положению в пачке (сам бот не знает, кто игрок): оторвавшийся лидер «ждёт» второго
+ *    (до −12% темпа), отставшие подтягиваются (до +5%, но не выше 1.04 от предела машины).
  *
- * Детерминирован (seed), без аллокаций в update().
+ * Детерминирован (seed), без аллокаций в update(). Тяжёлые знания (повороты трассы, боковое ускорение заноса,
+ * пробные круги) считаются в конструкторе и кэшируются (см. knowledge.ts).
  */
 import { MathUtils } from 'three';
 import type { BotProfile, CarSpec, TrackSample, VehicleControls, VehicleState } from '../core/types';
 import { getHandling, steerAngleAt, steerForCurvature } from '../vehicle/handling';
 import type { HandlingConfig } from '../vehicle/handling';
+import { VehiclePhysics } from '../vehicle/physics';
+import { specById } from '../vehicle/specs';
 import { createSample } from '../world/track';
 import type { Track } from '../world/track';
 import { cornerIndexAt, driftKnowledge, driftLatAt, trackKnowledge } from './knowledge';
@@ -38,8 +46,35 @@ const PLAN_HORIZON = 230;
 /** Прямая для нитро: до следующего поворота (|k| > RUN_K) не меньше, м */
 const RUN_K = 0.005;
 const RUN_MAX = 330;
+/** Полная шкала нитро не копится зря: на длинной прямой жмём независимо от «настроения» */
+const FULL_TANK = 0.85;
+/** «Толчея»: машина в пределах 5 м по ширине и ближе этого впереди/сзади по s — занос не начинаем, м */
+const CROWD_AHEAD = 8;
+const CROWD_BEHIND = 4;
+/** Желаемый боковой зазор между соседями, м (центры) */
+const SIDE_GAP = 3.8;
+/**
+ * Темп бота — масштаб всех целевых скоростей (доля возможностей машины): pace = база × выравнивание по машине ×
+ * «форма» × rubber banding, в пределах [0.8, 1.04]. На прямых потолок скорости падает с темпом быстрее, чем
+ * скорость в поворотах (машина редко упирается в максималку): vCap = vFree·(1 − CAP_SLOPE·(1 − pace)).
+ */
+const CAP_SLOPE = 2.4;
+const PACE_MIN = 0.8;
+const PACE_MAX = 1.04;
+/** Rubber banding. Лидер «ждёт» второго: осторожность растёт от LEAD_FREE до LEAD_FULL м отрыва (до −RUBBER_SLOW) */
+const LEAD_FREE = 8;
+const LEAD_FULL = 70;
+const RUBBER_SLOW = 0.12;
+/** Остальные: +RUBBER_GAIN темпа на 200 м среднего отставания от соперников (не выше RUBBER_FAST, не ниже −RUBBER_SLACK) */
+const RUBBER_GAIN = 0.1;
+const RUBBER_FAST = 0.05;
+const RUBBER_SLACK = 0.02;
+/** Отставание/отрыв одной машины считаем не более чем на столько, м (далёкий игрок не тянет всю пачку) */
+const PACK_CLAMP = 250;
+/** Занос целится внутрь поворота на эту долю полуширины: на выходе машину выносит наружу */
+const DRIFT_INNER = 0.55;
 
-const { clamp, smoothstep } = MathUtils;
+const { clamp } = MathUtils;
 
 /** Детерминированный хэш 0..1 */
 function hash01(a: number, b: number, c: number, d = 0): number {
@@ -71,6 +106,8 @@ const MIS_LATE = 1;
 const MIS_WIDE = 2;
 
 export class BotDriver {
+  /** Текущий темп (доля возможностей машины; для отладки и тестов) */
+  pace = 1;
   private readonly out: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
   /** Время, прошедшее с последнего движения вперёд (>4 м/с), с. Для респауна ведущим. */
   stuckTime = 0;
@@ -83,7 +120,7 @@ export class BotDriver {
   private readonly sampleB: TrackSample = createSample();
   private readonly know: TrackKnowledge;
   private drift: DriftKnowledge | null = null;
-  private ready = false;
+  private specId = '';
 
   // ── характер (из профиля и seed) ───────────────────────────────────────
   private readonly skillN: number;
@@ -105,6 +142,9 @@ export class BotDriver {
   private readonly defendP: number;
   /** Амплитуда колебаний темпа («форма»), доля */
   private readonly formAmp: number;
+  private readonly launchDelay: number;
+  /** Выравнивание по машине (≤ 1): быстрее среднего заводского круга — едем осторожнее */
+  private carPace = 1;
   private readonly phase: [number, number, number, number, number, number];
   private readonly freq: [number, number, number, number];
 
@@ -123,7 +163,8 @@ export class BotDriver {
   private defendTimer = 0;
   /** Бот сейчас в зоне запланированного заноса */
   private inZone = false;
-  private driftTime = 0;
+  private abortZone = -1;
+  private entryTime = 0;
   /** После зоны заноса ждём выравнивания: нейтральный руль, сброс газа */
   private exitTimer = 0;
   private readonly plan: Uint8Array;
@@ -131,11 +172,15 @@ export class BotDriver {
   private readonly defend: Uint8Array;
   private readonly nitroRoll: Uint8Array;
   private rubber = 0;
+  /** Базовый темп: доля от возможностей машины */
+  private readonly paceBase: number;
 
   constructor(
     readonly track: Track,
     readonly profile: BotProfile,
     readonly seed: number,
+    /** Служебный режим «пробный круг»: нейтральный темп, без ошибок/формы/rubber banding и без выравнивания по машине */
+    private readonly calibrating = false,
   ) {
     const rnd = mulberry32(seed * 7919 + 13);
     this.phase = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28, rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
@@ -144,25 +189,31 @@ export class BotDriver {
     this.skillN = clamp((profile.skill - 0.66) / 0.26, 0, 1);
     this.aggr = clamp(profile.aggression, 0, 1);
     // сцепление: skill 0.66..0.92 → 0.88..0.95 (разброс скилла сжат: гонку решают занос, тактика и ошибки), ±0.015 — характер
-    this.gripBase = 0.88 + 0.07 * this.skillN + (rnd() - 0.5) * 0.03 + 0.02 * (this.aggr - 0.5);
+    this.gripBase = 0.92 + 0.015 * this.skillN + (rnd() - 0.5) * 0.03 + 0.02 * (this.aggr - 0.5);
     this.brakeFrac = 0.52 + 0.2 * this.skillN + (rnd() - 0.5) * 0.04;
-    this.driftUse = 1.12 + 0.12 * this.skillN + 0.1 * (this.aggr - 0.5) + (rnd() - 0.5) * 0.06;
-    this.mistakeP = (0.025 + 0.09 * (1 - this.skillN)) * (0.7 + 0.6 * this.aggr);
+    this.driftUse = 1.14 + 0.07 * this.skillN + 0.1 * (this.aggr - 0.5) + (rnd() - 0.5) * 0.06;
+    this.mistakeP = calibrating ? 0 : (0.04 + 0.05 * (1 - this.skillN)) * (0.7 + 0.6 * this.aggr);
     this.nitroReserve = 0.1 + 0.3 * rnd();
     this.nitroRate = 0.45 + 0.4 * this.aggr + 0.15 * rnd();
     this.defendP = 0.1 + 0.6 * this.aggr * (0.6 + 0.4 * rnd());
-    this.formAmp = 0.03 + 0.012 * rnd();
+    this.paceBase = calibrating ? 1 : 0.99 + 0.004 * this.skillN + (rnd() - 0.5) * 0.01;
+    this.formAmp = calibrating ? 0 : 0.04 + 0.02 * rnd();
+    // реакция на старте: 0.05–0.45 с (агрессивные чуть быстрее)
+    this.launchDelay = calibrating ? 0 : 0.05 + 0.4 * rnd() - 0.1 * (this.aggr - 0.5);
     this.know = trackKnowledge(track);
     const n = this.know.corners.length;
     this.plan = new Uint8Array(n);
     this.mis = new Uint8Array(n);
     this.defend = new Uint8Array(n);
     this.nitroRoll = new Uint8Array(n);
+    // знания о машине и трассе (в т.ч. пробные круги) — сразу, а не на первом кадре гонки: так возможная пауза приходится на создание ботов
+    if (!calibrating) this.init(specById(profile.carId));
   }
 
   private init(spec: CarSpec): void {
-    this.ready = true;
+    this.specId = spec.id;
     this.drift = driftKnowledge(spec);
+    if (!this.calibrating) this.carPace = carPaceFactor(this.track, spec);
     // склонность к заносу: машина (Grizzly любит, Photon реже), скилл, характер
     const rnd = hash01(this.seed, 99, 1);
     this.driftChance = clamp(0.3 + 0.6 * spec.stats.drift + 0.25 * (this.skillN - 0.5) + 0.2 * (this.aggr - 0.5) + 0.15 * (rnd - 0.5), 0.2, 0.95);
@@ -255,7 +306,7 @@ export class BotDriver {
   update(dt: number, self: VehicleState, spec: CarSpec, others: readonly VehicleState[]): VehicleControls {
     const track = this.track;
     const out = this.out;
-    if (!this.ready) this.init(spec);
+    if (spec.id !== this.specId) this.init(spec);
     const cfg = getHandling(spec.id);
     this.time += dt;
     const s = self.trackS;
@@ -288,13 +339,18 @@ export class BotDriver {
     let behindDs = Infinity;
     let side = 0;
     let sidePush = 0;
+    let crowd = false;
     let maxAhead = 0;
     let minBehind = Infinity;
+    let sumDs = 0;
+    let nOthers = 0;
     for (let i = 0; i < others.length; i++) {
       const o = others[i];
       if (o === self) continue;
-      if (Math.abs(o.position.y - self.position.y) > 3) continue; // другой уровень
       const ds = track.deltaS(s, o.trackS);
+      sumDs += clamp(ds, -PACK_CLAMP, PACK_CLAMP);
+      nOthers++;
+      if (Math.abs(o.position.y - self.position.y) > 3) continue; // другой уровень (эстакада)
       const dl = o.lateral - self.lateral;
       if (ds > 5 && ds > maxAhead) maxAhead = ds;
       if (ds < -5 && -ds < minBehind) minBehind = -ds;
@@ -309,16 +365,25 @@ export class BotDriver {
           behind = o;
         }
       }
-      if (Math.abs(ds) < 5.5 && Math.abs(dl) < 3) {
-        side = Math.sign(dl) || 1;
-        sidePush = Math.max(sidePush, 1 - Math.abs(dl) / 3);
+      if (ds > -CROWD_BEHIND && ds < CROWD_AHEAD && Math.abs(dl) < 4.2) crowd = true;
+      if (Math.abs(ds) < 6.5 && Math.abs(dl) < SIDE_GAP) {
+        const push = SIDE_GAP - Math.abs(dl);
+        if (push > sidePush) {
+          sidePush = push;
+          side = Math.sign(dl) || 1;
+        }
       }
     }
-    // rubber banding по пачке: отстающий смелее, оторвавшийся лидер осторожнее
-    let rubber = 0;
-    if (maxAhead > 40) rubber = 0.035 * smoothstep(maxAhead, 40, 280);
-    else if (maxAhead === 0 && minBehind > 40 && minBehind < track.length * 0.4) rubber = -0.03 * smoothstep(minBehind, 40, 260);
-    this.rubber += (rubber - this.rubber) * (1 - Math.exp(-dt * 0.5));
+    // rubber banding по пачке: лидер «ждёт» второго (чем больше отрыв, тем осторожнее), остальные подтягиваются к середине пачки
+    const meanDs = nOthers > 0 ? sumDs / nOthers : 0;
+    let rubber: number;
+    if (maxAhead === 0 && minBehind < track.length * 0.45) {
+      rubber = -RUBBER_SLOW * MathUtils.smoothstep(minBehind, LEAD_FREE, LEAD_FULL);
+    } else {
+      rubber = clamp((RUBBER_GAIN * meanDs) / 200, -RUBBER_SLACK, RUBBER_FAST);
+    }
+    if (this.calibrating) rubber = 0;
+    this.rubber += (rubber - this.rubber) * (1 - Math.exp(-dt * 0.8));
 
     const aggrNow = this.aggr;
     // ближайший поворот и прямая до него
@@ -374,7 +439,7 @@ export class BotDriver {
     if (this.defendTimer > 0 && behind !== null && !overtaking && shiftTarget === 0) {
       shiftTarget = clamp(behind.lateral - self.lateral, -2.4, 2.4) * 0.85;
     }
-    if (sidePush > 0 && shiftTarget === 0) shiftTarget = -side * 1.6 * sidePush;
+    if (sidePush > 0 && shiftTarget === 0) shiftTarget = -side * Math.min(3, 0.9 * sidePush);
     this.avoidShift += (shiftTarget - this.avoidShift) * (1 - Math.exp(-dt * 2.5));
 
     // ── целевая точка и руль (pure pursuit) ───────────────────────────────
@@ -407,16 +472,33 @@ export class BotDriver {
     // ── занос: зона запланированного поворота ─────────────────────────────
     const zone = this.zoneAt(s);
     const wasInZone = this.inZone;
-    this.inZone = zone >= 0 && (self.drifting ? V > cfg.driftMinSpeed * 0.7 : V > cfg.driftMinSpeed + 4) && this.reverseTimer <= 0 && !targetBehind;
+    if (zone < 0) this.abortZone = -1;
+    // входить в занос в толчее нельзя (машину бросает на соседей и на стену); не вошли за 0.5 с — отказываемся от заноса в этом повороте
+    const canEnter = !crowd && this.abortZone !== zone;
+    this.inZone =
+      zone >= 0 &&
+      (self.drifting ? V > cfg.driftMinSpeed * 0.7 : canEnter && V > cfg.driftMinSpeed + 4) &&
+      this.reverseTimer <= 0 &&
+      !targetBehind;
+    if (this.inZone && !self.drifting) {
+      this.entryTime += dt;
+      if (this.entryTime > 0.5) {
+        this.abortZone = zone;
+        this.inZone = false;
+      }
+    } else {
+      this.entryTime = 0;
+    }
     if (wasInZone && !this.inZone) this.exitTimer = 1.6;
     else if (this.exitTimer > 0) this.exitTimer -= dt;
     const dir = zone >= 0 ? this.know.corners[zone].dir : 0;
 
     // ── скорость: предел по кривизне вперёд ───────────────────────────────
     const form = this.form();
-    let gripFrac = this.gripBase * (1 + this.formAmp * form) + this.rubber;
+    // темп: характер × выравнивание по машине × «форма» × положение в пачке
+    const pace = (this.pace = clamp(this.paceBase * this.carPace * (1 + this.formAmp * form) * (1 + this.rubber), PACE_MIN, PACE_MAX));
+    let gripFrac = this.gripBase;
     if (overtaking) gripFrac += 0.025 * aggrNow;
-    gripFrac = clamp(gripFrac, 0.8, 1.02);
     const aGrip = cfg.grip * G * gripFrac * 1.08;
     const aBrake = cfg.brakeDecel * this.brakeFrac;
     const drift = this.drift as DriftKnowledge;
@@ -436,9 +518,13 @@ export class BotDriver {
       }
       const ci = cornerIndexAt(track, this.know, sd);
       if (ci >= 0 && this.mis[ci] === MIS_LATE) vLim *= 1.14;
+      vLim *= zi >= 0 ? Math.min(pace, 1) : pace;
       const vAllowed = Math.sqrt(vLim * vLim + 2 * aBrake * d);
       if (vAllowed < vTarget) vTarget = vAllowed;
     }
+    // потолок темпа на прямых: доля от максималки с учётом нитро и буста (не тормозим, а отпускаем газ)
+    const vFree = cfg.maxSpeed * ((self.nitroActive ? cfg.nitroSpeedMul : 1) + cfg.boostSpeedPct * self.boostPower);
+    const vCap = vFree * (1 - CAP_SLOPE * (1 - pace));
     if (vTarget > followCap) vTarget = Math.max(followCap, 8);
     if (targetBehind) vTarget = Math.min(vTarget, 12);
     // большая ошибка по линии — сбросить скорость
@@ -453,6 +539,9 @@ export class BotDriver {
     if (excess > 0.6) {
       brake = clamp(excess / 4, 0, 1);
       throttle = 0;
+    } else if (speed > vCap) {
+      throttle = 0;
+      brake = clamp((speed - vCap - 4) / 8, 0, 0.5);
     } else {
       throttle = clamp(0.45 + (vTarget - vCmp) * 0.5, 0, 1);
     }
@@ -460,12 +549,11 @@ export class BotDriver {
     // ── занос: руль, ручник, выход ────────────────────────────────────────
     let handbrake = false;
     if (this.inZone) {
-      this.driftTime += dt;
       handbrake = true;
       // руль: дуга заноса по вектору скорости к точке впереди (по линии с учётом соперников)
       const L2 = 10 + 0.35 * V;
       const tp = track.sampleAt(s + L2, this.sampleB);
-      const off2 = clamp(this.avoidShift, -usable, usable);
+      const off2 = clamp(this.avoidShift + dir * DRIFT_INNER * usable, -usable, usable);
       const ex = tp.position.x + tp.right.x * off2 - self.position.x;
       const ez = tp.position.z + tp.right.z * off2 - self.position.z;
       let err = Math.atan2(vx, vz) - Math.atan2(ex, ez);
@@ -475,7 +563,6 @@ export class BotDriver {
       // в заносе угол держится газом: газ не бросаем, если не тормозим
       if (brake === 0) throttle = Math.max(throttle, 0.45);
     } else {
-      this.driftTime = 0;
       if (self.drifting) {
         // занос не по плану (толчок, стена, окончание зоны): контр-руль и сброс газа
         steerCmd = -Math.sign(self.driftAngle || 1) * (this.exitTimer > 0 ? 0.1 : 0.7);
@@ -491,6 +578,12 @@ export class BotDriver {
       }
     }
 
+    // реакция на старте: первые доли секунды после GO газ не даём
+    if (this.time < this.launchDelay) {
+      throttle = 0;
+      brake = 0;
+    }
+
     // ── нитро: прямые по «настроению», догон/обгон, последний круг ────────
     const finalLap = this.lap >= this.totalLaps;
     const chasing = ahead !== null || (maxAhead > 0 && maxAhead < 70 && behind === null);
@@ -498,7 +591,7 @@ export class BotDriver {
     const allow =
       self.nitro > (chasing || finalLap ? 0.04 : this.nitroReserve) &&
       run >= needRun &&
-      (chasing || finalLap || runCorner < 0 || this.nitroRoll[runCorner] === 1) &&
+      (chasing || finalLap || self.nitro > FULL_TANK || runCorner < 0 || this.nitroRoll[runCorner] === 1) &&
       (self.boostPower < 0.45 || chasing || finalLap);
     if (!this.nitroLatch) {
       if (allow && vFwd > 25 && Math.abs(this.steerSmooth) < 0.25 && throttle > 0.9 && !this.inZone && !self.drifting) this.nitroLatch = true;
@@ -527,4 +620,78 @@ export class BotDriver {
     out.nitro = this.nitroLatch && this.reverseTimer <= 0;
     return out;
   }
+}
+
+// ─── Выравнивание по машине ────────────────────────────────────────────────
+
+/** Заводские машины, по которым считается «средний» круг */
+const FACTORY_CARS = ['razor', 'grizzly', 'photon'];
+/** Чувствительность времени круга к темпу вблизи 1 (измерено: −7% темпа ≈ +2% времени круга) */
+const LAP_PER_PACE = 0.3;
+/** Не замедляем быстрые машины сильнее, чем до этого темпа */
+const CAR_PACE_MIN = 0.88;
+const CAR_PACE_MAX = 1.02;
+const NEUTRAL: BotProfile = { name: 'CAL', skill: 0.8, aggression: 0.5, lineBias: 0, bodyColor: 0, neonColor: 0, carId: 'razor' };
+const _calCtl: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
+const lapCache = new Map<string, number>();
+/** Шаг пробного круга (грубее физического 1/120: нужна лишь оценка времени круга) */
+const CAL_DT = 1 / 60;
+
+/** Среднее время двух кругов (обычного и «финального») нейтрального бота в одиночку (лётный старт), с. Кэшируется по трассе и числам машины. */
+function soloLapTime(track: Track, spec: CarSpec): number {
+  const key = `${track.id}|${track.length.toFixed(1)}|${spec.id}|${Object.values(getHandling(spec.id)).join(',')}`;
+  const hit = lapCache.get(key);
+  if (hit !== undefined) return hit;
+  const dt = CAL_DT;
+  const car = new VehiclePhysics(spec, track);
+  const s0 = track.length - 1;
+  const p = track.sampleAt(s0);
+  const h = Math.atan2(p.tangent.x, p.tangent.z);
+  car.reset(p.position, h, s0);
+  car.state.velocity.set(Math.sin(h) * 35, 0, Math.cos(h) * 35);
+  car.state.speed = 35;
+  const bot = new BotDriver(track, NEUTRAL, 1, true);
+  bot.totalLaps = 2;
+  const others = [car.state];
+  let dist = 0;
+  let prevS = car.state.trackS;
+  let t = 0;
+  let lapStart = 0;
+  let laps = 0;
+  let lap = 0;
+  while (laps < 2 && t < 400) {
+    const c = bot.update(dt, car.state, spec, others);
+    _calCtl.throttle = c.throttle;
+    _calCtl.brake = c.brake;
+    _calCtl.steer = c.steer;
+    _calCtl.handbrake = c.handbrake;
+    _calCtl.nitro = c.nitro;
+    car.step(dt, _calCtl);
+    t += dt;
+    const d = track.deltaS(prevS, car.state.trackS);
+    prevS = car.state.trackS;
+    if (Math.abs(d) < 50) dist += d;
+    if (dist >= (laps + 1) * track.length) {
+      // два круга: обычный и последний (с нитро «на финиш») — берём среднее
+      lap += (t - lapStart) / 2;
+      lapStart = t;
+      laps++;
+    }
+  }
+  if (laps < 2) lap = Infinity;
+  lapCache.set(key, lap);
+  return lap;
+}
+
+/**
+ * Коэффициент темпа ≤ 1: боты на машинах быстрее среднего заводского круга едут осторожнее, чтобы
+ * самая быстрая машина не уезжала от остальных (победить можно на любой). Медленные машины не ускоряем.
+ */
+function carPaceFactor(track: Track, spec: CarSpec): number {
+  let sum = 0;
+  for (const id of FACTORY_CARS) sum += soloLapTime(track, specById(id));
+  const ref = sum / FACTORY_CARS.length;
+  const mine = soloLapTime(track, spec);
+  if (!Number.isFinite(mine) || !Number.isFinite(ref)) return 1;
+  return clamp(1 - (ref / mine - 1) / LAP_PER_PACE, CAR_PACE_MIN, CAR_PACE_MAX);
 }
