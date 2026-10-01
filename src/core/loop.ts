@@ -20,6 +20,9 @@ export class GameLoop {
   fps = 60;
   private fpsFrames = 0;
   private fpsTime = 0;
+  /** Потолок FPS рендера (0 — без ограничения, частота экрана) */
+  maxFps = 0;
+  private nextFrameAt = -1;
   /** Масштаб времени симуляции (1 — норма) */
   timeScale = 1;
 
@@ -32,6 +35,7 @@ export class GameLoop {
     if (this.running) return;
     this.running = true;
     this.last = -1;
+    this.nextFrameAt = -1;
     this.schedule((t) => this.tick(t));
   }
 
@@ -43,6 +47,16 @@ export class GameLoop {
   private tick(timeMs: number): void {
     const t = timeMs / 1000;
     if (this.last < 0) this.last = t;
+    // Ограничение частоты кадров (телефоны). Расписание кадров: рисуем, когда наступил
+    // момент следующего кадра (допуск 1 мс на джиттер), и сдвигаем расписание на интервал —
+    // так на 144/165 Гц выходит ~120 кадров/с, а не каждый второй (72/82).
+    if (this.maxFps > 0) {
+      const interval = 1 / this.maxFps;
+      if (this.nextFrameAt < 0) this.nextFrameAt = t;
+      if (t < this.nextFrameAt - 0.001) return;
+      this.nextFrameAt += interval;
+      if (this.nextFrameAt < t - interval) this.nextFrameAt = t + interval;
+    }
     const realDt = Math.max(0, t - this.last);
     const frameDt = Math.min(MAX_FRAME, realDt);
     this.last = t;
