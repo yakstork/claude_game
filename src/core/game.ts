@@ -9,7 +9,7 @@ import { GameLoop } from './loop';
 import type { RenderSystem } from './renderer';
 import { ChaseCamera } from './camera';
 import { isTouchDevice, vibrate } from './device';
-import { DEFAULT_CUSTOM_BUILD, loadCustomBuild, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
+import { DEFAULT_CUSTOM_BUILD, loadCustomBuild, loadTrackIndex, saveTrackIndex, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
 import type {
   BotProfile,
   CarSpec,
@@ -25,7 +25,7 @@ import type {
   VehicleState,
 } from './types';
 import { Track, createProjection } from '../world/track';
-import { SUNSET_LOOP } from '../world/trackData';
+import { TRACKS, type TrackDefinition } from '../world/trackData';
 import { World } from '../world/world';
 import { PALETTE, cssColor } from '../world/palette';
 import { InputManager, resolveTouchMode } from '../input/input';
@@ -53,7 +53,8 @@ import {
   customStats,
   normalizeBuild,
 } from '../vehicle/handling';
-import { CUSTOM_CAR_ID } from './types';
+import { CUSTOM_CAR_ID, recordKey } from './types';
+import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
@@ -98,7 +99,8 @@ export class Game {
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 2000);
   readonly chase = new ChaseCamera(this.camera);
-  readonly track = new Track(SUNSET_LOOP);
+  track: Track;
+  trackIndex: number;
   readonly world: World;
   readonly effects = new EffectsManager();
   readonly input = new InputManager();
@@ -143,6 +145,9 @@ export class Game {
     this.records = loadRecords();
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, opts.carIndex));
 
+    const urlTrack = Number(new URLSearchParams(location.search).get('track') ?? NaN);
+    this.trackIndex = Number.isInteger(urlTrack) && urlTrack >= 0 && urlTrack < TRACKS.length ? urlTrack : loadTrackIndex(TRACKS.length);
+    this.track = new Track(TRACKS[this.trackIndex]);
     this.world = new World(this.scene, this.track);
     this.scene.add(this.effects.group);
 
@@ -155,6 +160,8 @@ export class Game {
       customBuild: { ...this.customBuild },
       customBudget: CUSTOM_BUDGET,
       customPalette: CUSTOM_PALETTE,
+      tracks: TRACKS.map((d) => this.trackInfo(d)),
+      trackIndex: this.trackIndex,
       callbacks: {
         onPreviewCar: (i) => this.setPreviewCar(i),
         onStartRace: (i) => this.startRace(i),
@@ -214,8 +221,21 @@ export class Game {
   private debugPanel: DebugPanel | null = null;
   customBuild: CustomBuild = paletteSafe(normalizeBuild(loadCustomBuild()));
 
-  /** Выбор трассы в меню (подключается вместе со второй трассой) */
-  selectTrack(_i: number): void {}
+  /** Выбор трассы в меню: пересобрать дорогу и окружение, сохранить выбор */
+  selectTrack(i: number): void {
+    if (i < 0 || i >= TRACKS.length || i === this.trackIndex || this.state !== 'menu') return;
+    this.trackIndex = i;
+    saveTrackIndex(i);
+    this.track = new Track(TRACKS[i]);
+    this.world.setTrack(this.track);
+    this.world.setQuality(this.settings.quality);
+    this.setPreviewCar(this.selectedCar);
+  }
+
+  private trackInfo(d: TrackDefinition): TrackInfo {
+    const t = d === this.track?.def ? this.track : new Track(d);
+    return { id: t.id, name: d.name, tagline: d.tagline ?? '', lengthKm: Math.round(t.length / 100) / 10 };
+  }
 
   /** Индекс машины «своя сборка» в CAR_SPECS */
   private get customIndex(): number {
@@ -671,11 +691,16 @@ export class Game {
     const carId = CAR_SPECS[this.selectedCar].id;
     const rec = this.records;
     const time = player.finishTime ?? race.raceTime;
-    const newBestLap = player.bestLap !== null && (rec.bestLap[carId] === undefined || player.bestLap < rec.bestLap[carId]);
-    const newBestRace = rec.bestRace[carId] === undefined || time < rec.bestRace[carId];
+    // рекорды — по трассе и машине; для Sunset Loop учитываем и старые ключи без трассы
+    const key = recordKey(this.track.id, carId);
+    const legacy = this.track.id === 'sunset' ? carId : null;
+    const prevLap = rec.bestLap[key] ?? (legacy ? rec.bestLap[legacy] : undefined);
+    const prevRace = rec.bestRace[key] ?? (legacy ? rec.bestRace[legacy] : undefined);
+    const newBestLap = player.bestLap !== null && (prevLap === undefined || player.bestLap < prevLap);
+    const newBestRace = prevRace === undefined || time < prevRace;
     const newBestDrift = this.drift.total > rec.bestDrift;
-    if (newBestLap && player.bestLap !== null) rec.bestLap[carId] = player.bestLap;
-    if (newBestRace) rec.bestRace[carId] = time;
+    if (newBestLap && player.bestLap !== null) rec.bestLap[key] = player.bestLap;
+    if (newBestRace) rec.bestRace[key] = time;
     if (newBestDrift) rec.bestDrift = Math.round(this.drift.total);
     rec.races += 1;
     if (playerPos === 1) rec.wins += 1;
@@ -854,6 +879,7 @@ export class Game {
       fps: Math.round(this.loop.fps),
       drawCalls: this.render.drawCalls(),
       quality: this.settings.quality,
+      trackId: this.track.id,
       touchMode: this.touchMode,
       controlMode: this.settings.controlMode,
       speedKmh: p ? Math.round(Math.hypot(p.velocity.x, p.velocity.z) * 3.6) : 0,

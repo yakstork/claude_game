@@ -6,6 +6,7 @@ import { PALETTE } from '../world/palette';
 const SETTINGS_KEY = 'neonrush.settings.v1';
 const RECORDS_KEY = 'neonrush.records.v1';
 const CUSTOM_KEY = 'neonrush.custom.v1';
+const TRACK_KEY = 'neonrush.track.v1';
 
 export const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.8,
@@ -103,4 +104,15 @@ export function loadCustomBuild(): CustomBuild {
 
 export function saveCustomBuild(b: CustomBuild): void {
   write(CUSTOM_KEY, b);
+}
+
+/** Последняя выбранная трасса (индекс в TRACKS) */
+export function loadTrackIndex(count: number): number {
+  const v = read<{ index: number }>(TRACK_KEY);
+  const i = v && typeof v.index === 'number' && Number.isInteger(v.index) ? v.index : 0;
+  return i >= 0 && i < count ? i : 0;
+}
+
+export function saveTrackIndex(index: number): void {
+  write(TRACK_KEY, { index });
 }

@@ -567,6 +567,32 @@ export class Environment {
       }
     }
 
+    // Световые тоннели: частые неоновые арки с бегущими огнями
+    for (const [f0, f1] of t.def.tunnels ?? []) {
+      const s0 = f0 * t.length;
+      const s1 = f1 * t.length;
+      this.reserved.push([t.wrapS(s0 - 4), t.wrapS(s1 + 4)]);
+      let k = 0;
+      for (let s = s0; s <= s1; s += 6, k++) {
+        t.sampleAt(s, sample);
+        uprightFrame(sample.position, sample.tangent, frame);
+        const hw = sample.halfWidth + 1.3;
+        const H = 7.5;
+        const neon = k % 2 ? PALETTE.cyan : PALETTE.magenta;
+        // фаза мигания бежит вдоль тоннеля — «световая волна» навстречу машине
+        const wave = 2 + ((k * 0.11) % 1);
+        for (const side of [-1, 1]) {
+          gb.box(0.6, H + 1.2, 0.6, 0x1d0b3a, 0, local(side * hw, (H - 1.2) / 2, 0));
+          gb.box(0.18, H - 0.6, 0.18, neon, 1, local(side * (hw - 0.4), H / 2, 0));
+          // скосы к потолку
+          gb.box(0.5, 0.5, 0.5, 0x1d0b3a, 0, local(side * (hw - 1.4), H - 0.6, 0).multiply(new Matrix4().makeRotationZ(Math.PI / 4)));
+        }
+        gb.box(hw * 2 - 1.6, 0.6, 0.6, 0x1d0b3a, 0, local(0, H, 0));
+        gb.box(hw * 2 - 2.2, 0.16, 0.16, neon, 1, local(0, H - 0.42, 0));
+        gb.box(1.6, 0.12, 0.3, PALETTE.yellow, wave, local(0, H - 0.5, 0.25));
+      }
+    }
+
     // Придорожные билборды на прямых, лицом к едущим
     let flip = 1;
     for (let s = 60; s < t.length; s += 150) {
@@ -611,7 +637,7 @@ export class Environment {
     let flip = 1;
     for (let s = 20; s < t.length; s += 46) {
       t.sampleAt(s, sample);
-      if (sample.position.y > 0.8) continue;
+      if (sample.position.y > 0.8 || this.isReserved(s)) continue;
       flip = -flip;
       const off = sample.halfWidth + 1.9;
       p.copy(sample.position).addScaledVector(sample.right, flip * off);
