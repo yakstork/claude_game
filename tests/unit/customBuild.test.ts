@@ -237,7 +237,6 @@ describe('customHandling: безопасные диапазоны', () => {
     expect(dr.driftGrip).toBeLessThan(base.driftGrip);
     // занос на скорости: больше «Дрифт» — сильнее дуга и торможение заносом на скорости
     expect(dr.driftTurnBoost).toBeGreaterThan(base.driftTurnBoost);
-    expect(dr.driftSpeedScrub).toBeGreaterThan(base.driftSpeedScrub);
     expect(dr.driftSpeedAngleGain).toBeGreaterThanOrEqual(base.driftSpeedAngleGain);
     expect(dr.grip).toBeLessThan(base.grip); // цена дрифта в GRIP
   });

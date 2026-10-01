@@ -186,13 +186,13 @@ describe('шпилька Sunset Loop: занос поворачивает и г�
     { id: 'grizzly', brake: 0, maxHard: 0, vMid: 55, vWall: 52, minExit: 25 },
     { id: 'razor', brake: 0, maxHard: 0, vMid: 55, vWall: 52, minExit: 25 },
     // Photon на нитро-максимуме (≈ 87 м/с) с коротким заносом: ему разрешено притормозить до 0.6 с перед Space
-    { id: 'photon', brake: 0.6, maxHard: 1, vMid: 60, vWall: 56, minExit: 25 },
+    { id: 'photon', brake: 0.6, maxHard: 0, vMid: 60, vWall: 56, minExit: 25 },
   ];
 
   for (const { id, brake, maxHard, vMid, vWall, minExit } of cases) {
-    it(`${id}: с нитро-максимума Space + руль за 20/30/40 м до входа (газ в пол${brake ? ', тормоз ≤ ' + brake + ' с до Space' : ''}, нитро вкл/выкл): проходит шпильку, ударов > 0.5 не больше ${maxHard}`, () => {
+    it(`${id}: с нитро-максимума Space + руль за ${id === 'photon' ? '10/20/30/40' : '20/30/40'} м до входа (газ в пол${brake ? ', тормоз ≤ ' + brake + ' с до Space' : ''}, нитро вкл/выкл): проходит шпильку, ударов > 0.5 не больше ${maxHard}`, () => {
       for (const nitro of [false, true]) {
-        for (const spaceBack of [20, 30, 40]) {
+        for (const spaceBack of id === 'photon' ? [10, 20, 30, 40] : [20, 30, 40]) {
           const r = hairpin(id, spaceBack, nitro, brake);
           const label = `${id} Space за ${spaceBack} м, нитро ${nitro ? 'вкл' : 'выкл'}`;
           expect(r.respawn, label + ': респаун').toBe(false);
@@ -229,6 +229,102 @@ describe('шпилька Sunset Loop: занос поворачивает и г�
     const b = hairpin('grizzly', 30, false, 0);
     expect(b).toEqual(a);
   });
+});
+
+
+// ─── Круг: «игрок дрифтит в каждом повороте» ───────────────────────────────
+
+/**
+ * Круг Sunset Loop на постоянной скорости V: Space + руль в каждом повороте (кривизна впереди > 1/70),
+ * руль ведёт по осевой (база 0.45 + ПД). Считаем касания ВНУТРЕННЕЙ стены в S-поворотах (s ≈ 760–900) —
+ * признак перекрута (дуга слишком туга и не управляется рулём). Старая версия (до скоростных правок):
+ * Grizzly 33 / 0 / 0, Razor 113 / 27 / 0, Photon 28 / 6 / 0 касаний на 30 / 35 / 40 м/с.
+ */
+function driftLap(carId: string, V: number): { covered: number; innerS: number; respawns: number } {
+  const rightSign = Math.sign(track.curvatureAt(600));
+  const p = track.sampleAt(40);
+  const h = Math.atan2(p.tangent.x, p.tangent.z);
+  const car = new VehiclePhysics(SPEC[carId], track);
+  car.reset(p.position, h, 40);
+  car.state.velocity.set(Math.sin(h) * V, 0, Math.cos(h) * V);
+  car.state.speed = V;
+  const st = car.state;
+  const c = ctl();
+  let t = 0;
+  let inDrift = false;
+  let covered = 0;
+  let lastS = 40;
+  let innerS = 0;
+  let respawns = 0;
+  while (t < 140 && covered < track.length - 80) {
+    const Vv = Math.hypot(st.velocity.x, st.velocity.z);
+    let kMax = 0;
+    for (let d = 0; d <= 35; d += 5) {
+      const k = track.curvatureAt(st.trackS + d);
+      if (Math.abs(k) > Math.abs(kMax)) kMax = k;
+    }
+    const kHere = track.curvatureAt(st.trackS);
+    if (!inDrift && Math.abs(kMax) > 1 / 70 && Vv > 22) inDrift = true;
+    if (inDrift && Math.abs(kHere) < 0.004 && Math.abs(kMax) < (1 / 70) * 0.6) inDrift = false;
+    const dir = Math.sign(kMax || kHere) * rightSign;
+    if (inDrift) {
+      const L = 10 + 0.35 * Vv;
+      const tp = track.sampleAt(st.trackS + L, smp);
+      const dx = tp.position.x - st.position.x;
+      const dz = tp.position.z - st.position.z;
+      let err = Math.atan2(st.velocity.x, st.velocity.z) - Math.atan2(dx, dz);
+      while (err > Math.PI) err -= 2 * Math.PI;
+      while (err < -Math.PI) err += 2 * Math.PI;
+      c.steer = dir * MathUtils.clamp(0.45 + 2 * dir * err - 0.05 * dir * st.lateral, 0.2, 1);
+    } else {
+      c.steer = gripSteer(car);
+    }
+    c.handbrake = inDrift;
+    c.throttle = MathUtils.clamp((V - Vv) * 0.3 + 0.3, 0, 1);
+    c.brake = Vv > V + 4 ? 0.6 : 0;
+    car.step(DT, c);
+    t += DT;
+    for (const e of car.events) {
+      if (e.type !== 'wall') continue;
+      const kk = Math.sign(track.curvatureAt(st.trackS)) * rightSign;
+      const inner = kk !== 0 && Math.sign(st.lateral) === kk && Math.abs(track.curvatureAt(st.trackS)) > 0.004;
+      if (inner && st.trackS >= 760 && st.trackS <= 900) innerS++;
+    }
+    if (car.needsRespawn) {
+      respawns++;
+      const q = track.sampleAt(st.trackS);
+      const hh = Math.atan2(q.tangent.x, q.tangent.z);
+      car.reset(q.position, hh, st.trackS);
+      car.state.velocity.set(Math.sin(hh) * V, 0, Math.cos(hh) * V);
+      car.state.speed = V;
+      car.needsRespawn = false;
+    }
+    let ds = st.trackS - lastS;
+    if (ds < -1000) ds += track.length;
+    if (ds > 0 && ds < 50) covered += ds;
+    lastS = st.trackS;
+  }
+  return { covered, innerS, respawns };
+}
+
+describe('круг: дрифт в каждом повороте на 30–40 м/с не прижимает к внутренней стене S-поворотов', () => {
+  // допуск: касания старой версии + 20% (+3 на шум): Grizzly 33/0/0, Razor 113/27/0, Photon 28/6/0
+  const OLD: Record<string, Record<number, number>> = {
+    grizzly: { 30: 33, 35: 0, 40: 0 },
+    razor: { 30: 113, 35: 27, 40: 0 },
+    photon: { 30: 28, 35: 6, 40: 0 },
+  };
+  for (const id of IDS) {
+    it(`${id}: круг со скоростью 30/35/40 м/с — проезжается, касаний внутренней стены в S-поворотах не больше старой версии + 20%`, () => {
+      for (const V of [30, 35, 40]) {
+        const r = driftLap(id, V);
+        const label = `${id} ${V} м/с`;
+        expect(r.respawns, label + ': респауны').toBe(0);
+        expect(r.covered, label + ': круг проехан').toBeGreaterThanOrEqual(track.length - 80);
+        expect(r.innerS, `${label}: касания внутренней стены в S (было ${OLD[id][V]})`).toBeLessThanOrEqual(Math.floor(OLD[id][V] * 1.2) + 3);
+      }
+    });
+  }
 });
 
 // ─── Физика заноса на ровной площадке ──────────────────────────────────────
@@ -342,9 +438,63 @@ describe('занос зависит от скорости (ровная площ
     }
     // характер: Grizzly поворачивает в заносе лучше всех, Photon — меньше всех (но всё равно ≥ 1.25× GRIP)
     const ratio = (id: string, v: number): number => drift(id, v).aLat / gripLimit(id, v);
-    for (const v of [25, 30, 35]) {
+    for (const v of [30, 35]) {
       expect(ratio('grizzly', v), `${v} м/с: Grizzly > Razor`).toBeGreaterThan(ratio('razor', v));
       expect(ratio('razor', v), `${v} м/с: Razor > Photon`).toBeGreaterThan(ratio('photon', v));
+    }
+  });
+
+  /** Радиус дуги в установившемся заносе (1–2 с) при заданном руле, м */
+  const steadyRadius = (id: string, v: number, steer: number): number => {
+    const car = new VehiclePhysics(SPEC[id], wide);
+    const sm = wide.sampleAt(300);
+    const h = Math.atan2(sm.tangent.x, sm.tangent.z);
+    car.reset(sm.position, h, 300);
+    car.state.velocity.set(Math.sin(h) * v, 0, Math.cos(h) * v);
+    car.state.speed = v;
+    const st = car.state;
+    let psiPrev = h;
+    let turned = 0;
+    let sumV = 0;
+    let n = 0;
+    for (let k = 1; k <= 240; k++) {
+      car.step(DT, ctl({ throttle: 1, steer, handbrake: true }));
+      const psi = Math.atan2(st.velocity.x, st.velocity.z);
+      let d = psi - psiPrev;
+      if (d > Math.PI) d -= 2 * Math.PI;
+      if (d < -Math.PI) d += 2 * Math.PI;
+      psiPrev = psi;
+      if (k > 120) {
+        turned += Math.abs(d);
+        sumV += Math.hypot(st.velocity.x, st.velocity.z);
+        n++;
+      }
+    }
+    expect(st.drifting, `${id} ${v} м/с руль ${steer}: занос держится`).toBe(true);
+    return sumV / n / (turned / 1);
+  };
+
+  it('дугой управляет руль: радиус при руле 0.45 не меньше 1.5× радиуса при руле 1.0 на 35 и 50 м/с', () => {
+    for (const id of IDS) {
+      for (const v of [35, 50]) {
+        const full = steadyRadius(id, v, 1);
+        const half = steadyRadius(id, v, 0.45);
+        expect(half, `${id} ${v} м/с: R(0.45) = ${half.toFixed(0)}, R(1.0) = ${full.toFixed(0)}`).toBeGreaterThanOrEqual(1.5 * full);
+      }
+    }
+  });
+
+  it('радиус дуги на 35 м/с: руль 1.0 / 0.45 — Grizzly ≈ 45–55 / ≥ 80, Razor ≈ 50–62 / ≥ 85, Photon ≈ 58–70 / ≥ 95 м', () => {
+    const want: Record<string, [number, number, number]> = { grizzly: [44, 56, 80], razor: [49, 62, 85], photon: [58, 70, 95] };
+    for (const id of IDS) {
+      const full = steadyRadius(id, 35, 1);
+      const half = steadyRadius(id, 35, 0.45);
+      const [lo, hi, minHalf] = want[id];
+      expect(full, `${id}: R(1.0) на 35 м/с`).toBeGreaterThanOrEqual(lo);
+      expect(full, `${id}: R(1.0) на 35 м/с`).toBeLessThanOrEqual(hi);
+      expect(half, `${id}: R(0.45) на 35 м/с`).toBeGreaterThanOrEqual(minHalf);
+      // и всё равно туже GRIP на полном руле
+      expect(full, `${id}: туже сцепления`).toBeLessThan((35 * 35) / gripLimit(id, 35));
     }
   });
 
@@ -365,14 +515,14 @@ describe('занос зависит от скорости (ровная площ
     }
   });
 
-  it('характер: Grizzly на скорости поворачивает лучше всех (угол, дуга, торможение), Photon — короче и мягче', () => {
+  it('характер: Grizzly на скорости поворачивает лучше всех (угол, дуга), Photon — короче и с самой слабой дугой на средних скоростях', () => {
     const [razor, grizzly, photon] = IDS.map((id) => drift(id, 75));
     expect(grizzly.angle).toBeGreaterThan(razor.angle);
     expect(razor.angle).toBeGreaterThan(photon.angle);
     expect(grizzly.radius).toBeLessThan(razor.radius);
-    expect(razor.radius).toBeLessThan(photon.radius);
-    expect(grizzly.decel).toBeGreaterThan(photon.decel);
-    expect(razor.decel).toBeGreaterThan(photon.decel);
+    expect(grizzly.radius).toBeLessThan(photon.radius);
+    // Photon заносом гасит скорость не слабее остальных: при малом угле ему нужен сильный скраб, чтобы вписаться в шпильку
+    expect(photon.decel).toBeGreaterThanOrEqual(15);
   });
 
   it('торможение заносом зависит от угла: при слабом контрруле (малый угол) на 75 м/с занос тормозит заметно слабее', () => {

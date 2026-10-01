@@ -827,7 +827,9 @@ export class VehiclePhysics {
       const angN = clamp(bd / cfg.driftMaxAngle, 0, 1);
       const pf = (0.8 + 0.25 * clamp(steerInto, 0, 1) + 0.25 * angN) * (0.1 + 0.9 * entry);
       // боковое ускорение растёт со скоростью и углом: на 70–80 м/с дуга реально загибается
-      const aLat = cfg.driftGrip * G_REAL * pf * (1 + cfg.driftTurnBoost * boostT * angN);
+      // дугой управляет руль в занос: при нейтральном руле — базовая дуга (без усиления и чуть шире)
+      const ss = clamp(steerInto, 0, 1);
+      const aLat = cfg.driftGrip * G_REAL * pf * (1 - cfg.driftArcSteer * (1 - ss)) * (1 + cfg.driftTurnBoost * boostT * angN * ss);
       target = clamp((-dir * aLat) / Math.max(V, 6), -MAX_PATH_RATE, MAX_PATH_RATE);
     } else {
       // выход: GRIP берёт управление — рыскание, как при обычном повороте

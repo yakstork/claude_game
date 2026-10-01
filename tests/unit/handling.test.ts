@@ -176,14 +176,14 @@ describe('HandlingConfig: единый конфиг и метаданные дл
     expect(razor.driftSelfAlign).toBeLessThan(photon.driftSelfAlign);
     expect(grizzly.driftExitRate).toBeLessThan(razor.driftExitRate);
     expect(razor.driftExitRate).toBeLessThan(photon.driftExitRate);
-    // занос на скорости («конвертер скорости в поворот»): Grizzly — самая сильная дуга и самый сильный скраб,
+    // занос на скорости («конвертер скорости в поворот»): Grizzly — самая сильная дуга и самый ранний «завод» дуги,
     // Photon — самый короткий занос и самая слабая дуга (на максималке ему надо притормозить)
     expect(grizzly.driftTurnBoost).toBeGreaterThan(razor.driftTurnBoost);
     expect(razor.driftTurnBoost).toBeGreaterThan(photon.driftTurnBoost);
     expect(grizzly.driftBoostStart).toBeLessThan(razor.driftBoostStart);
     expect(razor.driftBoostStart).toBeLessThan(photon.driftBoostStart);
-    expect(grizzly.driftSpeedScrub).toBeGreaterThan(razor.driftSpeedScrub);
-    expect(razor.driftSpeedScrub).toBeGreaterThan(photon.driftSpeedScrub);
+    // Photon с малым углом заноса тормозит заносом сильнее на единицу sin(угла): иначе на нитро-максимуме не вписаться в шпильку
+    expect(photon.driftSpeedScrub).toBeGreaterThan(grizzly.driftSpeedScrub);
     for (const h of [razor, grizzly, photon]) {
       expect(h.driftSpeedAngleGain).toBeGreaterThan(0);
       expect(h.driftTurnBoost).toBeGreaterThan(0);
