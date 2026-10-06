@@ -208,11 +208,13 @@ export class MainMenu {
     const btns = el('div', 'menu-buttons', undefined, root);
     const race = el('div', 'btn big', undefined, btns);
     el('span', undefined, 'ГОНКА', race);
+    // пункт режима — в Nav сразу после «ГОНКА» (фокус по умолчанию остаётся на «ГОНКА»)
+    let modeNav: Parameters<Nav['add']>[0] | null = null;
     if (onToggleMode) {
       const modeBtn = el('div', 'btn mode-btn', undefined, btns);
       this.modeEl = el('span', undefined, modeLabel('race'), modeBtn);
       modeBtn.setAttribute('aria-label', 'Режим: гонка с ботами или заезд на время');
-      nav.add({ el: modeBtn, activate: onToggleMode, adjust: () => (onToggleMode(), true) });
+      modeNav = { el: modeBtn, activate: onToggleMode, adjust: () => (onToggleMode(), true) };
     }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
@@ -221,6 +223,7 @@ export class MainMenu {
       return true;
     };
     nav.add({ el: race, activate: () => cb.onStartRace(this.index), adjust });
+    if (modeNav) nav.add(modeNav);
     nav.add({ el: this.customBtn, activate: onCustomize, adjust });
     nav.add({ el: sett, activate: onSettings, adjust });
     // «На весь экран» — только если Fullscreen API есть (на iPhone нет)
