@@ -76,6 +76,7 @@ describe('слайдер', () => {
   it('formatPercent', () => {
     expect(formatPercent(0.7)).toBe('70%');
     expect(formatPercent(1.4)).toBe('100%');
+    expect(formatPercent(Number.NaN)).toBe('0%');
     expect(formatPercentRaw(1.4)).toBe('140%');
     expect(formatPercentRaw(0.7)).toBe('70%');
     expect(formatPercentRaw(1.5)).toBe('150%');
