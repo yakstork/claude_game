@@ -70,6 +70,15 @@ describe('theory: ноты и мотор', () => {
     expect(f).toBeLessThanOrEqual(2500);
   });
 
+  it('ветер растёт со скоростью, рык — с газом', () => {
+    const t = makeEngineTargets();
+    const slow = { ...computeEngineTargets({ ...base, speed: 5, throttle: 0 }, t) };
+    const fast = { ...computeEngineTargets({ ...base, speed: 70, throttle: 1 }, t) };
+    expect(fast.windGain).toBeGreaterThan(slow.windGain);
+    expect(fast.growlGain).toBeGreaterThan(slow.growlGain);
+    expect(fast.windFreq).toBeGreaterThan(slow.windFreq);
+  });
+
   it('NaN/выход за диапазон не ломают цели', () => {
     const t = computeEngineTargets({ rpm: NaN, throttle: 5, speed: NaN, skid: -1, nitro: false, onGround: true }, makeEngineTargets());
     for (const v of Object.values(t)) expect(Number.isFinite(v)).toBe(true);

@@ -28,6 +28,12 @@ export interface EngineTargets {
   skidGain: number;
   /** Центр полосового фильтра визга, Гц */
   skidFreq: number;
+  /** Громкость шума ветра (растёт со скоростью) */
+  windGain: number;
+  /** Центр полосового фильтра ветра, Гц */
+  windFreq: number;
+  /** Громкость «рыка» (квинта + нагрузка на газу) */
+  growlGain: number;
 }
 
 /** Порог визга по skid (0..1). */
@@ -60,6 +66,10 @@ export function computeEngineTargets(p: EngineAudioParams, out: EngineTargets): 
   const skidOn = p.onGround && speed > 5 && skid > SKID_THRESHOLD;
   out.skidGain = skidOn ? ((skid - SKID_THRESHOLD) / (1 - SKID_THRESHOLD)) * 0.2 : 0;
   out.skidFreq = 1200 + skid * 1300;
+  const sp = clamp(speed / 70, 0, 1);
+  out.windGain = sp * sp * 0.09;
+  out.windFreq = 450 + sp * 1500;
+  out.growlGain = 0.12 + thr * 0.3 + rpm * 0.12;
   return out;
 }
 
@@ -78,7 +88,7 @@ export function applyBoost(out: EngineTargets, boost: number): EngineTargets {
 }
 
 export function makeEngineTargets(): EngineTargets {
-  return { freq: 55, cutoff: 400, gain: 0, nitroGain: 0, nitroFreq: 2200, skidGain: 0, skidFreq: 1200 };
+  return { freq: 55, cutoff: 400, gain: 0, nitroGain: 0, nitroFreq: 2200, skidGain: 0, skidFreq: 1200, windGain: 0, windFreq: 450, growlGain: 0.1 };
 }
 
 // ---------------------------------------------------------------------------
