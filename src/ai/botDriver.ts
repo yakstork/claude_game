@@ -74,6 +74,16 @@ const PACK_CLAMP = 250;
 /** Занос целится внутрь поворота на эту долю полуширины: на выходе машину выносит наружу */
 const DRIFT_INNER = 0.55;
 
+/** Слипстрим: садимся в мешок на прямой не короче DRAFT_MIN_RUN м, на дистанции до DRAFT_RANGE, не дольше DRAFT_MAX_TIME */
+const DRAFT_MIN_RUN = 110;
+const DRAFT_MIN_SPEED = 28;
+const DRAFT_RANGE = 24;
+const DRAFT_FULL = 0.95;
+const DRAFT_MAX_TIME = 5;
+const DRAFT_COOLDOWN = 5;
+/** Если за это время мешок не начал заполняться (не попали в конус) — отказываемся, с */
+const DRAFT_GRACE = 0.5;
+
 const { clamp } = MathUtils;
 
 /** Детерминированный хэш 0..1 */
@@ -111,6 +121,11 @@ export class BotDriver {
   private readonly out: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
   /** Время, прошедшее с последнего движения вперёд (>4 м/с), с. Для респауна ведущим. */
   stuckTime = 0;
+  /** Слипстрим-логика: сколько секунд подряд сидим в мешке / пауза до следующей попытки */
+  /** Выключатель слипстрим-логики (для тестов) */
+  draftEnabled = true;
+  private draftTime = 0;
+  private draftCool = 0;
   /** Включает заносы ради буста (по умолчанию — да; бот сам решает, в каких поворотах) */
   driftEnabled = true;
   /** Число кругов гонки (для нитро «на финиш» на последнем круге) */
@@ -403,7 +418,29 @@ export class BotDriver {
     if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
     if (this.defendTimer > 0) this.defendTimer -= dt;
     const window = 12 + 20 * aggrNow + Math.max(0, vFwd - (ahead ? ahead.speed : vFwd)) * 0.7;
-    const overtaking = ahead !== null && aheadDs < window && aheadDs > 3.5 - 2 * aggrNow + 1;
+    // слипстрим: на прямой садимся в мешок к машине впереди, а когда он полный — выходим на обгон
+    if (this.draftCool > 0) this.draftCool -= dt;
+    let drafting = false;
+    if (
+      this.draftEnabled && ahead !== null && !this.calibrating && this.draftCool <= 0 &&
+      (self.slipstream > 0.05 || this.draftTime > 0) && run >= DRAFT_MIN_RUN && speed > DRAFT_MIN_SPEED && aheadDs > 6 && aheadDs < DRAFT_RANGE && self.slipstream < DRAFT_FULL
+    ) {
+      this.draftTime += dt;
+      if (this.draftTime > DRAFT_MAX_TIME || (this.draftTime > DRAFT_GRACE && self.slipstream < 0.1)) {
+        this.draftTime = 0;
+        this.draftCool = DRAFT_COOLDOWN;
+      } else drafting = true;
+    } else if (this.draftTime > 0 && !(ahead !== null && aheadDs < DRAFT_RANGE && self.slipstream < DRAFT_FULL)) {
+      // мешок полный (или лидер потерян): обгон, повторно садиться в мешок не сразу
+      if (ahead !== null && self.slipstream >= DRAFT_FULL) this.draftCool = DRAFT_COOLDOWN;
+      this.draftTime = 0;
+    }
+    const overtaking = !drafting && ahead !== null && aheadDs < window && aheadDs > 3.5 - 2 * aggrNow + 1;
+    if (drafting && ahead !== null) {
+      // идём ровно в хвост лидера; близко — не наезжаем
+      shiftTarget = clamp(ahead.lateral - self.lateral, -3, 3);
+      if (aheadDs < 9) followCap = ahead.speed + Math.max(0, aheadDs - 7) * 0.6;
+    }
     if (overtaking && ahead !== null) {
       if (this.overtakeTimer <= 0 || this.overtakeSide === 0) {
         const spaceRight = usable - ahead.lateral;
