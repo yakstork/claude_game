@@ -158,6 +158,7 @@ export class Game {
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
   private readonly stunts = new StuntScorer();
+  private lastStrikes = 0;
   /** Прогресс наград */
   private achievements: AchievementProgress = loadProgress();
   /** Текущий кубок (серия гонок), null — вне кубка */
@@ -422,6 +423,7 @@ export class Game {
 
   enterMenu(): void {
     this.cup = null;
+    this.audio.setAmbience(null);
     this.clearRace();
     this.state = 'menu';
     this.paused = false;
@@ -563,6 +565,9 @@ export class Game {
     this.lastResult = null;
     this.audio.setPaused(false);
     this.audio.playMusic('race');
+    this.audio.setMusicIntensity(this.laps === 1 ? 1 : 0);
+    this.audio.setAmbience(this.world.ambience);
+    this.lastStrikes = this.world.lightningStrikes;
     this.ui.showRaceHud(this.track.outline(256));
     this.hud.totalRacers = this.cars.length;
     if (this.mode === 'cup') {
@@ -733,6 +738,7 @@ export class Game {
       if (ev.type === 'lap') {
         this.onPlayerLap(ev.lapTime);
         this.audio.play('lap');
+        if (ev.lap === this.laps - 1) this.audio.setMusicIntensity(1);
         if (ev.lap < this.laps) {
           this.ui.banner(ev.lap === this.laps - 1 ? 'ФИНАЛЬНЫЙ КРУГ' : `КРУГ ${ev.lap + 1}/${this.laps}`, ev.lap === this.laps - 1 ? 'orange' : 'cyan');
         }
@@ -939,6 +945,12 @@ export class Game {
     this.effects.update(this.paused ? 0 : dt, this.camera, player ? Math.abs(player.speed) : 0, speedLines);
 
     this.world.update(this.camera.position);
+    // гром — с задержкой после вспышки молнии (звук идёт медленнее света)
+    const strikes = this.world.lightningStrikes;
+    if (strikes !== this.lastStrikes) {
+      this.lastStrikes = strikes;
+      if (this.cars.length && !this.paused) window.setTimeout(() => this.audio.thunder(0.4 + Math.random() * 0.6), 300 + Math.random() * 2500);
+    }
 
     this.fpsTimer += dt;
     if (this.settings.showFps && this.fpsTimer > 0.5) {
