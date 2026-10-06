@@ -11,6 +11,11 @@ export const LOOKAHEAD_S = 0.12;
 export const TICK_MS = 25;
 /** Постоянная времени кроссфейда (≈98% за 0.8 с). */
 const FADE_TC = 0.2;
+/** Срез общего фильтра мелодики: обычный / финальный круг, Гц. */
+const DULL_CUT = 5200;
+const BRIGHT_CUT = 16000;
+/** Переход к финальному кругу, с (≈98% за 1.6 с). */
+const INTENSITY_TC = 0.4;
 
 /** Один играющий трек: свой подграф (шина, delay, reverb) и позиция секвенсора. */
 class TrackPlayer {
@@ -18,6 +23,9 @@ class TrackPlayer {
   private readonly drums: GainNode;
   /** Шина мелодических партий (бас/пэд/арпеджио/эхо) — сюда «приседание» сайдчейна на бочке. */
   private readonly mel: GainNode;
+  private readonly melFilter: BiquadFilterNode;
+  private readonly baseDrums: number;
+  private intensity: 0 | 1 = 0;
   private readonly style: SongStyle | undefined;
   private readonly duckDepth: number;
   private readonly delaySend: GainNode;
@@ -47,13 +55,20 @@ class TrackPlayer {
     this.out.gain.value = 0;
     this.out.connect(dest);
 
+    this.baseDrums = race ? 1 : 0.8;
     this.drums = ctx.createGain();
-    this.drums.gain.value = race ? 1 : 0.8;
+    this.drums.gain.value = this.baseDrums;
     this.drums.connect(this.out);
 
     this.mel = ctx.createGain();
     this.mel.gain.value = 1;
-    this.mel.connect(this.out);
+    // общий lowpass мелодики: на финальном круге открывается (ярче)
+    this.melFilter = ctx.createBiquadFilter();
+    this.melFilter.type = 'lowpass';
+    this.melFilter.Q.value = 0.4;
+    this.melFilter.frequency.value = DULL_CUT;
+    this.mel.connect(this.melFilter);
+    this.melFilter.connect(this.out);
 
     // эхо арпеджио: точка с долей (3 шестнадцатых), обратная связь с lowpass
     const delay = ctx.createDelay(1);
@@ -86,8 +101,16 @@ class TrackPlayer {
     reverbWet.connect(this.mel);
 
     this.persistent.push(
-      this.out, this.drums, this.mel, delay, fb, fbFilter, delayWet, this.delaySend, conv, reverbWet, this.reverbSend,
+      this.out, this.drums, this.mel, this.melFilter, delay, fb, fbFilter, delayWet, this.delaySend, conv, reverbWet, this.reverbSend,
     );
+  }
+
+  /** Финальный круг: фильтр открыт, барабаны громче, добавляются хэт 1/16 и октавный бас. Плавно. */
+  setIntensity(level: 0 | 1): void {
+    this.intensity = level;
+    const now = this.ctx.currentTime;
+    this.melFilter.frequency.setTargetAtTime(level ? BRIGHT_CUT : DULL_CUT, now, INTENSITY_TC);
+    this.drums.gain.setTargetAtTime(this.baseDrums * (level ? 1.18 : 1), now, INTENSITY_TC);
   }
 
   /** Запуск с плавным появлением. */
@@ -148,8 +171,12 @@ class TrackPlayer {
     if (ev.snare !== undefined) this.snare(t, ev.snare);
     if (ev.clap !== undefined) this.clap(t, ev.clap);
     if (ev.hat) this.hat(t, ev.hat.vel, ev.hat.open);
+    else if (this.intensity && this.track === 'race') this.hat(t, 0.45, false); // хэт 1/16
     if (ev.crash !== undefined) this.crash(t, ev.crash);
-    if (ev.bass) this.bass(t, ev.bass);
+    if (ev.bass) {
+      this.bass(t, ev.bass);
+      if (this.intensity) this.octaveBass(t, ev.bass);
+    }
     if (ev.arp) this.arp(t, ev.arp);
   }
 
@@ -235,6 +262,14 @@ class TrackPlayer {
     osc.onended = () => disconnectAll(osc, lp, g, sub, sg);
   }
 
+  /** Октавный бас поверх основного (финальный круг). */
+  private octaveBass(t: number, e: BassEvent): void {
+    playTone(this.ctx, this.mel, {
+      type: 'triangle', freq: midiToFreq(e.midi + 12), start: t, dur: e.steps * this.stepDur * 0.8,
+      gain: 0.11 * e.vel, attack: 0.006, cutoff: 1600,
+    });
+  }
+
   private arp(t: number, e: ArpEvent): void {
     const race = this.track === 'race';
     const dur = e.steps * this.stepDur * (race ? (this.style && this.style.arpSteps > 1 ? 0.9 : 1.0) : 1.3);
@@ -287,6 +322,7 @@ class TrackPlayer {
 /** Управляет текущим треком и кроссфейдом; планировщик тикает каждые TICK_MS. */
 export class MusicSequencer {
   private current: TrackPlayer | null = null;
+  private level: 0 | 1 = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   /** Следующая гоночная композиция: старт случайный, дальше по кругу. */
   private nextRace = Math.floor(Math.random() * RACE_VARIANTS);
@@ -320,6 +356,7 @@ export class MusicSequencer {
       }
       const p = new TrackPlayer(this.ctx, this.dest, track, variant);
       const at = this.ctx.currentTime + 0.06;
+      if (this.level) p.setIntensity(this.level);
       p.start(at);
       this.current = p;
       p.pump(this.ctx.currentTime + LOOKAHEAD_S);
@@ -327,6 +364,12 @@ export class MusicSequencer {
     } else {
       this.stopTimer();
     }
+  }
+
+  /** Финальный круг вкл/выкл; новый трек всегда стартует с 0. */
+  setIntensity(level: 0 | 1): void {
+    this.level = level;
+    this.current?.setIntensity(level);
   }
 
   /** Спланировать ноты до `until` (в тестах с OfflineAudioContext вызывается вручную). */
