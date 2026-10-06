@@ -84,8 +84,9 @@ export class MainMenu {
     onCustomize: () => void = () => undefined,
     tracks: TrackInfo[] = [],
     trackIndex = 0,
-    /** Переключение режима «Гонка» / «На время» (null — кнопки нет) */
+    /** Переключение режима «Гонка» / «Кубок» / «На время» (null — кнопки нет) */
     onToggleMode: (() => void) | null = null,
+    onTips: () => void = () => undefined,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -224,6 +225,13 @@ export class MainMenu {
     nav.add({ el: sett, activate: onSettings, adjust });
     // «На весь экран» — только если Fullscreen API есть (на iPhone нет)
     addFullscreenButton(btns, nav);
+
+    // «?» — «Как играть» (последний пункт Nav, чтобы не сдвигать индексы остальных)
+    const help = el('div', 'help-btn', undefined, root);
+    help.setAttribute('role', 'button');
+    help.setAttribute('aria-label', 'Как играть');
+    el('span', undefined, '?', help);
+    nav.add({ el: help, activate: onTips });
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);
