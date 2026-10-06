@@ -354,11 +354,21 @@ export class PauseScreen {
 
 // ─── Результаты ─────────────────────────────────────────────────────────────
 
+/** Локальная копия вида CupSummary (src/race/cup.ts) — UI не импортирует race/. */
+interface CupInfo {
+  round: number;
+  rounds: number;
+  finished: boolean;
+  rows: { name: string; isPlayer: boolean; color: string; points: number; last: number; position: number }[];
+}
+
 export class ResultsScreen {
   readonly el: HTMLElement;
   readonly nav: Nav;
   private readonly body: HTMLElement;
   private readonly btnRow: HTMLElement;
+  private fx: HTMLElement | null = null;
+  private readonly againLabel: HTMLElement;
 
   constructor(
     parent: HTMLElement,
@@ -376,6 +386,7 @@ export class ResultsScreen {
     this.body = el('div', 'results-body nr-scroll', undefined, panel);
     this.btnRow = el('div', 'results-actions', undefined, panel);
     const again = makeButton(this.btnRow, 'ЕЩЁ РАЗ', 'big');
+    this.againLabel = again.firstElementChild as HTMLElement;
     const menu = makeButton(this.btnRow, 'В МЕНЮ');
     nav.add({ el: again, activate: () => cb.onRestart() });
     nav.add({ el: menu, activate: () => cb.onQuitToMenu() });
@@ -386,9 +397,16 @@ export class ResultsScreen {
     const body = this.body;
     body.replaceChildren();
     body.scrollTop = 0;
+    const cup = (r as RaceResult & { cup?: CupInfo }).cup;
     const win = r.playerPosition === 1;
+    // итог кубка: победа в кубке — праздник, иначе — место в зачёте
+    const cupPlace = cup?.rows.find((x) => x.isPlayer)?.position ?? r.playerPosition;
+    const cupDone = cup !== undefined && cup.finished;
+    const celebrate = cupDone ? cupPlace === 1 : win;
+    const title = cupDone ? (cupPlace === 1 ? 'КУБОК ВЫИГРАН!' : `КУБОК · ${cupPlace}-Е МЕСТО`) : resultTitle(r.playerPosition);
+    this.againLabel.textContent = cup ? (cup.finished ? 'НОВЫЙ КУБОК' : 'СЛЕДУЮЩАЯ ГОНКА') : 'ЕЩЁ РАЗ';
     const head = el('div', 'results-head', undefined, body);
-    el('div', `results-title${win ? ' win' : ''}`, resultTitle(r.playerPosition), head);
+    el('div', `results-title${celebrate ? ' win' : ''}`, title, head);
     const car = this.cars.find((c) => c.id === r.carId);
     if (car || trackName) {
       const line = el('div', 'results-car', car ? car.name : '', head);
@@ -411,9 +429,10 @@ export class ResultsScreen {
     el('span', undefined, 'ПИЛОТ', hr);
     el('span', 'num', 'ВРЕМЯ', hr);
     el('span', 'num', 'ЛУЧШИЙ КРУГ', hr);
-    for (const row of r.rows) {
+    r.rows.forEach((row, ri) => {
       const cls = `rrow${row.isPlayer ? ' me' : ''}${row.projected ? ' proj' : ''}`;
       const rr = el('div', cls, undefined, table);
+      rr.style.animationDelay = `${0.12 + ri * 0.07}s`;
       el('span', 'rpos', String(row.position), rr);
       const who = el('span', 'rname', undefined, rr);
       const dot = el('i', 'rdot', undefined, who);
@@ -423,6 +442,21 @@ export class ResultsScreen {
       el('span', 'num', `${row.projected ? '~' : ''}${formatTime(row.time)}`, rr);
       const fast = row.bestLap !== null && row.bestLap === fastest;
       el('span', `num${fast ? ' fastest' : ''}`, formatTime(row.bestLap), rr);
+    });
+
+    // времена кругов игрока (поле необязательное: пока гонка его не отдаёт — блок скрыт)
+    const laps = (r as RaceResult & { lapTimes?: number[] }).lapTimes;
+    if (laps && laps.length > 1) {
+      let best = Infinity;
+      for (const t of laps) if (t < best) best = t;
+      const box = el('div', 'laps', undefined, body);
+      el('span', 'hud-label', 'КРУГИ', box);
+      laps.forEach((t, i) => {
+        const chip = el('div', `lap${t === best ? ' best' : ''}`, undefined, box);
+        chip.style.animationDelay = `${0.35 + i * 0.08}s`;
+        el('span', 'lap-n', String(i + 1), chip);
+        el('span', 'lap-t', formatTime(t), chip);
+      });
     }
 
     const sum = el('div', 'rsummary', undefined, body);
@@ -430,7 +464,53 @@ export class ResultsScreen {
     this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
     this.stat(sum, 'ОЧКИ ДРИФТА', formatScore(r.driftScore), 'pink');
 
+    if (cup) this.cupTable(body, cup);
+    this.confetti(celebrate);
     this.nav.reset(0);
+  }
+
+  private cupTable(parent: HTMLElement, cup: CupInfo): void {
+    el('div', 'cup-title', `КУБОК · ГОНКА ${cup.round}/${cup.rounds}`, parent);
+    const table = el('div', 'rtable cup-table', undefined, parent);
+    const hr = el('div', 'rrow rhead', undefined, table);
+    el('span', undefined, '#', hr);
+    el('span', undefined, 'ПИЛОТ', hr);
+    el('span', 'num', 'ГОНКА', hr);
+    el('span', 'num', 'ОЧКИ', hr);
+    const rows = cup.rows.slice().sort((a, b) => a.position - b.position);
+    rows.forEach((row, i) => {
+      const rr = el('div', `rrow${row.isPlayer ? ' me' : ''}`, undefined, table);
+      rr.style.animationDelay = `${0.5 + i * 0.07}s`;
+      el('span', 'rpos', String(row.position), rr);
+      const who = el('span', 'rname', undefined, rr);
+      const dot = el('i', 'rdot', undefined, who);
+      dot.style.background = row.color;
+      dot.style.boxShadow = `0 0 .5em ${row.color}`;
+      el('span', undefined, row.name, who);
+      el('span', 'num', row.last > 0 ? `+${row.last}` : '—', rr);
+      el('span', 'num cup-pts', String(row.points), rr);
+    });
+  }
+
+  /** Неоновое конфетти на CSS (только при победе); детерминированный разброс. */
+  private confetti(win: boolean): void {
+    this.fx?.remove();
+    this.fx = null;
+    if (!win) return;
+    const tones = ['--magenta', '--cyan', '--yellow', '--pink', '--orange', '--lilac'];
+    const fx = el('div', 'confetti', undefined, this.el);
+    for (let i = 0; i < 36; i++) {
+      const c = el('i', undefined, undefined, fx);
+      const tone = tones[i % tones.length];
+      c.style.left = `${(i * 97) % 100}%`;
+      c.style.background = `var(${tone})`;
+      c.style.boxShadow = `0 0 0.6em var(${tone})`;
+      c.style.animationDelay = `${((i * 37) % 100) / 60}s`;
+      c.style.animationDuration = `${2.6 + ((i * 53) % 100) / 50}s`;
+      c.style.setProperty('--dx', `${((i * 29) % 21) - 10}em`);
+      c.style.setProperty('--rot', `${360 + ((i * 71) % 5) * 180}deg`);
+    }
+    this.fx = fx;
   }
 
   private stat(parent: HTMLElement, label: string, value: string, tone: string): void {
