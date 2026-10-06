@@ -44,7 +44,7 @@ import type { CarSpec, VehicleControls, VehicleEvent, VehicleEventType, VehicleS
 import { createProjection } from '../world/track';
 import type { Track } from '../world/track';
 import { CAR_GEOMETRY } from './specs';
-import { getHandling, steerAngleAt, yawRateForSteer } from './handling';
+import { SLIPSTREAM_TUNING, getHandling, steerAngleAt, yawRateForSteer } from './handling';
 import type { HandlingConfig } from './handling';
 
 // ─── Константы ─────────────────────────────────────────────────────────────
@@ -182,6 +182,7 @@ export function createVehicleState(): VehicleState {
     lateral: 0,
     boostTime: 0,
     boostPower: 0,
+    slipstream: 0,
   };
 }
 
@@ -350,6 +351,7 @@ export class VehiclePhysics {
     st.nitroActive = false;
     st.boostTime = 0;
     st.boostPower = 0;
+    st.slipstream = 0;
     this.boostTotal = this.boostNom = this.boostEff = 0;
     this.boostTail = 0;
     this.driftQ = 0;
@@ -493,7 +495,8 @@ export class VehiclePhysics {
       const gf = Math.min(1, contacts / 3);
       this.updatePhase(dt, controls, throttle, brake, steerIn, u, w, gf);
       // максималка: нитро (×) и буст (+доля) складываются в множитель
-      const vmax = cfg.maxSpeed * ((nitroOn ? cfg.nitroSpeedMul : 1) + cfg.boostSpeedPct * this.boostEff);
+      const vmax = cfg.maxSpeed * ((nitroOn ? cfg.nitroSpeedMul : 1) + cfg.boostSpeedPct * this.boostEff + SLIPSTREAM_TUNING.speedPct * st.slipstream);
+      if (!frozen && st.slipstream > 0) st.nitro = Math.min(1, st.nitro + SLIPSTREAM_TUNING.nitroRate * st.slipstream * dt);
       // склоны: гравитация вдоль поверхности
       const nx = pr.normal.x;
       const nz = pr.normal.z;
@@ -794,7 +797,7 @@ export class VehiclePhysics {
     const cfg = this.cfg;
     const A = cfg.acceleration * this.powerScale;
     // доп. тяга буста — только при газе
-    const boostAx = cfg.boostThrust * this.boostEff * clamp01(throttle * 3);
+    const boostAx = (cfg.boostThrust * this.boostEff + SLIPSTREAM_TUNING.thrust * this.state.slipstream) * clamp01(throttle * 3);
     let ax = 0;
     if (u > 0.5) {
       const k = Math.max(0, 1 - (u / vmax) * (u / vmax));

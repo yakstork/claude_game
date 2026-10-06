@@ -385,6 +385,41 @@ export const INPUT_PARAMS: TuningParam[] = [
   { key: 'keySteerCounter', label: 'Смена направления', group: 'Клавиатура', min: 4, max: 30, step: 0.5 },
 ];
 
+// ─── Слипстрим ─────────────────────────────────────────────────────────────
+
+/** Параметры слипстрима (живой объект; читают slipstream.ts и physics.ts) */
+export const SLIPSTREAM_TUNING = {
+  /** Дальность конуса, м */
+  range: 25,
+  /** Полуугол конуса, градусы */
+  coneDeg: 12,
+  /** Минимальная скорость (своя и лидера), м/с */
+  minSpeed: 25,
+  /** Время нарастания до максимума, с */
+  riseTime: 1,
+  /** Время спада до нуля при выходе из конуса, с */
+  fallTime: 0.35,
+  /** Прибавка максимальной скорости при полном слипстриме, доля */
+  speedPct: 0.05,
+  /** Дополнительная тяга при полном слипстриме, м/с² */
+  thrust: 3,
+  /** Подзарядка нитро при полном слипстриме, 1/с */
+  nitroRate: 0.03,
+};
+
+export const SLIPSTREAM_DEFAULTS = { ...SLIPSTREAM_TUNING };
+
+export const SLIPSTREAM_PARAMS: TuningParam[] = [
+  { key: 'range', label: 'Дальность, м', group: 'Слипстрим', min: 8, max: 50, step: 1 },
+  { key: 'coneDeg', label: 'Полуугол, °', group: 'Слипстрим', min: 3, max: 30, step: 0.5 },
+  { key: 'minSpeed', label: 'Мин. скорость, м/с', group: 'Слипстрим', min: 10, max: 50, step: 1 },
+  { key: 'riseTime', label: 'Нарастание, с', group: 'Слипстрим', min: 0.2, max: 3, step: 0.05 },
+  { key: 'fallTime', label: 'Спад, с', group: 'Слипстрим', min: 0.1, max: 2, step: 0.05 },
+  { key: 'speedPct', label: 'Прибавка макс. скорости', group: 'Слипстрим', min: 0, max: 0.15, step: 0.005 },
+  { key: 'thrust', label: 'Доп. тяга, м/с²', group: 'Слипстрим', min: 0, max: 10, step: 0.1 },
+  { key: 'nitroRate', label: 'Подзарядка нитро, 1/с', group: 'Слипстрим', min: 0, max: 0.2, step: 0.005 },
+];
+
 // ─── Метаданные для панели тюнинга ─────────────────────────────────────────
 
 function p(key: keyof HandlingConfig, label: string, group: string, min: number, max: number, step: number): TuningParam {
