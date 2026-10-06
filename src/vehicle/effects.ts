@@ -8,6 +8,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DoubleSide,
   DynamicDrawUsage,
   Group,
   IcosahedronGeometry,
@@ -141,6 +142,104 @@ export class SkidMarks {
     this.birthAttr.clearUpdateRanges();
     this.birthAttr.needsUpdate = true;
     this.trails.clear();
+  }
+}
+
+// ─── Световые шлейфы от задних фонарей (нитро / буст) ────────────────────
+
+const TRAIL_MAX = 1400;
+const TRAIL_LIFE = 0.9;
+const TRAIL_WIDTH = 0.09;
+
+export class LightTrails {
+  readonly mesh: Mesh;
+  private readonly pos = new Float32Array(TRAIL_MAX * 6 * 3);
+  private readonly birth = new Float32Array(TRAIL_MAX * 6).fill(-1000);
+  private readonly posAttr: BufferAttribute;
+  private readonly birthAttr: BufferAttribute;
+  private readonly lastX: number[] = [];
+  private readonly lastY: number[] = [];
+  private readonly lastZ: number[] = [];
+  private readonly active: boolean[] = [];
+  private cursor = 0;
+  private dirty = false;
+  readonly now = uniform(0);
+
+  constructor() {
+    const g = new BufferGeometry();
+    this.posAttr = new BufferAttribute(this.pos, 3).setUsage(DynamicDrawUsage);
+    this.birthAttr = new BufferAttribute(this.birth, 1).setUsage(DynamicDrawUsage);
+    g.setAttribute('position', this.posAttr);
+    g.setAttribute('birth', this.birthAttr);
+    const mat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide });
+    const k = oneMinus(smoothstep(0.0, TRAIL_LIFE, this.now.sub(attribute('birth', 'float'))));
+    const c = mix(color(PALETTE.magenta), color(PALETTE.pink), k).mul(k.mul(1.6));
+    mat.colorNode = c;
+    setGlow(mat, c.mul(0.9));
+    this.mesh = new Mesh(g, mat);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 2;
+  }
+
+  /** key — id источника (машина·2 + фонарь); active=false обрывает ленту */
+  add(key: number, x: number, y: number, z: number, active: boolean): void {
+    if (!active) {
+      this.active[key] = false;
+      return;
+    }
+    if (!this.active[key]) {
+      this.lastX[key] = x;
+      this.lastY[key] = y;
+      this.lastZ[key] = z;
+      this.active[key] = true;
+      return;
+    }
+    const dx = x - this.lastX[key];
+    const dz = z - this.lastZ[key];
+    const d2 = dx * dx + dz * dz;
+    if (d2 < 0.25) return;
+    if (d2 > 36) {
+      this.lastX[key] = x;
+      this.lastY[key] = y;
+      this.lastZ[key] = z;
+      return;
+    }
+    // поперечный вектор ленты — перпендикуляр к направлению движения
+    const inv = TRAIL_WIDTH / Math.sqrt(d2);
+    const px = -dz * inv;
+    const pz = dx * inv;
+    const ax = this.lastX[key];
+    const ay = this.lastY[key];
+    const az = this.lastZ[key];
+    const i = this.cursor * 18;
+    const P = this.pos;
+    P[i] = ax + px; P[i + 1] = ay; P[i + 2] = az + pz;
+    P[i + 3] = ax - px; P[i + 4] = ay; P[i + 5] = az - pz;
+    P[i + 6] = x - px; P[i + 7] = y; P[i + 8] = z - pz;
+    P[i + 9] = ax + px; P[i + 10] = ay; P[i + 11] = az + pz;
+    P[i + 12] = x - px; P[i + 13] = y; P[i + 14] = z - pz;
+    P[i + 15] = x + px; P[i + 16] = y; P[i + 17] = z + pz;
+    this.birth.fill(this.now.value, this.cursor * 6, this.cursor * 6 + 6);
+    this.cursor = (this.cursor + 1) % TRAIL_MAX;
+    this.dirty = true;
+    this.lastX[key] = x;
+    this.lastY[key] = y;
+    this.lastZ[key] = z;
+  }
+
+  update(time: number): void {
+    this.now.value = time;
+    if (this.dirty) {
+      this.posAttr.needsUpdate = true;
+      this.birthAttr.needsUpdate = true;
+      this.dirty = false;
+    }
+  }
+
+  clear(): void {
+    this.birth.fill(-1000);
+    this.birthAttr.needsUpdate = true;
+    this.active.length = 0;
   }
 }
 
@@ -295,6 +394,9 @@ export class EffectsManager {
   readonly group = new Group();
   readonly skids = new SkidMarks();
   readonly speedLines = new SpeedLines();
+  readonly trails = new LightTrails();
+  private readonly flames: ParticlePool;
+  private readonly prevNitro: boolean[] = [];
   private readonly smoke: ParticlePool;
   private readonly sparks: ParticlePool;
   private time = 0;
@@ -318,7 +420,15 @@ export class EffectsManager {
     sparkMat.colorNode = sc;
     setGlow(sparkMat, sc.mul(1.5));
 
-    this.group.add(this.skids.mesh, this.smoke.mesh, this.sparks.mesh, this.speedLines.mesh);
+    // пламя нитро: вытянутые циан-белые вспышки из выхлопа
+    const flameMat = new MeshBasicNodeMaterial({ blending: AdditiveBlending, transparent: true, depthWrite: false });
+    this.flames = new ParticlePool(new BoxGeometry(0.1, 0.1, 0.5), flameMat, 160, true, 'flameLife');
+    const fl = this.flames.lifeNode;
+    const fc = mix(color(PALETTE.white), color(PALETTE.cyan), fl).mul(oneMinus(fl).mul(1.8).add(0.3));
+    flameMat.colorNode = fc;
+    setGlow(flameMat, fc.mul(1.4));
+
+    this.group.add(this.trails.mesh, this.flames.mesh, this.skids.mesh, this.smoke.mesh, this.sparks.mesh, this.speedLines.mesh);
   }
 
   /** Эффекты одной машины за кадр */
@@ -334,6 +444,8 @@ export class EffectsManager {
       this.skids.add(index * 4 + w, ws.contact, ws.onGround && ws.skid > 0.75 ? ws.skid : 0, state.heading);
     }
 
+    this.boostFx(index, state, dt);
+
     const skidAmount = Math.max(state.wheels[2].skid, state.wheels[3].skid) * (state.onGround ? 1 : 0);
     if (skidAmount > 0.35 && Math.abs(state.speed) > 6) {
       this.smokeAcc += dt * 26 * skidAmount * this.density;
@@ -344,6 +456,35 @@ export class EffectsManager {
         _p.y += 0.3;
         _v.set((Math.random() - 0.5) * 2, 1.2 + Math.random() * 1.5, (Math.random() - 0.5) * 2).addScaledVector(state.velocity, 0.25);
         this.smoke.spawn(_p, _v, 1.1 + Math.random() * 0.8, 0.55 + Math.random() * 0.4);
+      }
+    }
+  }
+
+  /** Шлейф фонарей, пламя и вспышка при нитро/бусте */
+  private boostFx(index: number, state: VehicleState, dt: number): void {
+    const boosting = state.nitroActive || state.boostPower > 0.05;
+    const sh = Math.sin(state.heading);
+    const ch = Math.cos(state.heading);
+    const rear = -2.1;
+    const ty = state.position.y + 0.55;
+    for (let side = 0; side < 2; side++) {
+      const lat = side === 0 ? -0.72 : 0.72;
+      const x = state.position.x + sh * rear + ch * lat;
+      const z = state.position.z + ch * rear - sh * lat;
+      this.trails.add(index * 2 + side, x, ty, z, boosting && state.onGround);
+    }
+    const was = this.prevNitro[index] === true;
+    this.prevNitro[index] = state.nitroActive;
+    if (state.nitroActive) {
+      // вспышка в момент включения
+      const burst = was ? 0 : 16;
+      const n = burst + Math.floor(dt * 70 * this.density + Math.random());
+      for (let i = 0; i < n; i++) {
+        const lat = (Math.random() < 0.5 ? -0.45 : 0.45);
+        _p.set(state.position.x + sh * -2.2 + ch * lat, state.position.y + 0.35, state.position.z + ch * -2.2 - sh * lat);
+        const spread = i < burst ? 4 : 0.8;
+        _v.set(-sh * (7 + Math.random() * 6) + (Math.random() - 0.5) * spread, Math.random() * 0.6 + (i < burst ? Math.random() * 2 : 0), -ch * (7 + Math.random() * 6) + (Math.random() - 0.5) * spread).addScaledVector(state.velocity, 0.6);
+        this.flames.spawn(_p, _v, 0.18 + Math.random() * 0.2, 0.8 + Math.random() * 0.5);
       }
     }
   }
@@ -371,6 +512,8 @@ export class EffectsManager {
   update(dt: number, camera: PerspectiveCamera, playerSpeed: number, speedLineAmount: number): void {
     this.time += dt;
     this.skids.update(this.time);
+    this.trails.update(this.time);
+    this.flames.update(dt, 0, 1.2, 0);
     this.smoke.update(dt, -1.2, 1.4, 2.4);
     this.sparks.update(dt, 22, 0.6, 0);
     this.speedLines.update(dt, camera, playerSpeed, speedLineAmount);
@@ -378,6 +521,8 @@ export class EffectsManager {
 
   clear(): void {
     this.skids.clear();
+    this.trails.clear();
+    this.flames.clear();
     this.smoke.clear();
     this.sparks.clear();
   }
