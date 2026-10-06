@@ -561,7 +561,13 @@ export class ResultsScreen {
     this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
     this.stat(sum, 'ОЧКИ ДРИФТА', formatScore(r.driftScore), 'pink');
 
-    if (cup) this.cupTable(body, cup);
+    if (cup) {
+      this.cupTable(body, cup);
+      // таблица кубка ниже результатов гонки: на невысоких экранах плавно докрутить до неё
+      window.setTimeout(() => {
+        if (body.isConnected && body.scrollHeight > body.clientHeight + 4) body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+      }, 2400);
+    }
     this.confetti(celebrate);
     this.nav.reset(0);
   }
