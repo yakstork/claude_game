@@ -1106,3 +1106,5 @@
 .hud-pos.solo .hud-pos-row, .hud-pos.solo > .hud-label:first-child { display: none; }
 .hud-slip { position: absolute; left: 50%; bottom: 17%; transform: translateX(-50%); font-weight: 800; font-style: italic; letter-spacing: 0.25em; font-size: 0.95em; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
 .hud-slip:not(.on) { opacity: 0 !important; }
+.mode-btn span { white-space: nowrap; }
+@media (max-height: 520px) { .mode-btn span { font-size: 0.85em; } }
