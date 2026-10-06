@@ -16,6 +16,7 @@ import type {
 import { isTouchDevice } from '../core/device';
 import { CUSTOM_CAR_ID } from '../core/types';
 import './styles.css';
+import './polish.css';
 import { CustomizeScreen } from './customize';
 import { DEFAULT_BUDGET, DEFAULT_PALETTE, defaultCustomBuild } from './customLogic';
 import type { CustomPalette } from './customLogic';
@@ -26,6 +27,7 @@ import { Nav } from './nav';
 import { RotatePrompt } from './rotatePrompt';
 import { clampIndex } from './trackLogic';
 import { LoadingScreen, PauseScreen, ResultsScreen, SettingsScreen } from './screens';
+import { TipsOverlay, shouldAutoShowTips } from './tips';
 import { TouchControls } from './touchControls';
 
 export interface UIOptions {
@@ -61,6 +63,7 @@ export class UIManager {
   private readonly customize: CustomizeScreen;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
+  private readonly tips: TipsOverlay;
   private readonly fpsEl: HTMLElement;
   private readonly touch: TouchControls;
   private readonly rotate: RotatePrompt;
@@ -107,6 +110,7 @@ export class UIManager {
       () => this.showCustomize(),
       tracks,
       opts.trackIndex ?? 0,
+      () => this.tips.show(),
     );
     const budget = opts.customBudget ?? DEFAULT_BUDGET;
     const palette = opts.customPalette ?? DEFAULT_PALETTE;
@@ -128,6 +132,7 @@ export class UIManager {
     );
     this.pause = new PauseScreen(this.host, new Nav(play), cb, () => this.openSettings('pause'));
     this.results = new ResultsScreen(this.host, new Nav(play), opts.cars, cb);
+    this.tips = new TipsOverlay(this.host);
     this.fpsEl = el('div', 'fps', '', this.host);
     this.fpsEl.hidden = true;
     this.rotate = new RotatePrompt(this.host);
@@ -199,6 +204,7 @@ export class UIManager {
     this.hud.clearTransient();
     this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
     this.setScreen('menu');
+    if (shouldAutoShowTips()) this.tips.show();
     // синхронизируем 3D-превью с выбранной в меню машиной
     this.opts.callbacks.onPreviewCar(this.menu.index);
   }
@@ -396,6 +402,11 @@ export class UIManager {
 
   handleAction(a: MenuAction): void {
     if (this.rotate.shown) return;
+    if (this.tips.visible) {
+      this.tips.hide();
+      this.opts.callbacks.onUiSound('back');
+      return;
+    }
     const nav = this.activeNav();
     if (!nav) return;
     const cb = this.opts.callbacks;
