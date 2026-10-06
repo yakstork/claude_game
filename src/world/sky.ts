@@ -29,6 +29,7 @@ import {
   normalize,
   positionLocal,
   pow,
+  sin,
   smoothstep,
   step,
   time,
@@ -51,6 +52,10 @@ export class Sky {
   readonly group = new Group();
   private readonly dome: Mesh;
   readonly sunIntensity = uniform(1);
+  /** 0 — обычное закатное небо, 1 — ночная гроза */
+  readonly storm = uniform(0);
+  /** Вспышка молнии 0..1 */
+  readonly flash = uniform(0);
   private readonly blimps = new Blimps();
   private lastT = 0;
 
@@ -152,10 +157,30 @@ export class Sky {
       return sunCol.mul(disc.mul(slit).mul(aboveHorizon));
     })();
 
-    mat.colorNode = skyColor.add(sunDisc.mul(1.6));
+    // грозовое небо: тёмные тучи, свечение города у горизонта, вспышки молний
+    const storm = this.storm;
+    const flash = this.flash;
+    const stormSky = Fn(() => {
+      const q = vec2(dir.x, dir.z).div(max(h, 0.0).add(0.28));
+      const n1 = sin(q.x.mul(1.7).add(time.mul(0.03))).mul(sin(q.y.mul(1.3).sub(time.mul(0.02))));
+      const n2 = sin(q.x.mul(3.9).add(q.y.mul(2.7)).add(time.mul(0.045))).mul(0.5);
+      const n3 = sin(q.y.mul(6.1).sub(q.x.mul(4.3)).sub(time.mul(0.06))).mul(0.25);
+      const cloud = smoothstep(-0.25, 0.7, n1.add(n2).add(n3));
+      const gradient = mix(color(0x2a0a40), color(PALETTE.void), smoothstep(0.0, 0.55, h));
+      const body = mix(gradient, color(PALETTE.skyHigh).mul(0.45), cloud.mul(0.85));
+      const cityGlow = color(PALETTE.magenta).mul(exp(abs(h).mul(-9.0)).mul(0.3));
+      const below = color(PALETTE.void).mul(1.4);
+      const lit = body.add(cityGlow).add(color(PALETTE.lilac).add(float(0.3)).mul(flash.mul(cloud.mul(0.9).add(0.25))));
+      return mix(below, lit, step(-0.02, h));
+    })();
+    const clearSky = skyColor.add(sunDisc.mul(1.6));
+    mat.colorNode = mix(clearSky, stormSky, storm);
     // emissive-канал: солнце и немного ореола → bloom
     const sd = dot(dir, sunDir);
-    setGlow(mat, sunDisc.mul(sunIntensity).add(meteors.mul(0.8)).add(color(PALETTE.pink).mul(pow(max(sd, 0.0), 220.0).mul(0.25))));
+    setGlow(
+      mat,
+      sunDisc.mul(sunIntensity).add(meteors.mul(0.8)).add(color(PALETTE.pink).mul(pow(max(sd, 0.0), 220.0).mul(0.25))).mul(float(1.0).sub(storm)).add(color(PALETTE.lilac).mul(flash.mul(0.5))),
+    );
     return mat;
   }
 }
