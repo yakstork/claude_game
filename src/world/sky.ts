@@ -33,6 +33,7 @@ import {
   step,
   time,
   uniform,
+  vec2,
   vec3,
   vertexColor,
   attribute,
@@ -71,6 +72,29 @@ export class Sky {
     const dir = normalize(positionLocal);
     const h = dir.y;
 
+    // падающие звёзды: короткие вспышки-штрихи в верхней полусфере (2 независимых «слота»)
+    const meteor = (period: number, seed: number) => {
+      const q = vec2(dir.x, dir.z);
+      const t = time.div(period).add(seed);
+      const id = floor(t);
+      const ph = fract(t).div(0.1); // активна первые 10% периода
+      const r1 = hash(id.add(seed * 13.0));
+      const r2 = hash(id.add(seed * 29.0 + 3.7));
+      const r3 = hash(id.add(seed * 41.0 + 9.1));
+      const start = vec2(r1.sub(0.5).mul(1.4), r2.sub(0.5).mul(1.4));
+      const ang = r3.mul(6.283);
+      const vel = vec2(ang.cos(), ang.sin());
+      const head = start.add(vel.mul(ph.mul(0.55)));
+      const tail = head.sub(vel.mul(0.16));
+      const seg = head.sub(tail);
+      const k = clamp(dot(q.sub(tail), seg).div(dot(seg, seg)), 0.0, 1.0);
+      const dist = q.sub(tail.add(seg.mul(k))).length();
+      const line = smoothstep(0.006, 0.0, dist).mul(k);
+      const alive = step(ph, 1.0).mul(smoothstep(0.0, 0.1, ph)).mul(smoothstep(1.0, 0.7, ph));
+      return line.mul(alive).mul(smoothstep(0.35, 0.6, dir.y));
+    };
+    const meteors = vec3(1.0, 0.85, 1.0).mul(meteor(9.0, 0.0).add(meteor(14.0, 0.37)).mul(1.4));
+
     const skyColor = Fn(() => {
       const zenith = color(PALETTE.skyZenith);
       const high = color(PALETTE.skyHigh);
@@ -96,7 +120,7 @@ export class Sky {
       const twinkle = fract(rnd.mul(17.0).add(time.mul(0.15))).mul(0.6).add(0.4);
       const star = step(0.9965, rnd).mul(smoothstep(0.22, 0.55, h)).mul(twinkle);
 
-      return base.add(warm).add(vec3(star, star, star).mul(0.9));
+      return base.add(warm).add(vec3(star, star, star).mul(0.9)).add(meteors);
     })();
 
     // Полосатое солнце: диск в касательной плоскости к SUN_DIR
@@ -124,7 +148,7 @@ export class Sky {
     mat.colorNode = skyColor.add(sunDisc.mul(1.6));
     // emissive-канал: солнце и немного ореола → bloom
     const sd = dot(dir, sunDir);
-    setGlow(mat, sunDisc.mul(sunIntensity).add(color(PALETTE.pink).mul(pow(max(sd, 0.0), 220.0).mul(0.25))));
+    setGlow(mat, sunDisc.mul(sunIntensity).add(meteors.mul(0.8)).add(color(PALETTE.pink).mul(pow(max(sd, 0.0), 220.0).mul(0.25))));
     return mat;
   }
 }

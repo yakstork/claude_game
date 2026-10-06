@@ -5,7 +5,7 @@
  */
 import { ACESFilmicToneMapping, RenderPipeline, SRGBColorSpace, WebGPURenderer } from 'three/webgpu';
 import type { Camera, Scene } from 'three/webgpu';
-import { emissive, mrt, output, pass } from 'three/tsl';
+import { emissive, float, length, mrt, output, pass, screenUV, smoothstep, vec2 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { Quality } from './types';
 import { setGlowEnabled } from '../world/materials';
@@ -74,7 +74,15 @@ export class RenderSystem {
     const glow = scenePass.getTextureNode('emissive');
     const bloomPass = bloom(glow, 0.85, 0.45, 0.0);
     const pipeline = new RenderPipeline(this.renderer);
-    pipeline.outputNode = color.add(bloomPass);
+    // лёгкая виньетка + хроматическая аберрация к краям кадра (только high)
+    const off = screenUV.sub(vec2(0.5, 0.5));
+    const edge = smoothstep(float(0.25), float(0.75), length(off));
+    const shift = off.mul(edge).mul(0.006);
+    const aberrated = color.sample(screenUV.add(shift)).r.toVar();
+    const rgb = color.sample(screenUV).rgb;
+    const ca = rgb.setX(aberrated).setZ(color.sample(screenUV.sub(shift)).b);
+    const vignette = float(1.0).sub(edge.mul(0.38));
+    pipeline.outputNode = ca.mul(vignette).add(bloomPass);
     this.pipeline = pipeline;
   }
 
