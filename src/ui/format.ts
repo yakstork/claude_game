@@ -52,9 +52,9 @@ export function stepSlider(value: number, dir: -1 | 1): number {
   return clamp(Math.round((value + dir * 0.1) * 10) / 10, 0, 1);
 }
 
-/** 0..1 → «70%». */
+/** 0..1 → «70%»; NaN/Infinity → «0%». */
 export function formatPercent(v: number): string {
-  return `${Math.round(clamp(v, 0, 1) * 100)}%`;
+  return `${Math.round(clamp(Number.isFinite(v) ? v : 0, 0, 1) * 100)}%`;
 }
 
 /** Целые км/ч для цифр спидометра. */
