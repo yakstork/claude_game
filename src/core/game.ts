@@ -57,6 +57,7 @@ import {
 import { CUSTOM_CAR_ID, recordKey } from './types';
 import type { CameraView, RaceMode } from './types';
 import { GhostPlayer, GhostRecorder } from '../race/ghost';
+import { Cup } from '../race/cup';
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
@@ -154,6 +155,8 @@ export class Game {
   private readonly dots: MinimapDot[] = [];
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
+  /** Текущий кубок (серия гонок), null — вне кубка */
+  cup: Cup | null = null;
   /** Параметры текущей гонки (из настроек на момент старта) */
   laps = 3;
   playerSlot = RACE_PLAYER_SLOT;
@@ -194,11 +197,14 @@ export class Game {
       trackIndex: this.trackIndex,
       callbacks: {
         onPreviewCar: (i) => this.setPreviewCar(i),
-        onStartRace: (i) => this.startRace(i),
+        onStartRace: (i) => {
+          this.cup = null;
+          this.startRace(i);
+        },
         onSettingsChanged: (s) => this.applySettings(s, true),
         onPause: () => this.pause(),
         onResume: () => this.resume(),
-        onRestart: () => this.startRace(this.selectedCar),
+        onRestart: () => this.restartOrNext(),
         onQuitToMenu: () => this.enterMenu(),
         onUiSound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
         onCustomBuildChanged: (b) => this.applyCustomBuild(b),
@@ -262,6 +268,22 @@ export class Game {
     this.world.setTrack(this.track);
     this.world.setQuality(this.settings.quality);
     this.setPreviewCar(this.selectedCar);
+  }
+
+  /** Смена трассы между гонками кубка (вне меню) */
+  private switchTrack(i: number): void {
+    if (i < 0 || i >= TRACKS.length || i === this.trackIndex) return;
+    this.trackIndex = i;
+    this.track = new Track(TRACKS[i]);
+    this.world.setTrack(this.track);
+    this.world.setQuality(this.settings.quality);
+    this.ui.setTrackIndex(i);
+  }
+
+  /** «Ещё раз» на результатах: в кубке — следующая гонка серии */
+  private restartOrNext(): void {
+    if (this.cup?.finished) this.cup = null;
+    this.startRace(this.selectedCar);
   }
 
   private trackInfo(d: TrackDefinition): TrackInfo {
@@ -389,6 +411,7 @@ export class Game {
   // ─── Меню ──────────────────────────────────────────────────────────────
 
   enterMenu(): void {
+    this.cup = null;
     this.clearRace();
     this.state = 'menu';
     this.paused = false;
@@ -463,6 +486,8 @@ export class Game {
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, carIndex));
     const playerSpec = CAR_SPECS[this.selectedCar];
     this.mode = this.settings.raceMode;
+    if (this.mode !== 'cup') this.cup = null;
+    else if (this.cup) this.switchTrack(this.cup.nextTrack);
     this.laps = this.settings.laps;
     const solo = this.mode === 'timeAttack';
     this.playerSlot = solo ? 0 : RACE_PLAYER_SLOT;
@@ -528,6 +553,16 @@ export class Game {
     this.audio.playMusic('race');
     this.ui.showRaceHud(this.track.outline(256));
     this.hud.totalRacers = this.cars.length;
+    if (this.mode === 'cup') {
+      this.cup ??= new Cup(
+        this.cars.map((c) => ({ name: c.name, isPlayer: c.isPlayer, color: c.color })),
+        TRACKS.length,
+        this.trackIndex,
+        TRACKS.length,
+      );
+      const cup = this.cup;
+      window.setTimeout(() => this.state === 'countdown' && this.ui.banner(`КУБОК · ГОНКА ${cup.round + 1}/${cup.rounds}`, 'yellow'), 300);
+    }
     this.hud.totalLaps = this.laps;
     this.hud.delta = null;
     if (solo) {
@@ -789,6 +824,7 @@ export class Game {
       newBestDrift,
       solo: this.mode === 'timeAttack',
       lapTimes: player.lapTimes.slice(),
+      cup: this.cup && !this.cup.finished ? this.cup.addRace(rows.map((r) => r.name)) : undefined,
     };
     this.lastResult = result;
     this.uiMode = 'results';

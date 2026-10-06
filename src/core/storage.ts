@@ -70,7 +70,7 @@ export function loadSettings(): Settings {
     controlMode: s.controlMode === 'keyboard' || s.controlMode === 'touch' || s.controlMode === 'auto' ? s.controlMode : 'auto',
     touchSize: range(s.touchSize, 0.7, 1.5, DEFAULT_SETTINGS.touchSize),
     touchOpacity: range(s.touchOpacity, 0.2, 1, DEFAULT_SETTINGS.touchOpacity),
-    raceMode: s.raceMode === 'timeAttack' ? 'timeAttack' : 'race',
+    raceMode: s.raceMode === 'timeAttack' || s.raceMode === 'cup' ? s.raceMode : 'race',
     difficulty: s.difficulty === 'easy' || s.difficulty === 'hard' ? s.difficulty : 'normal',
     laps: (LAP_OPTIONS as readonly number[]).includes(s.laps as number) ? (s.laps as number) : DEFAULT_SETTINGS.laps,
     cameraView: s.cameraView === 'near' || s.cameraView === 'bumper' ? s.cameraView : 'far',

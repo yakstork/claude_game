@@ -99,6 +99,7 @@ export const RACE_CHOICES: ChoiceDef[] = [
     label: 'РЕЖИМ',
     options: [
       { value: 'race' as RaceMode, full: 'ГОНКА' },
+      { value: 'cup' as RaceMode, full: 'КУБОК' },
       { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ' },
     ],
   },

@@ -348,7 +348,7 @@ export class UIManager {
 
   private toggleRaceMode(): void {
     const cur = this.settings.value;
-    const next: Settings = { ...cur, raceMode: cur.raceMode === 'race' ? 'timeAttack' : 'race' };
+    const next: Settings = { ...cur, raceMode: cur.raceMode === 'race' ? 'cup' : cur.raceMode === 'cup' ? 'timeAttack' : 'race' };
     this.settings.setSettings(next);
     this.opts.callbacks.onUiSound('move');
     this.handleSettings(next);

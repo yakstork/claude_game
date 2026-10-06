@@ -7,6 +7,7 @@
  * right = forward × up = (-cos h, 0, sin h).
  */
 import type { Quaternion, Vector3 } from 'three';
+import type { CupSummary } from '../race/cup';
 
 // ─── Управление ────────────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ export interface Settings {
   cameraView: CameraView;
 }
 
-export type RaceMode = 'race' | 'timeAttack';
+export type RaceMode = 'race' | 'timeAttack' | 'cup';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type CameraView = 'far' | 'near' | 'bumper';
 export const LAP_OPTIONS = [1, 3, 5] as const;
@@ -333,6 +334,8 @@ export interface RaceResult {
   solo?: boolean;
   /** Времена кругов игрока, с */
   lapTimes?: number[];
+  /** Кубок: таблица после этой гонки */
+  cup?: CupSummary;
 }
 
 export type UiSound = 'move' | 'select' | 'back';
