@@ -103,6 +103,16 @@ export class World {
     this.ground.fadeDistance.value = q === 'high' ? 1300 : 800;
   }
 
+  /** Счётчик молний (0 — погоды нет) */
+  get lightningStrikes(): number {
+    return this.stormy && this.weather ? this.weather.lightning.strikes : 0;
+  }
+
+  /** Тип звукового фона трассы */
+  get ambience(): 'rain' | 'sea' | null {
+    return this.stormy ? 'rain' : this.track.id === 'coast' ? 'sea' : null;
+  }
+
   update(cameraPos: Vector3): void {
     this.sky.update(cameraPos);
     if (this.stormy && this.weather) {

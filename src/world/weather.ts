@@ -60,6 +60,8 @@ export class Rain {
 export class Lightning {
   /** Текущая яркость вспышки 0..1 */
   value = 0;
+  /** Число вспышек с начала (для грома в игре) */
+  strikes = 0;
   private timer = 4 + Math.random() * 5;
   private phase = -1;
   private t = 0;
@@ -70,6 +72,7 @@ export class Lightning {
       if (this.timer <= 0) {
         this.phase = 0;
         this.t = 0;
+        this.strikes += 1;
       }
       this.value = 0;
       return 0;
