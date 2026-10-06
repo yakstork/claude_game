@@ -108,6 +108,8 @@ export interface VehicleState {
   boostTime: number;
   /** Сила текущего ускорения 0..1 (0 — нет) */
   boostPower: number;
+  /** Слипстрим (аэродинамический мешок за другой машиной) 0..1; пишет updateSlipstream */
+  slipstream: number;
 }
 
 export type VehicleEventType = 'wall' | 'car' | 'land';
