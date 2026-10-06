@@ -52,7 +52,7 @@ export interface AchievementDef {
 }
 
 export const STORAGE_KEY = 'neonrush.achievements.v1';
-export const TRACK_IDS = ['sunset', 'heights', 'coast'] as const;
+export const TRACK_IDS = ['sunset', 'heights', 'coast', 'storm'] as const;
 export const DRIFT_COMBO_GOAL = 4000;
 export const DRIFT_SCORE_GOAL = 20000;
 export const RACES_GOAL = 10;
@@ -73,7 +73,7 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'drift_20k', title: 'КОРОЛЬ ДРИФТА', desc: `Набери ${DRIFT_SCORE_GOAL} очков дрифта за гонку`, icon: '◢', tone: 'orange', test: (s) => s.driftScore >= DRIFT_SCORE_GOAL },
   { id: 'perfect_start', title: 'ИДЕАЛЬНЫЙ СТАРТ', desc: 'Выполни идеальный старт', icon: '⚡', tone: 'cyan', test: (s) => s.perfectStart },
   { id: 'clean_race', title: 'ЧИСТАЯ ГОНКА', desc: 'Финишируй без единого удара о стену', icon: '✦', tone: 'cyan', test: (s) => s.wallHits === 0 },
-  { id: 'all_tracks', title: 'ПОКОРИТЕЛЬ ТРАСС', desc: 'Выиграй на каждой из трёх трасс', icon: '◈', tone: 'orange', test: (_s, p) => TRACK_IDS.every((t) => p.wonTracks.includes(t)) },
+  { id: 'all_tracks', title: 'ПОКОРИТЕЛЬ ТРАСС', desc: 'Выиграй на каждой из четырёх трасс', icon: '◈', tone: 'orange', test: (_s, p) => TRACK_IDS.every((t) => p.wonTracks.includes(t)) },
   { id: 'races_10', title: 'ВЕТЕРАН', desc: `Заверши ${RACES_GOAL} гонок`, icon: '⚑', tone: 'pink', test: (_s, p) => p.races >= RACES_GOAL },
   { id: 'streak_3', title: 'СЕРИЯ', desc: `Выиграй ${STREAK_GOAL} гонки подряд`, icon: '▲', tone: 'yellow', test: (_s, p) => p.winStreak >= STREAK_GOAL },
   { id: 'podium_5', title: 'ПОДИУМ', desc: `Займи место в тройке ${PODIUMS_GOAL} раз`, icon: '♦', tone: 'orange', test: (_s, p) => p.podiums >= PODIUMS_GOAL },
