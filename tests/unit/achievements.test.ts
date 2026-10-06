@@ -64,11 +64,11 @@ describe('achievements', () => {
     expect(r.unlocked.slice().sort()).toEqual(['clean_race', 'combo_4000', 'cup_win', 'drift_20k', 'perfect_start']);
   });
 
-  it('победы на трёх трассах', () => {
+  it('победы на всех трассах', () => {
     let p = emptyProgress();
-    for (const t of ['sunset', 'heights', 'coast']) p = evaluate(st({ position: 1, trackId: t }), p).progress;
+    for (const t of ['sunset', 'heights', 'coast', 'storm']) p = evaluate(st({ position: 1, trackId: t }), p).progress;
     expect(p.unlocked).toContain('all_tracks');
-    expect(p.wonTracks.length).toBe(3);
+    expect(p.wonTracks.length).toBe(4);
   });
 
   it('10 гонок, серия 3, подиумы 5; повторно не открываются', () => {
