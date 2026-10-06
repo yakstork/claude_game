@@ -1,7 +1,8 @@
 /** Синтвейв-секвенсор с lookahead-планированием (ноты создаются с точным start(time)). */
 import type { MusicTrack } from '../core/types';
 import { createImpulseResponse, disconnectAll, playNoise, playTone } from './noise';
-import { getStepEvents, loopSteps, midiToFreq, stepDuration, TRACKS } from './theory';
+import { getStepEvents, getTrackConfig, loopSteps, midiToFreq, RACE_VARIANTS, stepDuration } from './theory';
+import type { SongStyle } from './theory';
 import type { ArpEvent, BassEvent, PadEvent } from './theory';
 
 /** Как далеко вперёд планируем ноты, с. */
@@ -15,6 +16,10 @@ const FADE_TC = 0.2;
 class TrackPlayer {
   readonly out: GainNode;
   private readonly drums: GainNode;
+  /** Шина мелодических партий (бас/пэд/арпеджио/эхо) — сюда «приседание» сайдчейна на бочке. */
+  private readonly mel: GainNode;
+  private readonly style: SongStyle | undefined;
+  private readonly duckDepth: number;
   private readonly delaySend: GainNode;
   private readonly reverbSend: GainNode;
   private readonly persistent: AudioNode[] = [];
@@ -29,10 +34,13 @@ class TrackPlayer {
     private readonly ctx: BaseAudioContext,
     dest: AudioNode,
     readonly track: MusicTrack,
+    readonly variant = 0,
   ) {
-    const cfg = TRACKS[track];
+    const cfg = getTrackConfig(track, variant);
+    this.style = cfg.style;
+    this.duckDepth = cfg.style ? cfg.style.duck : track === 'race' ? 0.5 : 0.25;
     this.stepDur = stepDuration(cfg.bpm);
-    this.total = loopSteps(track);
+    this.total = loopSteps(track, variant);
     const race = track === 'race';
 
     this.out = ctx.createGain();
@@ -42,6 +50,10 @@ class TrackPlayer {
     this.drums = ctx.createGain();
     this.drums.gain.value = race ? 1 : 0.8;
     this.drums.connect(this.out);
+
+    this.mel = ctx.createGain();
+    this.mel.gain.value = 1;
+    this.mel.connect(this.out);
 
     // эхо арпеджио: точка с долей (3 шестнадцатых), обратная связь с lowpass
     const delay = ctx.createDelay(1);
@@ -60,7 +72,7 @@ class TrackPlayer {
     fbFilter.connect(fb);
     fb.connect(delay);
     delay.connect(delayWet);
-    delayWet.connect(this.out);
+    delayWet.connect(this.mel);
 
     // реверб: гейт-реверб для снэра в гонке, мягкий «зал» в меню (для пэда/арпеджио)
     const conv = ctx.createConvolver();
@@ -71,10 +83,10 @@ class TrackPlayer {
     this.reverbSend.gain.value = 1;
     this.reverbSend.connect(conv);
     conv.connect(reverbWet);
-    reverbWet.connect(this.out);
+    reverbWet.connect(this.mel);
 
     this.persistent.push(
-      this.out, this.drums, delay, fb, fbFilter, delayWet, this.delaySend, conv, reverbWet, this.reverbSend,
+      this.out, this.drums, this.mel, delay, fb, fbFilter, delayWet, this.delaySend, conv, reverbWet, this.reverbSend,
     );
   }
 
@@ -127,15 +139,25 @@ class TrackPlayer {
   // ---------------------------------------------------------------------------
 
   private scheduleStep(step: number, t: number): void {
-    const ev = getStepEvents(this.track, step);
+    const ev = getStepEvents(this.track, step, this.variant);
     if (ev.pad) this.pad(t, ev.pad);
-    if (ev.kick !== undefined) this.kick(t, ev.kick);
+    if (ev.kick !== undefined) {
+      this.kick(t, ev.kick);
+      this.duck(t, ev.kick);
+    }
     if (ev.snare !== undefined) this.snare(t, ev.snare);
     if (ev.clap !== undefined) this.clap(t, ev.clap);
     if (ev.hat) this.hat(t, ev.hat.vel, ev.hat.open);
     if (ev.crash !== undefined) this.crash(t, ev.crash);
     if (ev.bass) this.bass(t, ev.bass);
     if (ev.arp) this.arp(t, ev.arp);
+  }
+
+  /** Сайдчейн: мелодика «приседает» на ударе бочки и плавно возвращается. */
+  private duck(t: number, vel: number): void {
+    const g = this.mel.gain;
+    g.setValueAtTime(1 - this.duckDepth * Math.min(1, vel), t);
+    g.setTargetAtTime(1, t + 0.015, 0.075);
   }
 
   private kick(t: number, vel: number): void {
@@ -179,13 +201,13 @@ class TrackPlayer {
     const dur = e.steps * this.stepDur * 0.92;
     const f = midiToFreq(e.midi);
     const osc = ctx.createOscillator();
-    osc.type = race ? 'sawtooth' : 'square';
+    osc.type = this.style ? this.style.bassType : race ? 'sawtooth' : 'square';
     osc.frequency.value = f;
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = race ? 3 : 1.5;
-    lp.frequency.setValueAtTime(race ? 1300 : 700, t);
-    lp.frequency.setTargetAtTime(race ? 280 : 260, t, race ? 0.09 : 0.12);
+    lp.frequency.setValueAtTime(this.style ? this.style.bassCut : race ? 1300 : 700, t);
+    lp.frequency.setTargetAtTime(this.style ? this.style.bassCutEnd : race ? 280 : 260, t, race ? 0.09 : 0.12);
     const g = ctx.createGain();
     const level = (race ? 0.3 : 0.24) * e.vel;
     g.gain.setValueAtTime(0.0001, t);
@@ -194,7 +216,7 @@ class TrackPlayer {
     g.gain.setTargetAtTime(0, t + dur * 0.7, 0.03);
     osc.connect(lp);
     lp.connect(g);
-    g.connect(this.out);
+    g.connect(this.mel);
     // саб-синус для веса
     const sub = ctx.createOscillator();
     sub.type = 'sine';
@@ -205,7 +227,7 @@ class TrackPlayer {
     sg.gain.setValueAtTime(0.25 * e.vel, t + dur * 0.7);
     sg.gain.setTargetAtTime(0, t + dur * 0.7, 0.03);
     sub.connect(sg);
-    sg.connect(this.out);
+    sg.connect(this.mel);
     osc.start(t);
     sub.start(t);
     osc.stop(t + dur + 0.2);
@@ -215,9 +237,11 @@ class TrackPlayer {
 
   private arp(t: number, e: ArpEvent): void {
     const race = this.track === 'race';
-    const dur = e.steps * this.stepDur * (race ? 1.0 : 1.3);
-    const g = playTone(this.ctx, this.out, {
-      type: 'square', freq: midiToFreq(e.midi), start: t, dur, gain: (race ? 0.05 : 0.04) * e.vel, attack: 0.004, cutoff: race ? 3200 : 2300,
+    const dur = e.steps * this.stepDur * (race ? (this.style && this.style.arpSteps > 1 ? 0.9 : 1.0) : 1.3);
+    const g = playTone(this.ctx, this.mel, {
+      type: this.style ? this.style.arpType : 'square',
+      freq: midiToFreq(e.midi), start: t, dur, gain: (race ? 0.05 : 0.04) * e.vel, attack: 0.004,
+      cutoff: this.style ? this.style.arpCut : race ? 3200 : 2300,
     });
     // отправка в эхо (и в зал в меню)
     g.connect(this.delaySend);
@@ -232,7 +256,7 @@ class TrackPlayer {
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 0.8;
-    lp.frequency.value = race ? 1500 : 1200;
+    lp.frequency.value = this.style ? this.style.padCut : race ? 1500 : 1200;
     const g = ctx.createGain();
     const level = race ? 0.05 : 0.06;
     g.gain.setValueAtTime(0.0001, t);
@@ -240,7 +264,7 @@ class TrackPlayer {
     g.gain.setValueAtTime(level, t + dur - 0.1);
     g.gain.setTargetAtTime(0, t + dur - 0.1, 0.3);
     lp.connect(g);
-    g.connect(this.out);
+    g.connect(this.mel);
     if (!race) g.connect(this.reverbSend);
     const oscs: OscillatorNode[] = [];
     for (const n of e.notes) {
@@ -264,6 +288,8 @@ class TrackPlayer {
 export class MusicSequencer {
   private current: TrackPlayer | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Следующая гоночная композиция: старт случайный, дальше по кругу. */
+  private nextRace = Math.floor(Math.random() * RACE_VARIANTS);
 
   constructor(
     private readonly ctx: BaseAudioContext,
@@ -275,6 +301,11 @@ export class MusicSequencer {
     return this.current ? this.current.track : null;
   }
 
+  /** Номер играющей гоночной композиции (для отладки/тестов). */
+  get variant(): number {
+    return this.current ? this.current.variant : 0;
+  }
+
   setTrack(track: MusicTrack | null): void {
     if ((this.current?.track ?? null) === track) return;
     if (this.current) {
@@ -282,7 +313,12 @@ export class MusicSequencer {
       this.current = null;
     }
     if (track !== null) {
-      const p = new TrackPlayer(this.ctx, this.dest, track);
+      let variant = 0;
+      if (track === 'race') {
+        variant = this.nextRace;
+        this.nextRace = (this.nextRace + 1) % RACE_VARIANTS;
+      }
+      const p = new TrackPlayer(this.ctx, this.dest, track, variant);
       const at = this.ctx.currentTime + 0.06;
       p.start(at);
       this.current = p;
