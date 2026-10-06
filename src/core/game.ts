@@ -788,6 +788,7 @@ export class Game {
       newBestRace,
       newBestDrift,
       solo: this.mode === 'timeAttack',
+      lapTimes: player.lapTimes.slice(),
     };
     this.lastResult = result;
     this.uiMode = 'results';

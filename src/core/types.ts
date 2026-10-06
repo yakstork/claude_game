@@ -331,6 +331,8 @@ export interface RaceResult {
   newBestDrift: boolean;
   /** Заезд на время (без соперников) */
   solo?: boolean;
+  /** Времена кругов игрока, с */
+  lapTimes?: number[];
 }
 
 export type UiSound = 'move' | 'select' | 'back';
