@@ -40,6 +40,7 @@ import {
 } from 'three/tsl';
 import { PALETTE } from './palette';
 import { setGlow } from './materials';
+import { Blimps } from './blimps';
 
 /** Направление на солнце (над восточным горизонтом — по стартовой прямой) */
 export const SUN_DIR = new Vector3(1, 0.075, 0.12).normalize();
@@ -50,6 +51,8 @@ export class Sky {
   readonly group = new Group();
   private readonly dome: Mesh;
   readonly sunIntensity = uniform(1);
+  private readonly blimps = new Blimps();
+  private lastT = 0;
 
   constructor() {
     this.dome = new Mesh(new SphereGeometry(SKY_RADIUS, 48, 24), this.createSkyMaterial());
@@ -57,11 +60,15 @@ export class Sky {
     this.dome.frustumCulled = false;
     this.group.add(this.dome);
     this.group.add(createMountains());
+    this.group.add(this.blimps.group);
   }
 
   /** Небо и горы следуют за камерой по горизонтали */
   update(cameraPos: Vector3): void {
     this.group.position.set(cameraPos.x, 0, cameraPos.z);
+    const now = performance.now() / 1000;
+    this.blimps.update(this.lastT ? Math.min(0.1, now - this.lastT) : 0);
+    this.lastT = now;
   }
 
   private createSkyMaterial(): MeshBasicNodeMaterial {
