@@ -70,6 +70,13 @@ export const MOBILE_MAX_FPS = 120;
 const RACE_PLAYER_SLOT = 3;
 /** Прозрачность призрака лучшего круга */
 const GHOST_OPACITY = 0.32;
+/** Тембр мотора по машине: [высота, рык] — V8 ниже и злее, гиперкар выше и чище */
+const ENGINE_TONE: Record<string, [number, number]> = {
+  razor: [1, 1],
+  grizzly: [0.8, 1.7],
+  photon: [1.2, 0.6],
+  custom: [1.06, 1.1],
+};
 const COUNTDOWN = 3.6;
 const PREVIEW_S = 215;
 
@@ -504,6 +511,8 @@ export class Game {
     this.effects.clear();
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
+    const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
+    this.audio.setEngineProfile(ePitch, eGrowl);
     this.chase.view = this.settings.cameraView;
 
     this.state = 'countdown';

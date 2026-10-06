@@ -42,6 +42,14 @@ export class EngineSynth {
     private readonly dest: AudioNode,
   ) {}
 
+  /** Тембр машины: множитель высоты и громкости «рыка» */
+  private pitch = 1;
+  private growl = 1;
+  setProfile(pitch: number, growl: number): void {
+    this.pitch = Number.isFinite(pitch) ? Math.min(1.6, Math.max(0.5, pitch)) : 1;
+    this.growl = Number.isFinite(growl) ? Math.min(2.5, Math.max(0, growl)) : 1;
+  }
+
   setBoost(level: number): void {
     this.boost = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0;
   }
@@ -69,6 +77,8 @@ export class EngineSynth {
 
     const t = computeEngineTargets(p, this.targets);
     if (this.boost > 0) applyBoost(t, this.boost);
+    t.freq *= this.pitch;
+    t.growlGain *= this.growl;
     // при старте после тишины — быстрое включение, дальше сглаживание
     const tc = wasSilent ? 0.03 : TC;
     this.oscA?.frequency.setTargetAtTime(t.freq, now, tc);

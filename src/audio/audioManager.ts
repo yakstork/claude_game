@@ -80,6 +80,15 @@ export class AudioManager {
     });
   }
 
+  private enginePitch = 1;
+  private engineGrowl = 1;
+  /** Тембр мотора машины игрока (высота, «рык») */
+  setEngineProfile(pitch: number, growl: number): void {
+    this.enginePitch = pitch;
+    this.engineGrowl = growl;
+    this.engine?.setProfile(pitch, growl);
+  }
+
   updateEngine(p: EngineAudioParams | null): void {
     if (!this.engine || this.paused) return;
     this.safe(() => this.engine?.update(p));
@@ -220,6 +229,7 @@ export class AudioManager {
     this.sfxBus = sfxBus;
     this.engineBus = engineBus;
     this.engine = new EngineSynth(ctx, engineBus);
+    this.engine.setProfile(this.enginePitch, this.engineGrowl);
     this.sfx = new SfxPlayer(ctx, sfxBus);
     this.music = new MusicSequencer(ctx, musicBus);
     this.applyVolumes(true);
