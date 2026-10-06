@@ -197,8 +197,16 @@ export class AudioManager {
     comp.ratio.value = 4;
     comp.attack.value = 0.005;
     comp.release.value = 0.2;
+    // лимитер на выходе: ловит пики после компрессора (удар + нитро + музыка), без клиппинга
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.08;
     master.connect(comp);
-    comp.connect(ctx.destination);
+    comp.connect(limiter);
+    limiter.connect(ctx.destination);
 
     const musicBus = ctx.createGain();
     const sfxBus = ctx.createGain();
