@@ -11,7 +11,7 @@ import {
   SRGBColorSpace,
   Vector3,
 } from 'three/webgpu';
-import { floor, fract, hash, sin, texture, time, uv, attribute, step, mix, float } from 'three/tsl';
+import { floor, fract, hash, sin, smoothstep, texture, time, uv, attribute, step, mix, float } from 'three/tsl';
 import { PALETTE, cssColor } from './palette';
 import { setGlow } from './materials';
 
@@ -150,8 +150,13 @@ export class SignBuilder {
     const blinkOn = step(0.04, fract(time.mul(0.23).add(seed.mul(7.0))));
     const flick = mix(float(1.0), blinkOn, step(0.7, hash(floor(seed.mul(100.0)))));
     const pulse = sin(time.mul(2.0).add(seed.mul(20.0))).mul(0.08).add(0.92);
-    mat.colorNode = tc.mul(flick).mul(pulse).mul(1.25);
-    setGlow(mat, tc.mul(flick).mul(0.7));
+    // бегущая световая полоса по вывеске (период и фаза зависят от seed)
+    const lu = fract(uv().x.mul(COLS));
+    const sweepPos = fract(time.mul(0.35).add(seed.mul(5.0))).mul(1.6).sub(0.3);
+    const sweep = smoothstep(0.12, 0.0, lu.sub(sweepPos).abs());
+    const lit = tc.mul(sweep.mul(1.4).add(1.0));
+    mat.colorNode = lit.mul(flick).mul(pulse).mul(1.25);
+    setGlow(mat, tc.mul(sweep.mul(1.2).add(1.0)).mul(flick).mul(0.7));
     return new Mesh(geo, mat);
   }
 }
