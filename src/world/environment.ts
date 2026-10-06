@@ -14,6 +14,7 @@ import {
 } from 'three/webgpu';
 import { attribute, color, floor, fract, hash, mix, sin, smoothstep, step, time, vertexColor } from 'three/tsl';
 import type { Track } from './track';
+import { Sea, shoreX, BEACH_WIDTH } from './sea';
 import { PALETTE } from './palette';
 import { GeometryBuilder } from './geometryBuilder';
 import { uprightFrame } from './trackMesh';
@@ -222,11 +223,19 @@ export class Environment {
   /** Участки трассы [s0, s1], занятые трибунами/парковками — там без пальм */
   private readonly reserved: [number, number][] = [];
 
+  /** Трасса-побережье: море с восточной (внешней) стороны, город — только с другой */
+  private readonly isCoast: boolean;
+
   constructor(readonly track: Track) {
+    this.isCoast = track.id === 'coast';
     this.field = new TrackDistanceField(track);
     this.buildTrackside();
     this.group.add(this.buildCity());
     this.buildProps();
+    if (this.isCoast) {
+      this.buildBeach();
+      this.group.add(new Sea().group);
+    }
     this.group.add(new Mesh(this.props.build(), propsMaterial()));
     const signs = this.signs.build();
     if (signs) this.group.add(signs);
@@ -258,6 +267,7 @@ export class Environment {
       const w = 12 + rand() * (near ? 22 : 34);
       const d = 12 + rand() * (near ? 22 : 34);
       const r = Math.max(w, d) * 0.75;
+      if (this.isCoast && x + r > shoreX(z) - BEACH_WIDTH - 4) return;
       const dist = this.field.distance(x, z);
       if (dist < r + 16) return;
       const rot = rand() < 0.7 ? Math.round(rand() * 4) * (Math.PI / 2) + (rand() - 0.5) * 0.08 : rand() * Math.PI;
@@ -612,6 +622,28 @@ export class Environment {
   }
 
   // ─── Пальмы и фонари ───────────────────────────────────────────────────
+
+  /** Пляж и набережная: пальмы и фонари вдоль берега */
+  private buildBeach(): void {
+    const gb = this.props;
+    const rand = rng(777);
+    const p = new Vector3();
+    const pole = new Color(0x2a1245);
+    for (let z = -520; z < 260; z += 16 + rand() * 14) {
+      p.set(shoreX(z) - 7 - rand() * (BEACH_WIDTH - 12), GROUND_Y + 0.3, z);
+      if (this.field.distance(p.x, p.z) < 6) continue;
+      addPalm(gb, p, rand);
+    }
+    // набережная: фонари вдоль кромки пляжа
+    for (let z = -520; z < 260; z += 34) {
+      const x = shoreX(z) - BEACH_WIDTH + 2;
+      if (this.field.distance(x, z) < 3) continue;
+      const lamp = (Math.round(z / 34) & 1) === 0 ? PALETTE.pink : PALETTE.cyan;
+      gb.cylinder(0.14, 0.2, 7.5, 6, pole, 0, new Matrix4().makeTranslation(x, GROUND_Y + 4.0, z));
+      gb.box(0.9, 0.18, 0.9, lamp, 1.2, new Matrix4().makeTranslation(x, GROUND_Y + 7.7, z));
+      gb.box(0.5, 0.12, 0.5, PALETTE.magenta, 0.8, new Matrix4().makeTranslation(x, GROUND_Y + 0.8, z));
+    }
+  }
 
   private buildProps(): void {
     const gb = this.props;
