@@ -1037,7 +1037,8 @@ export class Game {
       return;
     }
     const t = this.race.standing(this.playerSlot).currentLapTime;
-    m.group.visible = this.ghost.sample(t, _gPos, _gQuat);
+    // вплотную к игроку призрак не рисуем: иначе два кузова мерцают друг в друге
+    m.group.visible = this.ghost.sample(t, _gPos, _gQuat) && _gPos.distanceToSquared(this.player.renderPos) > 3.5 * 3.5;
     m.group.position.copy(_gPos);
     m.group.quaternion.copy(_gQuat);
   }
