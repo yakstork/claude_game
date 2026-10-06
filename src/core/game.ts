@@ -58,6 +58,7 @@ import { CUSTOM_CAR_ID, recordKey } from './types';
 import type { CameraView, RaceMode } from './types';
 import { GhostPlayer, GhostRecorder } from '../race/ghost';
 import { Cup } from '../race/cup';
+import { StuntScorer } from '../race/stunts';
 import { ACHIEVEMENTS, evaluate, loadProgress, saveProgress, type AchievementProgress } from '../race/achievements';
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
@@ -156,6 +157,7 @@ export class Game {
   private readonly dots: MinimapDot[] = [];
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
+  private readonly stunts = new StuntScorer();
   /** Прогресс наград */
   private achievements: AchievementProgress = loadProgress();
   /** Текущий кубок (серия гонок), null — вне кубка */
@@ -544,6 +546,7 @@ export class Game {
     this.effects.clear();
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
+    this.stunts.reset();
     this.stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
     const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
     this.audio.setEngineProfile(ePitch, eGrowl);
@@ -750,6 +753,19 @@ export class Game {
 
     if (this.state === 'racing') {
       const ps = player.physics.state;
+      // трюки: прыжки с трамплинов — очки и немного нитро
+      const sev = this.stunts.update(dt, ps);
+      for (let k = 0; k < sev.length; k++) {
+        const e = sev[k];
+        if (e.hard) {
+          this.ui.popup('ЖЁСТКАЯ ПОСАДКА', undefined, 'orange');
+          continue;
+        }
+        ps.nitro = Math.min(1, ps.nitro + e.nitro);
+        this.drift.total += e.points;
+        this.ui.popup(e.perfect ? `${e.label} · PERFECT` : e.label, `+${Math.round(e.points).toLocaleString('ru-RU')}`, e.perfect ? 'yellow' : 'cyan');
+        if (e.perfect) this.audio.play('combo');
+      }
       this.ghostRec.record(race.standing(this.playerSlot).currentLapTime, ps.position, ps.quaternion, this.lapDistance());
     }
 
