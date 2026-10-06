@@ -42,6 +42,8 @@ export class Hud {
   private readonly posPanel: HTMLElement;
   private readonly deltaEl: HTMLElement;
   private cDelta = '';
+  private readonly slipEl: HTMLElement;
+  private cSlip = -1;
   private readonly posTotal: HTMLElement;
   private readonly driftTotalEl: HTMLElement;
   private readonly lapLabel: HTMLElement;
@@ -114,6 +116,7 @@ export class Hud {
     this.deltaEl = el('div', 'hud-delta', '', lap);
     this.deltaEl.hidden = true;
     this.posPanel = pos;
+    this.slipEl = el('div', 'hud-slip', 'СЛИПСТРИМ', root);
     const rows = el('div', 'hud-lap-rows', undefined, lap);
     el('span', 'hud-label', 'ЛУЧШИЙ', rows);
     this.lapBest = el('span', 'hud-time best', formatTime(null), rows);
@@ -231,6 +234,12 @@ export class Hud {
       this.deltaEl.classList.toggle('ahead', d.delta !== null && d.delta < 0);
     }
     this.posPanel.classList.toggle('solo', d.totalRacers <= 1);
+    const slip = Math.round(d.slipstream * 10) / 10;
+    if (slip !== this.cSlip) {
+      this.cSlip = slip;
+      this.slipEl.classList.toggle('on', slip >= 0.3);
+      this.slipEl.style.opacity = slip >= 0.3 ? String(0.4 + slip * 0.6) : '';
+    }
     if (d.position !== this.cPos) {
       this.cPos = d.position;
       this.posNum.textContent = String(d.position);

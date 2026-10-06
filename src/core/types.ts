@@ -303,6 +303,8 @@ export interface HudData {
   boostPower: number;
   /** Разница с лучшим кругом (призраком) в той же точке трассы, с; null — нет данных */
   delta: number | null;
+  /** Аэродинамический мешок за соперником 0..1 */
+  slipstream: number;
 }
 
 export interface ResultRow {

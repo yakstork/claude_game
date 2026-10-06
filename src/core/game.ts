@@ -31,6 +31,7 @@ import { PALETTE, cssColor } from '../world/palette';
 import { InputManager, resolveTouchMode } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
+import { updateSlipstream } from '../vehicle/slipstream';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from '../vehicle/specs';
 import { getHandling } from '../vehicle/handling';
 import { CarModel } from '../vehicle/carModel';
@@ -220,6 +221,7 @@ export class Game {
       boost: 0,
       boostPower: 0,
       delta: null,
+      slipstream: 0,
     };
 
     window.addEventListener('resize', () => {
@@ -622,6 +624,7 @@ export class Game {
       c.physics.step(dt, controls);
     }
     resolveCarCollisions(this.physicsList);
+    updateSlipstream(this.states, dt);
 
     // события физики
     this.hitWallThisStep = false;
@@ -837,7 +840,7 @@ export class Game {
 
     const player = this.cars.length ? this.player.physics.state : null;
     let speedLines = 0;
-    if (player && !this.paused) speedLines = player.nitroActive ? 1 : Math.min(0.5, Math.max(0, (Math.abs(player.speed) - 55) / 30));
+    if (player && !this.paused) speedLines = player.nitroActive ? 1 : Math.max(player.slipstream * 0.7, Math.min(0.5, Math.max(0, (Math.abs(player.speed) - 55) / 30)));
     this.effects.update(this.paused ? 0 : dt, this.camera, player ? Math.abs(player.speed) : 0, speedLines);
 
     this.world.update(this.camera.position);
@@ -923,6 +926,7 @@ export class Game {
     const boostTotal = this.player.physics.boostDuration;
     h.boost = boostTotal > 0 ? Math.min(1, ps.boostTime / boostTotal) : 0;
     h.boostPower = ps.boostTime > 0 ? ps.boostPower : 0;
+    h.slipstream = this.state === 'racing' ? ps.slipstream : 0;
     this.audio.setBoostLevel(this.paused ? 0 : h.boostPower * h.boost);
     const dots = this.dots;
     for (let i = 0; i < this.cars.length; i++) {
