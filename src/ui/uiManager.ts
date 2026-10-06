@@ -107,7 +107,9 @@ export class UIManager {
       () => this.showCustomize(),
       tracks,
       opts.trackIndex ?? 0,
+      () => this.toggleRaceMode(),
     );
+    this.menu.setMode(opts.settings.raceMode);
     const budget = opts.customBudget ?? DEFAULT_BUDGET;
     const palette = opts.customPalette ?? DEFAULT_PALETTE;
     const defaults = defaultCustomBuild(budget, palette);
@@ -344,7 +346,16 @@ export class UIManager {
     this.settings.el.classList.toggle('previewing', active);
   }
 
+  private toggleRaceMode(): void {
+    const cur = this.settings.value;
+    const next: Settings = { ...cur, raceMode: cur.raceMode === 'race' ? 'timeAttack' : 'race' };
+    this.settings.setSettings(next);
+    this.opts.callbacks.onUiSound('move');
+    this.handleSettings(next);
+  }
+
   private handleSettings(s: Settings): void {
+    this.menu.setMode(s.raceMode);
     this.controlMode = s.controlMode;
     this.touch.setLayout(s.touchSize, s.touchOpacity);
     this.setTouchMode(modeUsesTouch(s.controlMode));
@@ -466,6 +477,10 @@ export class UIManager {
   }
 
   // ── данные ────────────────────────────────────────────────────────────────
+
+  setSettings(s: Settings): void {
+    this.settings.setSettings(s);
+  }
 
   setRecords(r: Records): void {
     this.menu.setRecords(r);

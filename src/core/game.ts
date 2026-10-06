@@ -9,7 +9,7 @@ import { GameLoop } from './loop';
 import type { RenderSystem } from './renderer';
 import { ChaseCamera } from './camera';
 import { isTouchDevice, vibrate } from './device';
-import { DEFAULT_CUSTOM_BUILD, loadCustomBuild, loadTrackIndex, saveTrackIndex, loadRecords, loadSettings, saveCustomBuild, saveRecords, saveSettings } from './storage';
+import { DEFAULT_CUSTOM_BUILD, loadCustomBuild, loadTrackIndex, saveTrackIndex, loadRecords, loadSettings, loadGhost, saveGhost, saveCustomBuild, saveRecords, saveSettings } from './storage';
 import type {
   BotProfile,
   CarSpec,
@@ -54,16 +54,21 @@ import {
   normalizeBuild,
 } from '../vehicle/handling';
 import { CUSTOM_CAR_ID, recordKey } from './types';
+import type { CameraView, RaceMode } from './types';
+import { GhostPlayer, GhostRecorder } from '../race/ghost';
+import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
 import { StartBoostJudge, START_BOOST } from './startBoost';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
 
-const LAPS = 3;
 /** Потолок FPS на сенсорных устройствах */
 export const MOBILE_MAX_FPS = 120;
-const PLAYER_SLOT = 3;
+/** Слот игрока на решётке в гонке с ботами */
+const RACE_PLAYER_SLOT = 3;
+/** Прозрачность призрака лучшего круга */
+const GHOST_OPACITY = 0.32;
 const COUNTDOWN = 3.6;
 const PREVIEW_S = 215;
 
@@ -95,6 +100,8 @@ export interface GameOptions {
 
 const NO_CONTROLS: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
 const _proj = createProjection();
+const _gPos = new Vector3();
+const _gQuat = new Quaternion();
 
 export class Game {
   readonly scene = new Scene();
@@ -139,6 +146,16 @@ export class Game {
   private readonly dots: MinimapDot[] = [];
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
+  /** Параметры текущей гонки (из настроек на момент старта) */
+  laps = 3;
+  playerSlot = RACE_PLAYER_SLOT;
+  mode: RaceMode = 'race';
+  /** Призрак лучшего круга: запись текущего круга, воспроизведение рекорда, модель */
+  private readonly ghostRec = new GhostRecorder();
+  private ghost: GhostPlayer | null = null;
+  private ghostModel: CarModel | null = null;
+  private ghostKey = '';
+  private ghostBeaten = false;
 
   constructor(
     readonly render: RenderSystem,
@@ -189,7 +206,7 @@ export class Game {
       nitro: 0,
       nitroActive: false,
       lap: 1,
-      totalLaps: LAPS,
+      totalLaps: 3,
       position: 1,
       totalRacers: 6,
       lapTime: 0,
@@ -202,6 +219,7 @@ export class Game {
       minimap: this.dots,
       boost: 0,
       boostPower: 0,
+      delta: null,
     };
 
     window.addEventListener('resize', () => {
@@ -349,6 +367,7 @@ export class Game {
     this.ui.setTouchLayout(s.touchSize, s.touchOpacity);
     this.input.setTouchSource(this.touchMode ? this.ui.touchState : null);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
+    this.chase.view = s.cameraView;
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
     this.effects.density = s.quality === 'high' ? 1 : 0.5;
@@ -417,6 +436,12 @@ export class Game {
     this.physicsList.length = 0;
     this.race = null;
     this.playerAutopilot = null;
+    if (this.ghostModel) {
+      this.scene.remove(this.ghostModel.group);
+      this.ghostModel.dispose();
+      this.ghostModel = null;
+    }
+    this.ghost = null;
     this.effects.clear();
     if (this.previewModel) this.scene.remove(this.previewModel.group);
   }
@@ -428,10 +453,15 @@ export class Game {
     this.clearRace();
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, carIndex));
     const playerSpec = CAR_SPECS[this.selectedCar];
+    this.mode = this.settings.raceMode;
+    this.laps = this.settings.laps;
+    const solo = this.mode === 'timeAttack';
+    this.playerSlot = solo ? 0 : RACE_PLAYER_SLOT;
+    this.difficulty = DIFFICULTY[this.settings.difficulty];
 
-    // решётка: 0–2 сильные боты, 3 — игрок, 4–5 — остальные
-    const bots = [...BOT_PROFILES];
-    const order: (BotProfile | null)[] = [bots[0], bots[1], bots[2], null, bots[3], bots[4]];
+    // решётка: 0–2 сильные боты, 3 — игрок, 4–5 — остальные; заезд на время — только игрок
+    const bots = BOT_PROFILES.map((b) => applyDifficulty(b, this.settings.difficulty));
+    const order: (BotProfile | null)[] = solo ? [null] : [bots[0], bots[1], bots[2], null, bots[3], bots[4]];
     order.forEach((profile, slot) => {
       const spec: CarSpec = profile ? { ...specById(profile.carId), bodyColor: profile.bodyColor, neonColor: profile.neonColor } : playerSpec;
       const physics = new VehiclePhysics(spec, this.track);
@@ -463,7 +493,7 @@ export class Game {
     this.race = new RaceManager(
       this.track,
       this.cars.map((c) => ({ name: c.name, isPlayer: c.isPlayer })),
-      LAPS,
+      this.laps,
     );
     if (this.opts.autopilot) {
       this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[0], name: 'AUTO', skill: 0.9 }, 7);
@@ -471,6 +501,8 @@ export class Game {
     this.drift.reset();
     this.effects.clear();
     this.hitWallThisStep = false;
+    this.setupGhost(playerSpec);
+    this.chase.view = this.settings.cameraView;
 
     this.state = 'countdown';
     this.paused = false;
@@ -485,17 +517,23 @@ export class Game {
     this.audio.playMusic('race');
     this.ui.showRaceHud(this.track.outline(256));
     this.hud.totalRacers = this.cars.length;
+    this.hud.totalLaps = this.laps;
+    this.hud.delta = null;
+    if (solo) {
+      const best = this.ghost ? `  ·  РЕКОРД ${formatTime(this.ghost.lapTime)}` : '';
+      window.setTimeout(() => this.state === 'countdown' && this.ui.banner(`ЗАЕЗД НА ВРЕМЯ${best}`, 'cyan'), 300);
+    }
     this.input.clear();
     const p = this.player;
     this.chase.snap(this.chaseInput(p));
   }
 
   get player(): RaceCar {
-    return this.cars[PLAYER_SLOT];
+    return this.cars[this.playerSlot];
   }
 
   get playerIndex(): number {
-    return PLAYER_SLOT;
+    return this.playerSlot;
   }
 
   pause(): void {
@@ -561,7 +599,7 @@ export class Game {
     }
 
     const player = this.player;
-    const playerProgress = race.progress(PLAYER_SLOT);
+    const playerProgress = race.progress(this.playerSlot);
     for (let i = 0; i < this.cars.length; i++) {
       const c = this.cars[i];
       c.prevPos.copy(c.physics.state.position);
@@ -577,7 +615,7 @@ export class Game {
         }
       } else if (c.bot) {
         controls = this.state === 'countdown' ? NO_CONTROLS : c.bot.update(dt, c.physics.state, c.spec, this.states);
-        c.physics.powerScale = this.state === 'racing' ? rubberBandFactor(race.progress(i), playerProgress, this.track.length) : 1;
+        c.physics.powerScale = (this.state === 'racing' ? rubberBandFactor(race.progress(i), playerProgress, this.track.length) : 1) * this.difficulty.power;
       } else {
         controls = NO_CONTROLS;
       }
@@ -631,13 +669,16 @@ export class Game {
 
     race.update(dt, this.states);
     for (const ev of race.events) {
-      if (ev.car !== PLAYER_SLOT) continue;
+      if (ev.car !== this.playerSlot) continue;
       if (ev.type === 'lap') {
+        this.onPlayerLap(ev.lapTime);
         this.audio.play('lap');
-        if (ev.lap < LAPS) {
-          this.ui.banner(ev.lap === LAPS - 1 ? 'ФИНАЛЬНЫЙ КРУГ' : `КРУГ ${ev.lap + 1}/${LAPS}`, ev.lap === LAPS - 1 ? 'orange' : 'cyan');
+        if (ev.lap < this.laps) {
+          this.ui.banner(ev.lap === this.laps - 1 ? 'ФИНАЛЬНЫЙ КРУГ' : `КРУГ ${ev.lap + 1}/${this.laps}`, ev.lap === this.laps - 1 ? 'orange' : 'cyan');
         }
-        if (ev.isBest && ev.lap > 1) this.ui.popup('ЛУЧШИЙ КРУГ', formatTime(ev.lapTime), 'yellow');
+        if (this.ghostBeaten) this.ui.popup('РЕКОРД КРУГА', formatTime(ev.lapTime), 'yellow');
+        else if (ev.isBest && ev.lap > 1) this.ui.popup('ЛУЧШИЙ КРУГ', formatTime(ev.lapTime), 'yellow');
+        this.ghostBeaten = false;
       } else if (ev.type === 'finish') {
         this.state = 'finished';
         this.finishT = 0;
@@ -645,8 +686,14 @@ export class Game {
           if (d.type === 'comboEnd') this.ui.popup(d.label, `+${d.points.toLocaleString('ru-RU')}`, 'pink');
         }
         this.audio.play('finish');
-        this.ui.banner(ev.position === 1 ? 'ПОБЕДА!' : `ФИНИШ · ${ev.position}-Е МЕСТО`, ev.position === 1 ? 'yellow' : 'pink');
+        if (this.mode === 'timeAttack') this.ui.banner('ФИНИШ', 'cyan');
+        else this.ui.banner(ev.position === 1 ? 'ПОБЕДА!' : `ФИНИШ · ${ev.position}-Е МЕСТО`, ev.position === 1 ? 'yellow' : 'pink');
       }
+    }
+
+    if (this.state === 'racing') {
+      const ps = player.physics.state;
+      this.ghostRec.record(race.standing(this.playerSlot).currentLapTime, ps.position, ps.quaternion, this.lapDistance());
     }
 
     if (this.state === 'racing') {
@@ -673,7 +720,7 @@ export class Game {
     if (!this.race) return;
     this.resultsShown = true;
     const race = this.race;
-    const player = race.standing(PLAYER_SLOT);
+    const player = race.standing(this.playerSlot);
     const rows: ResultRow[] = [];
     const sorted = this.cars.map((c, i) => {
       const st = race.standing(i);
@@ -707,13 +754,14 @@ export class Game {
     const prevLap = rec.bestLap[key] ?? (legacy ? rec.bestLap[legacy] : undefined);
     const prevRace = rec.bestRace[key] ?? (legacy ? rec.bestRace[legacy] : undefined);
     const newBestLap = player.bestLap !== null && (prevLap === undefined || player.bestLap < prevLap);
-    const newBestRace = prevRace === undefined || time < prevRace;
+    // рекорд гонки — только для стандартной дистанции в 3 круга
+    const newBestRace = this.laps === 3 && (prevRace === undefined || time < prevRace);
     const newBestDrift = this.drift.total > rec.bestDrift;
     if (newBestLap && player.bestLap !== null) rec.bestLap[key] = player.bestLap;
     if (newBestRace) rec.bestRace[key] = time;
     if (newBestDrift) rec.bestDrift = Math.round(this.drift.total);
     rec.races += 1;
-    if (playerPos === 1) rec.wins += 1;
+    if (playerPos === 1 && this.mode === 'race') rec.wins += 1;
     saveRecords(rec);
     this.ui.setRecords(rec);
 
@@ -727,6 +775,7 @@ export class Game {
       newBestLap,
       newBestRace,
       newBestDrift,
+      solo: this.mode === 'timeAttack',
     };
     this.lastResult = result;
     this.uiMode = 'results';
@@ -743,7 +792,8 @@ export class Game {
       }
       // 'back' (Backspace / B на геймпаде) в гонке не ставит паузу: B — это нитро
       if (a === 'pause') this.pause();
-      else if (a === 'reset' && this.state === 'racing') this.respawnAtCheckpoint(this.player, PLAYER_SLOT);
+      else if (a === 'reset' && this.state === 'racing') this.respawnAtCheckpoint(this.player, this.playerSlot);
+      else if (a === 'camera' && this.cars.length) this.cycleCamera();
     }
   }
 
@@ -768,6 +818,7 @@ export class Game {
         c.model.group.quaternion.copy(c.renderQuat);
         if (!this.paused) this.effects.updateCar(i, st, dt);
       }
+      this.updateGhostModel();
       const p = this.player;
       if (!this.paused) {
         const inp = this.chaseInput(p);
@@ -851,12 +902,12 @@ export class Game {
     if (!race) return;
     const h = this.hud;
     const ps = this.player.physics.state;
-    const st = race.standing(PLAYER_SLOT);
+    const st = race.standing(this.playerSlot);
     // полная горизонтальная скорость: в заносе продольная составляющая падает, а машина — нет
     h.speedKmh = Math.hypot(ps.velocity.x, ps.velocity.z) * 3.6;
     h.nitro = ps.nitro;
     h.nitroActive = ps.nitroActive;
-    h.lap = Math.min(LAPS, st.lap + 1);
+    h.lap = Math.min(this.laps, st.lap + 1);
     h.position = st.position;
     h.lapTime = st.currentLapTime;
     h.lastLap = st.lapTimes.length ? st.lapTimes[st.lapTimes.length - 1] : null;
@@ -864,6 +915,8 @@ export class Game {
     h.raceTime = race.raceTime;
     h.driftTotal = Math.round(this.drift.total);
     h.wrongWay = st.wrongWay && this.state === 'racing';
+    const gt = this.ghost && this.state === 'racing' ? this.ghost.timeAtDistance(this.lapDistance()) : null;
+    h.delta = gt !== null && st.currentLapTime > 1 ? st.currentLapTime - gt : null;
     // буст: новый — когда boostTime вырос; доля = остаток / полная длительность текущего буста
     if (ps.boostTime > this.boostPrev + 1e-4) this.audio.playBoost(ps.boostPower);
     this.boostPrev = ps.boostTime;
@@ -886,6 +939,66 @@ export class Game {
     }
     dots.length = this.cars.length;
     this.ui.updateHud(h);
+  }
+
+  // ─── Призрак лучшего круга и камера ────────────────────────────────────
+
+  private difficulty = DIFFICULTY.normal;
+
+  private setupGhost(spec: CarSpec): void {
+    this.ghostKey = recordKey(this.track.id, spec.id);
+    const data = loadGhost(this.ghostKey);
+    this.ghost = data ? new GhostPlayer(data) : null;
+    this.ghostRec.begin();
+    this.ghostBeaten = false;
+    // модель призрака видна только в заезде на время (в гонке хватает соперников)
+    if (this.mode === 'timeAttack') {
+      const m = new CarModel(spec);
+      m.setGhost(GHOST_OPACITY);
+      m.group.visible = false;
+      this.scene.add(m.group);
+      this.ghostModel = m;
+    }
+  }
+
+  /** Метры, пройденные игроком в текущем круге */
+  private lapDistance(): number {
+    if (!this.race) return 0;
+    const st = this.race.standing(this.playerSlot);
+    return st.progress - st.lap * this.track.length;
+  }
+
+  private onPlayerLap(lapTime: number): void {
+    const data = this.ghostRec.finish(lapTime);
+    this.ghostRec.begin();
+    if (!data) return;
+    if (!this.ghost || lapTime < this.ghost.lapTime) {
+      this.ghostBeaten = this.ghost !== null;
+      saveGhost(this.ghostKey, data);
+      this.ghost = new GhostPlayer(data);
+    }
+  }
+
+  private updateGhostModel(): void {
+    const m = this.ghostModel;
+    if (!m) return;
+    if (!this.ghost || !this.race || this.state !== 'racing') {
+      m.group.visible = false;
+      return;
+    }
+    const t = this.race.standing(this.playerSlot).currentLapTime;
+    m.group.visible = this.ghost.sample(t, _gPos, _gQuat);
+    m.group.position.copy(_gPos);
+    m.group.quaternion.copy(_gQuat);
+  }
+
+  private cycleCamera(): void {
+    const views: CameraView[] = ['far', 'near', 'bumper'];
+    const next = views[(views.indexOf(this.chase.view) + 1) % views.length];
+    this.chase.view = next;
+    this.applySettings({ ...this.settings, cameraView: next }, true);
+    this.ui.setSettings(this.settings);
+    this.ui.popup(next === 'far' ? 'КАМЕРА: ДАЛЬНЯЯ' : next === 'near' ? 'КАМЕРА: БЛИЖНЯЯ' : 'КАМЕРА: БАМПЕР', undefined, 'cyan');
   }
 
   /**
@@ -917,8 +1030,8 @@ export class Game {
       speedKmh: p ? Math.round(Math.hypot(p.velocity.x, p.velocity.z) * 3.6) : 0,
       nitro: p ? p.nitro : 0,
       drifting: p ? p.drifting : false,
-      lap: this.race ? this.race.standing(PLAYER_SLOT).lap : 0,
-      position: this.race ? this.race.standing(PLAYER_SLOT).position : 0,
+      lap: this.race ? this.race.standing(this.playerSlot).lap : 0,
+      position: this.race ? this.race.standing(this.playerSlot).position : 0,
       raceTime: this.race ? this.race.raceTime : 0,
       driftTotal: Math.round(this.drift.total),
       result: this.lastResult,

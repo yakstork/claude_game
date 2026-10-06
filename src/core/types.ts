@@ -21,7 +21,7 @@ export interface VehicleControls {
   nitro: boolean;
 }
 
-export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'pause' | 'reset';
+export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'pause' | 'reset' | 'camera';
 
 // ─── Машины ────────────────────────────────────────────────────────────────
 
@@ -231,7 +231,20 @@ export interface Settings {
   touchSize: number;
   /** Непрозрачность сенсорных кнопок 0.2..1 */
   touchOpacity: number;
+  /** Режим: гонка с ботами или заезд на время с призраком лучшего круга */
+  raceMode: RaceMode;
+  /** Сложность ботов */
+  difficulty: Difficulty;
+  /** Число кругов */
+  laps: number;
+  /** Вид камеры в гонке (переключается клавишей C) */
+  cameraView: CameraView;
 }
+
+export type RaceMode = 'race' | 'timeAttack';
+export type Difficulty = 'easy' | 'normal' | 'hard';
+export type CameraView = 'far' | 'near' | 'bumper';
+export const LAP_OPTIONS = [1, 3, 5] as const;
 
 export type ControlMode = 'auto' | 'keyboard' | 'touch';
 
@@ -286,6 +299,8 @@ export interface HudData {
   /** Временное ускорение: оставшаяся доля 0..1 (0 — нет) и сила 0..1 */
   boost: number;
   boostPower: number;
+  /** Разница с лучшим кругом (призраком) в той же точке трассы, с; null — нет данных */
+  delta: number | null;
 }
 
 export interface ResultRow {
@@ -310,6 +325,8 @@ export interface RaceResult {
   newBestLap: boolean;
   newBestRace: boolean;
   newBestDrift: boolean;
+  /** Заезд на время (без соперников) */
+  solo?: boolean;
 }
 
 export type UiSound = 'move' | 'select' | 'back';

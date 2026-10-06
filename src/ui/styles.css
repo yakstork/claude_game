@@ -1099,3 +1099,8 @@
 @media (pointer: coarse) {
   .pick { min-height: 44px; }
 }
+
+/* Разница с лучшим кругом (призрак) и одиночный заезд */
+.hud-delta { font-size: 1.05em; font-style: italic; font-weight: 700; margin: -0.2em 0 0.3em; color: var(--pink); text-shadow: 0 0 0.4em var(--pink); }
+.hud-delta.ahead { color: var(--cyan); text-shadow: 0 0 0.4em var(--cyan); }
+.hud-pos.solo .hud-pos-row, .hud-pos.solo > .hud-label:first-child { display: none; }

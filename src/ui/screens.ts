@@ -1,5 +1,5 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
-import type { CarSpec, ControlMode, Quality, RaceResult, Settings, UICallbacks } from '../core/types';
+import type { CameraView, CarSpec, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
 import { isTouchDevice } from '../core/device';
 import { el, onTap } from './dom';
 import {
@@ -85,6 +85,52 @@ const CONTROL_MODES: { mode: ControlMode; full: string; short: string }[] = [
   { mode: 'touch', full: 'СЕНСОРНЫЕ КНОПКИ', short: 'КНОПКИ' },
 ];
 
+type ChoiceKey = 'raceMode' | 'difficulty' | 'laps' | 'cameraView';
+interface ChoiceDef<K extends ChoiceKey = ChoiceKey> {
+  key: K;
+  label: string;
+  options: { value: Settings[K]; full: string; short?: string }[];
+}
+
+/** Параметры гонки: режим, сложность, круги, камера */
+export const RACE_CHOICES: ChoiceDef[] = [
+  {
+    key: 'raceMode',
+    label: 'РЕЖИМ',
+    options: [
+      { value: 'race' as RaceMode, full: 'ГОНКА' },
+      { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ' },
+    ],
+  },
+  {
+    key: 'difficulty',
+    label: 'СЛОЖНОСТЬ',
+    options: [
+      { value: 'easy' as Difficulty, full: 'ЛЕГКО' },
+      { value: 'normal' as Difficulty, full: 'НОРМА' },
+      { value: 'hard' as Difficulty, full: 'ХАРД' },
+    ],
+  },
+  {
+    key: 'laps',
+    label: 'КРУГИ',
+    options: [
+      { value: 1, full: '1' },
+      { value: 3, full: '3' },
+      { value: 5, full: '5' },
+    ],
+  },
+  {
+    key: 'cameraView',
+    label: 'КАМЕРА (C)',
+    options: [
+      { value: 'far' as CameraView, full: 'ДАЛЬНЯЯ', short: 'ДАЛЬ' },
+      { value: 'near' as CameraView, full: 'БЛИЖНЯЯ', short: 'БЛИЖЕ' },
+      { value: 'bumper' as CameraView, full: 'БАМПЕР' },
+    ],
+  },
+];
+
 export class SettingsScreen {
   readonly el: HTMLElement;
   readonly nav: Nav;
@@ -96,6 +142,7 @@ export class SettingsScreen {
   private readonly fpsVal: HTMLElement;
   private readonly list: HTMLElement;
   private readonly modeHint: HTMLElement;
+  private readonly choices: { def: ChoiceDef; btns: HTMLElement[] }[] = [];
 
   constructor(
     parent: HTMLElement,
@@ -122,6 +169,7 @@ export class SettingsScreen {
     const list = el('div', 'set-col', undefined, listBox);
     const list2 = el('div', 'set-col', undefined, listBox);
 
+    for (const def of RACE_CHOICES.slice(0, 3)) this.addChoice(list, def);
     for (const def of SLIDERS) this.addSlider(list, def);
 
     // качество
@@ -194,6 +242,7 @@ export class SettingsScreen {
       activate: () => cycleMode(1),
     });
 
+    this.addChoice(list2, RACE_CHOICES[3]);
     for (const def of TOUCH_SLIDERS) this.addSlider(list2, def);
 
     const back = makeButton(el('div', 'set-actions', undefined, panel), 'НАЗАД');
@@ -218,6 +267,49 @@ export class SettingsScreen {
       el('span', 's-short', short, inner);
     }
     return seg;
+  }
+
+  get value(): Settings {
+    return { ...this.settings };
+  }
+
+  /** Обновить значения извне (например, камера переключена клавишей C в гонке) */
+  setSettings(s: Settings): void {
+    this.settings = { ...s };
+    this.refresh();
+  }
+
+  private addChoice(parent: HTMLElement, def: ChoiceDef): void {
+    const row = el('div', 'set-row', undefined, parent);
+    el('span', 'set-label', def.label, row);
+    const seg = el('div', 'segments', undefined, row);
+    const btns = def.options.map((o) => {
+      const b = this.addSeg(seg, o.full, o.short);
+      onTap(b, () => this.setChoice(def, o.value));
+      return b;
+    });
+    this.choices.push({ def, btns });
+    const cycle = (dir: -1 | 1): void => {
+      const n = def.options.length;
+      const i = def.options.findIndex((o) => o.value === this.settings[def.key]);
+      this.setChoice(def, def.options[(i + dir + n) % n].value);
+      this.cb.onUiSound('move');
+    };
+    this.nav.add({
+      el: row,
+      noClick: true,
+      adjust: (dir) => {
+        cycle(dir);
+        return true;
+      },
+      activate: () => cycle(1),
+    });
+  }
+
+  private setChoice(def: ChoiceDef, v: Settings[ChoiceKey]): void {
+    if (this.settings[def.key] === v) return;
+    this.settings = { ...this.settings, [def.key]: v };
+    this.emit();
   }
 
   private addSlider(parent: HTMLElement, def: SliderDef): void {
@@ -315,6 +407,7 @@ export class SettingsScreen {
     this.modeHint.hidden = !(this.settings.controlMode === 'keyboard' && isTouchDevice());
     this.fpsBtn.classList.toggle('on', this.settings.showFps);
     this.fpsVal.textContent = this.settings.showFps ? 'ВКЛ' : 'ВЫКЛ';
+    for (const c of this.choices) c.def.options.forEach((o, i) => c.btns[i].classList.toggle('on', this.settings[c.def.key] === o.value));
   }
 }
 
@@ -386,9 +479,9 @@ export class ResultsScreen {
     const body = this.body;
     body.replaceChildren();
     body.scrollTop = 0;
-    const win = r.playerPosition === 1;
+    const win = r.playerPosition === 1 && !r.solo;
     const head = el('div', 'results-head', undefined, body);
-    el('div', `results-title${win ? ' win' : ''}`, resultTitle(r.playerPosition), head);
+    el('div', `results-title${win || (r.solo && r.newBestLap) ? ' win' : ''}`, r.solo ? (r.newBestLap ? 'НОВЫЙ РЕКОРД!' : 'ЗАЕЗД НА ВРЕМЯ') : resultTitle(r.playerPosition), head);
     const car = this.cars.find((c) => c.id === r.carId);
     if (car || trackName) {
       const line = el('div', 'results-car', car ? car.name : '', head);

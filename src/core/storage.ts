@@ -1,5 +1,7 @@
 /** Настройки и рекорды в localStorage. Все обращения защищены try/catch. */
 import type { CustomBuild, Records, Settings } from './types';
+import { LAP_OPTIONS } from './types';
+import { isGhostData, type GhostData } from '../race/ghost';
 import { isTouchDevice } from './device';
 import { PALETTE } from '../world/palette';
 
@@ -17,6 +19,10 @@ export const DEFAULT_SETTINGS: Settings = {
   controlMode: 'auto',
   touchSize: 1,
   touchOpacity: 0.7,
+  raceMode: 'race',
+  difficulty: 'normal',
+  laps: 3,
+  cameraView: 'far',
 };
 
 export const DEFAULT_CUSTOM_BUILD: CustomBuild = {
@@ -64,6 +70,10 @@ export function loadSettings(): Settings {
     controlMode: s.controlMode === 'keyboard' || s.controlMode === 'touch' || s.controlMode === 'auto' ? s.controlMode : 'auto',
     touchSize: range(s.touchSize, 0.7, 1.5, DEFAULT_SETTINGS.touchSize),
     touchOpacity: range(s.touchOpacity, 0.2, 1, DEFAULT_SETTINGS.touchOpacity),
+    raceMode: s.raceMode === 'timeAttack' ? 'timeAttack' : 'race',
+    difficulty: s.difficulty === 'easy' || s.difficulty === 'hard' ? s.difficulty : 'normal',
+    laps: (LAP_OPTIONS as readonly number[]).includes(s.laps as number) ? (s.laps as number) : DEFAULT_SETTINGS.laps,
+    cameraView: s.cameraView === 'near' || s.cameraView === 'bumper' ? s.cameraView : 'far',
   };
 }
 
@@ -115,4 +125,22 @@ export function loadTrackIndex(count: number): number {
 
 export function saveTrackIndex(index: number): void {
   write(TRACK_KEY, { index });
+}
+
+const GHOST_PREFIX = 'neonrush.ghost.v1.';
+
+/** Призрак лучшего круга по ключу трассы и машины (`recordKey`) */
+export function loadGhost(key: string): GhostData | null {
+  try {
+    const raw = localStorage.getItem(GHOST_PREFIX + key);
+    if (!raw) return null;
+    const d: unknown = JSON.parse(raw);
+    return isGhostData(d) ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveGhost(key: string, g: GhostData): void {
+  write(GHOST_PREFIX + key, g);
 }

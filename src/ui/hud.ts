@@ -9,6 +9,7 @@ import {
   comboScale,
   formatScore,
   formatSpeed,
+  formatDelta,
   formatTime,
   SPEEDO_MAX_KMH,
   speedFraction,
@@ -38,6 +39,9 @@ export class Hud {
 
   // элементы
   private readonly posNum: HTMLElement;
+  private readonly posPanel: HTMLElement;
+  private readonly deltaEl: HTMLElement;
+  private cDelta = '';
   private readonly posTotal: HTMLElement;
   private readonly driftTotalEl: HTMLElement;
   private readonly lapLabel: HTMLElement;
@@ -106,6 +110,10 @@ export class Hud {
     const lap = el('div', 'panel cyan hud-lap', undefined, root);
     this.lapLabel = el('div', 'hud-lap-title', 'КРУГ 1/3', lap);
     this.lapCur = el('div', 'hud-lap-cur', formatTime(null), lap);
+    // разница с лучшим кругом (призраком) в той же точке трассы
+    this.deltaEl = el('div', 'hud-delta', '', lap);
+    this.deltaEl.hidden = true;
+    this.posPanel = pos;
     const rows = el('div', 'hud-lap-rows', undefined, lap);
     el('span', 'hud-label', 'ЛУЧШИЙ', rows);
     this.lapBest = el('span', 'hud-time best', formatTime(null), rows);
@@ -215,6 +223,14 @@ export class Hud {
   // ── каждый кадр ──────────────────────────────────────────────────────────
 
   update(d: HudData): void {
+    const dl = d.delta === null ? '' : formatDelta(d.delta);
+    if (dl !== this.cDelta) {
+      this.cDelta = dl;
+      this.deltaEl.hidden = dl === '';
+      this.deltaEl.textContent = dl;
+      this.deltaEl.classList.toggle('ahead', d.delta !== null && d.delta < 0);
+    }
+    this.posPanel.classList.toggle('solo', d.totalRacers <= 1);
     if (d.position !== this.cPos) {
       this.cPos = d.position;
       this.posNum.textContent = String(d.position);

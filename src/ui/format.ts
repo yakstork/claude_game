@@ -20,6 +20,14 @@ export function formatTime(sec: number | null | undefined): string {
   return `${m}:${s < 10 ? '0' : ''}${s}.${r < 100 ? (r < 10 ? '00' : '0') : ''}${r}`;
 }
 
+/** Разница с лучшим кругом: «−0.42» (быстрее) / «+1.07» (медленнее), 0.01 с. */
+export function formatDelta(sec: number): string {
+  if (!Number.isFinite(sec)) return '';
+  const v = Math.round(Math.abs(sec) * 100) / 100;
+  const sign = v === 0 ? '±' : sec < 0 ? '−' : '+';
+  return `${sign}${v.toFixed(2)}`;
+}
+
 /** Очки: округление и группировка тысяч неразрывным пробелом («1 250»). */
 export function formatScore(n: number): string {
   const v = Math.round(Number.isFinite(n) ? n : 0);

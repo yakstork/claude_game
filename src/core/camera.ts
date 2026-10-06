@@ -3,6 +3,7 @@
  * рысканию — занос хорошо виден) и облёт машины в меню.
  */
 import { MathUtils, Vector3, type PerspectiveCamera } from 'three/webgpu';
+import type { CameraView } from './types';
 
 const BASE_FOV = 62;
 const MAX_FOV = 84;
@@ -30,6 +31,8 @@ export class ChaseCamera {
   private t = 0;
   private fov = BASE_FOV;
   private previewAngle = 0.6;
+  /** Вид: дальняя / ближняя chase-камера или камера на бампере */
+  view: CameraView = 'far';
 
   constructor(readonly camera: PerspectiveCamera) {}
 
@@ -50,8 +53,18 @@ export class ChaseCamera {
 
   private computeDesired(inp: ChaseInput, outPos: Vector3, outLook: Vector3): void {
     const speedK = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
-    const dist = 7.6 + speedK * 1.8 + (inp.nitro ? 0.9 : 0);
-    const height = 2.9 + speedK * 0.3;
+    if (this.view === 'bumper') {
+      // перед капотом, низко: максимальное ощущение скорости
+      _fwd.set(Math.sin(inp.heading), 0, Math.cos(inp.heading));
+      outPos.copy(inp.position).addScaledVector(_fwd, 2.45);
+      outPos.y += 0.72;
+      outLook.copy(outPos).addScaledVector(_fwd, 20);
+      outLook.y -= 0.6;
+      return;
+    }
+    const near = this.view === 'near';
+    const dist = (near ? 5.4 : 7.6) + speedK * (near ? 1.2 : 1.8) + (inp.nitro ? 0.9 : 0);
+    const height = (near ? 2.1 : 2.9) + speedK * 0.3;
     _fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     outPos.copy(inp.position).addScaledVector(_fwd, -dist);
     outPos.y += height;
@@ -68,6 +81,17 @@ export class ChaseCamera {
     this.yaw += d * Math.min(1, dt * yawRate);
 
     this.computeDesired(inp, _desired, _look);
+    if (this.view === 'bumper') {
+      // жёстко на машине: пружина дала бы «плавающий» вид изнутри кузова
+      this.pos.copy(_desired);
+      this.lookAt.copy(_look);
+      const sk = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
+      const tf = BASE_FOV + 8 + (MAX_FOV - BASE_FOV - 6) * sk * sk + (inp.nitro ? 6 : 0);
+      this.fov += (tf - this.fov) * Math.min(1, dt * 3);
+      this.shake = Math.max(0, this.shake - dt * 2.2);
+      this.apply(this.shake * 0.2);
+      return;
+    }
     const k = 1 - Math.exp(-dt * 10);
     this.pos.x += (_desired.x - this.pos.x) * k;
     this.pos.z += (_desired.z - this.pos.z) * k;

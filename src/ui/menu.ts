@@ -1,5 +1,5 @@
 /** Главное меню: логотип, выбор машины, рекорды, кнопки. Центр экрана прозрачен (3D-превью). */
-import type { CarSpec, Records, TrackInfo, UICallbacks } from '../core/types';
+import type { CarSpec, RaceMode, Records, TrackInfo, UICallbacks } from '../core/types';
 import { CUSTOM_CAR_ID } from '../core/types';
 import { cssColor } from '../world/palette';
 import { arrowIcon, el, onTap, restartAnim } from './dom';
@@ -28,6 +28,10 @@ export function buildLogo(parent: HTMLElement, cls: string, subtitle?: string): 
   el('div', 'logo-title', 'NEON RUSH', logo).setAttribute('data-text', 'NEON RUSH');
   const sub = el('div', 'logo-sub', trackLabel(subtitle), logo);
   return { root: logo, sub };
+}
+
+export function modeLabel(mode: RaceMode): string {
+  return mode === 'timeAttack' ? 'РЕЖИМ · НА ВРЕМЯ' : 'РЕЖИМ · С БОТАМИ';
 }
 
 export class MainMenu {
@@ -68,6 +72,7 @@ export class MainMenu {
   private readonly tracks: TrackInfo[];
   private trackIdx = 0;
   private records: Records;
+  private modeEl: HTMLElement | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -79,6 +84,8 @@ export class MainMenu {
     onCustomize: () => void = () => undefined,
     tracks: TrackInfo[] = [],
     trackIndex = 0,
+    /** Переключение режима «Гонка» / «На время» (null — кнопки нет) */
+    onToggleMode: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -200,6 +207,12 @@ export class MainMenu {
     const btns = el('div', 'menu-buttons', undefined, root);
     const race = el('div', 'btn big', undefined, btns);
     el('span', undefined, 'ГОНКА', race);
+    if (onToggleMode) {
+      const modeBtn = el('div', 'btn mode-btn', undefined, btns);
+      this.modeEl = el('span', undefined, modeLabel('race'), modeBtn);
+      modeBtn.setAttribute('aria-label', 'Режим: гонка с ботами или заезд на время');
+      nav.add({ el: modeBtn, activate: onToggleMode, adjust: () => (onToggleMode(), true) });
+    }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
     const adjust = (dir: -1 | 1): boolean => {
@@ -219,6 +232,11 @@ export class MainMenu {
 
     this.setCar(0, false);
     this.renderTrack();
+  }
+
+  /** Подпись кнопки режима */
+  setMode(mode: RaceMode): void {
+    if (this.modeEl) this.modeEl.textContent = modeLabel(mode);
   }
 
   /** Подсказка управления: кнопки на экране (сенсорный режим) или клавиатура/геймпад. */

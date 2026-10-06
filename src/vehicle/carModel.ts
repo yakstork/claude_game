@@ -478,6 +478,18 @@ export class CarModel {
     this.flame.scale.set(1, 1, 0.7 + this.flameIntensity.value * 0.5 + Math.random() * 0.15);
   }
 
+  /** Полупрозрачный «призрак» лучшего круга: без тени и пламени, не пишет глубину */
+  setGhost(opacity: number): void {
+    const mat = this.body.material as MeshStandardNodeMaterial;
+    mat.transparent = true;
+    mat.opacity = opacity;
+    mat.depthWrite = false;
+    mat.needsUpdate = true;
+    this.shadow.visible = false;
+    this.flame.visible = false;
+    this.group.renderOrder = 2;
+  }
+
   dispose(): void {
     this.group.traverse((o) => {
       if (o instanceof Mesh) o.geometry.dispose();
