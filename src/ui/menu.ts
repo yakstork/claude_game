@@ -87,6 +87,7 @@ export class MainMenu {
     /** Переключение режима «Гонка» / «Кубок» / «На время» (null — кнопки нет) */
     onToggleMode: (() => void) | null = null,
     onTips: () => void = () => undefined,
+    onAwards: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -235,6 +236,15 @@ export class MainMenu {
     help.setAttribute('aria-label', 'Как играть');
     el('span', undefined, '?', help);
     nav.add({ el: help, activate: onTips });
+
+    // «★» — «Награды» (после «?»: индексы остальных пунктов не меняются)
+    if (onAwards) {
+      const awards = el('div', 'help-btn award-btn', undefined, root);
+      awards.setAttribute('role', 'button');
+      awards.setAttribute('aria-label', 'Награды');
+      el('span', undefined, '★', awards);
+      nav.add({ el: awards, activate: onAwards });
+    }
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);

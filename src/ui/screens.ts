@@ -481,7 +481,7 @@ export class ResultsScreen {
   }
 
   /** trackName — имя трассы (мелко рядом с машиной); не задано — не показывается. */
-  show(r: RaceResult, trackName?: string): void {
+  show(r: RaceResult, trackName?: string, newAwards: readonly string[] = []): void {
     const body = this.body;
     body.replaceChildren();
     body.scrollTop = 0;
@@ -513,6 +513,7 @@ export class ResultsScreen {
     if (r.newBestLap) el('div', 'badge yellow', 'НОВЫЙ РЕКОРД КРУГА', badges);
     if (r.newBestRace) el('div', 'badge cyan', 'РЕКОРД ГОНКИ', badges);
     if (r.newBestDrift) el('div', 'badge pink', 'РЕКОРД ДРИФТА', badges);
+    for (const t of newAwards) el('div', 'badge award-new', `НОВАЯ НАГРАДА: ${t}`, badges);
     badges.hidden = badges.childElementCount === 0;
 
     // лучший круг среди всех — подсветим жёлтым

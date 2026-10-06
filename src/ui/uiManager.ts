@@ -17,6 +17,9 @@ import { isTouchDevice } from '../core/device';
 import { CUSTOM_CAR_ID } from '../core/types';
 import './styles.css';
 import './polish.css';
+import './awards.css';
+import { AwardsScreen } from './awards';
+import type { AwardItem } from './awards';
 import { CustomizeScreen } from './customize';
 import { DEFAULT_BUDGET, DEFAULT_PALETTE, defaultCustomBuild } from './customLogic';
 import type { CustomPalette } from './customLogic';
@@ -47,7 +50,7 @@ export interface UIOptions {
   trackIndex?: number;
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -61,6 +64,7 @@ export class UIManager {
   private readonly menu: MainMenu;
   private readonly settings: SettingsScreen;
   private readonly customize: CustomizeScreen;
+  private readonly awards: AwardsScreen;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly tips: TipsOverlay;
@@ -112,6 +116,7 @@ export class UIManager {
       opts.trackIndex ?? 0,
       () => this.toggleRaceMode(),
       () => this.tips.show(),
+      () => this.openAwards(),
     );
     this.menu.setMode(opts.settings.raceMode);
     const budget = opts.customBudget ?? DEFAULT_BUDGET;
@@ -132,6 +137,7 @@ export class UIManager {
       () => this.closeSettings(),
       (active) => this.setLayoutPreview(active),
     );
+    this.awards = new AwardsScreen(this.host, new Nav(play), () => this.closeAwards());
     this.pause = new PauseScreen(this.host, new Nav(play), cb, () => this.openSettings('pause'));
     this.results = new ResultsScreen(this.host, new Nav(play), opts.cars, cb);
     this.tips = new TipsOverlay(this.host);
@@ -230,9 +236,14 @@ export class UIManager {
     }
   }
 
-  showResults(r: RaceResult): void {
+  /** newAwardIds — id только что открытых наград (плашки «НОВАЯ НАГРАДА»; названия берутся из списка наград). */
+  showResults(r: RaceResult, newAwardIds: readonly string[] = []): void {
     this.hud.clearTransient();
-    this.results.show(r, this.menu.hasTrackChoice ? this.menu.trackName : undefined);
+    this.results.show(
+      r,
+      this.menu.hasTrackChoice ? this.menu.trackName : undefined,
+      newAwardIds.map((id) => this.awards.find(id)?.title).filter((t): t is string => t !== undefined),
+    );
     this.setScreen('results');
   }
 
@@ -249,6 +260,34 @@ export class UIManager {
     if (this.menu.index !== idx) this.menu.setCar(idx, true);
     this.customize.onShown();
     this.setScreen('customize');
+  }
+
+  /** Список наград (порядок и тексты — из игры; флаг `unlocked` в элементах учитывается). */
+  setAchievements(list: readonly AwardItem[]): void {
+    this.awards.setList(list);
+  }
+
+  /** Какие награды открыты (полный набор id). */
+  setUnlocked(ids: readonly string[]): void {
+    this.awards.setUnlocked(ids);
+  }
+
+  /** Экран «НАГРАДЫ»; list (необязательно) — заменить список перед показом. Из гонки/паузы игнорируется. */
+  showAchievements(list?: readonly AwardItem[]): void {
+    if (list) this.awards.setList(list);
+    this.openAwards();
+  }
+
+  private openAwards(): void {
+    if (this.screen !== 'menu') return;
+    this.awards.onShown();
+    this.setScreen('awards');
+  }
+
+  private closeAwards(): void {
+    if (this.screen !== 'awards') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
   }
 
   /** Обновить значения «своей сборки» извне (без onCustomBuildChanged). */
@@ -301,6 +340,7 @@ export class UIManager {
     this.menu.el.hidden = s !== 'menu';
     this.settings.el.hidden = s !== 'settings';
     this.customize.el.hidden = s !== 'customize';
+    this.awards.el.hidden = s !== 'awards';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
     this.results.el.hidden = s !== 'results';
@@ -400,6 +440,8 @@ export class UIManager {
         return this.settings.nav;
       case 'customize':
         return this.customize.nav;
+      case 'awards':
+        return this.awards.nav;
       case 'pause':
         return this.pause.nav;
       case 'results':
@@ -423,10 +465,12 @@ export class UIManager {
     const cb = this.opts.callbacks;
     switch (a) {
       case 'up':
-        nav.move(-1);
+        if (this.screen === 'awards') this.awards.scrollBy(-1);
+        else nav.move(-1);
         break;
       case 'down':
-        nav.move(1);
+        if (this.screen === 'awards') this.awards.scrollBy(1);
+        else nav.move(1);
         break;
       case 'left':
       case 'right': {
@@ -446,6 +490,9 @@ export class UIManager {
         } else if (this.screen === 'customize') {
           cb.onUiSound('back');
           this.closeCustomize();
+        } else if (this.screen === 'awards') {
+          cb.onUiSound('back');
+          this.closeAwards();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -458,6 +505,9 @@ export class UIManager {
         } else if (this.screen === 'customize') {
           cb.onUiSound('back');
           this.closeCustomize();
+        } else if (this.screen === 'awards') {
+          cb.onUiSound('back');
+          this.closeAwards();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
