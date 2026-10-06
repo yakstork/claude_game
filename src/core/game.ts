@@ -58,6 +58,7 @@ import { CUSTOM_CAR_ID, recordKey } from './types';
 import type { CameraView, RaceMode } from './types';
 import { GhostPlayer, GhostRecorder } from '../race/ghost';
 import { Cup } from '../race/cup';
+import { ACHIEVEMENTS, evaluate, loadProgress, saveProgress, type AchievementProgress } from '../race/achievements';
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
@@ -155,6 +156,8 @@ export class Game {
   private readonly dots: MinimapDot[] = [];
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
+  /** Прогресс наград */
+  private achievements: AchievementProgress = loadProgress();
   /** Текущий кубок (серия гонок), null — вне кубка */
   cup: Cup | null = null;
   /** Параметры текущей гонки (из настроек на момент старта) */
@@ -167,6 +170,8 @@ export class Game {
   private ghostModel: CarModel | null = null;
   private ghostKey = '';
   private ghostBeaten = false;
+  /** Статистика гонки игрока (для наград) */
+  private stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
 
   constructor(
     readonly render: RenderSystem,
@@ -214,6 +219,9 @@ export class Game {
         },
       },
     });
+
+    this.ui.setAchievements(ACHIEVEMENTS.map((a) => ({ id: a.id, title: a.title, desc: a.desc, icon: a.icon, tone: a.tone })));
+    this.ui.setUnlocked(this.achievements.unlocked);
 
     this.hud = {
       speedKmh: 0,
@@ -536,6 +544,7 @@ export class Game {
     this.effects.clear();
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
+    this.stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
     const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
     this.audio.setEngineProfile(ePitch, eGrowl);
     this.chase.view = this.settings.cameraView;
@@ -685,6 +694,7 @@ export class Game {
               this.chase.kick(ev.strength * 0.8);
             }
             this.hitWallThisStep = this.hitWallThisStep || ev.strength > 0.15;
+            if (ev.strength > 0.15 && this.state === 'racing') this.stats.wallHits += 1;
           }
         } else if (ev.type === 'car') {
           if (ev.strength > 0.1 && near) this.effects.sparksAt(ev.point, c.physics.state.velocity, ev.strength * 0.7);
@@ -746,6 +756,7 @@ export class Game {
     if (this.state === 'racing') {
       for (const ev of this.drift.update(dt, player.physics.state, this.hitWallThisStep)) {
         if (ev.type === 'comboEnd') {
+          this.stats.bestCombo = Math.max(this.stats.bestCombo, ev.points);
           this.ui.popup(ev.label, `+${ev.points.toLocaleString('ru-RU')}${ev.multiplier > 1 ? `  x${ev.multiplier}` : ''}`, ev.points >= 4000 ? 'yellow' : ev.points >= 1500 ? 'pink' : 'cyan');
           this.audio.play('combo');
         } else if (ev.type === 'comboLost') {
@@ -828,7 +839,29 @@ export class Game {
     };
     this.lastResult = result;
     this.uiMode = 'results';
-    this.ui.showResults(result);
+    // награды: по итогам гонки
+    const cupRow = result.cup?.finished ? result.cup.rows.find((r) => r.isPlayer) : undefined;
+    const ach = evaluate(
+      {
+        mode: this.mode,
+        difficulty: this.settings.difficulty,
+        trackId: this.track.id,
+        position: playerPos,
+        racers: this.cars.length,
+        driftScore: result.driftScore,
+        bestCombo: this.stats.bestCombo,
+        perfectStart: this.stats.perfectStart,
+        wallHits: this.stats.wallHits,
+        // «рекорд круга» — только когда прежний рекорд был и побит
+        newBestLap: this.stats.ghostRecord || (newBestLap && prevLap !== undefined),
+        cupWon: cupRow?.position === 1,
+      },
+      this.achievements,
+    );
+    this.achievements = ach.progress;
+    saveProgress(ach.progress);
+    this.ui.setUnlocked(ach.progress.unlocked);
+    this.ui.showResults(result, ach.unlocked);
   }
 
   // ─── Кадр ──────────────────────────────────────────────────────────────
@@ -940,6 +973,7 @@ export class Game {
     if (grade === 'perfect' || grade === 'good') {
       const [sec, power] = START_BOOST[grade];
       c.physics.applyBoost(sec, power);
+      if (grade === 'perfect') this.stats.perfectStart = true;
       this.ui.popup(grade === 'perfect' ? 'ИДЕАЛЬНЫЙ СТАРТ' : 'ХОРОШИЙ СТАРТ', undefined, grade === 'perfect' ? 'yellow' : 'cyan');
     } else if (grade === 'early') {
       this.ui.popup('РАНО', 'жми газ на «GO»', 'orange');
@@ -1024,6 +1058,7 @@ export class Game {
     if (!data) return;
     if (!this.ghost || lapTime < this.ghost.lapTime) {
       this.ghostBeaten = this.ghost !== null;
+      if (this.ghostBeaten) this.stats.ghostRecord = true;
       saveGhost(this.ghostKey, data);
       this.ghost = new GhostPlayer(data);
     }
