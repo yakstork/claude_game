@@ -62,3 +62,13 @@
   .garage-step { width: 2em; height: 2em; }
 }
 @media (prefers-reduced-motion: reduce) { .garage-row.bought, .rcredits-total { animation: none; } }
+
+/* полоса и номер */
+.gchip { padding: 0.05em 0.5em; font-size: 0.68em; font-style: italic; letter-spacing: 0.06em; color: var(--white); border: 2px solid transparent; background: rgba(13, 2, 33, 0.7); cursor: pointer; transform: skewX(-12deg); }
+.gchip.locked { opacity: 0.45; }
+.gchip.sel { border-color: var(--white); box-shadow: 0 0 0.6em var(--cyan); }
+.gchip.cur { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.garage-row.colors:not(.is-focus) .gchip.cur:not(.sel) { outline-color: transparent; }
+.garage-numpick { display: flex; align-items: center; gap: 0.5em; }
+.garage-numval { min-width: 2.2em; text-align: center; font-size: 1.05em; font-style: italic; letter-spacing: 0.08em; color: var(--yellow); cursor: pointer; }
+.garage-numpick .garage-step { width: 1.3em; height: 1.3em; font-size: 1.05em; cursor: pointer; }

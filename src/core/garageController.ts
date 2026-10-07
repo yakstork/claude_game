@@ -9,6 +9,10 @@ import {
   applyUpgrades,
   award,
   buyColor,
+  buyNumberSlot,
+  buyStripe,
+  selectNumber,
+  selectStripe,
   buyUpgrade,
   computeReward,
   hasUpgrades,
@@ -74,6 +78,35 @@ export class GarageController implements GarageApi {
     return true;
   }
 
+  buyStripe(pattern: number): BuyResult {
+    const r = buyStripe(this.data, pattern);
+    if (r === 'ok') saveCareer(this.data);
+    return r;
+  }
+
+  selectStripe(carId: string, pattern: number): boolean {
+    return this.commit(carId, selectStripe(this.data, carId, pattern));
+  }
+
+  buyNumberSlot(carId: string): BuyResult {
+    const r = buyNumberSlot(this.data, carId);
+    if (r === 'ok') saveCareer(this.data);
+    return r;
+  }
+
+  selectNumber(carId: string, n: number | null): boolean {
+    return this.commit(carId, selectNumber(this.data, carId, n));
+  }
+
+  /** Сохранить и перерисовать машину после смены ливреи */
+  private commit(carId: string, ok: boolean): boolean {
+    if (!ok || !this.factory.has(carId)) return false;
+    saveCareer(this.data);
+    const i = this.specs.findIndex((s) => s.id === carId);
+    if (i >= 0) this.paint(i, true);
+    return true;
+  }
+
   preview(index: number): void {
     this.hooks.preview(index);
   }
@@ -90,6 +123,7 @@ export class GarageController implements GarageApi {
     const cc = this.data.cars[spec.id];
     spec.bodyColor = cc?.body ?? f.body;
     spec.neonColor = cc?.neon ?? f.neon;
+    spec.livery = cc && (cc.stripe > 0 || cc.number !== null) ? { stripe: cc.stripe, number: cc.number } : undefined;
     if (notify) this.hooks.recolored(index);
   }
 

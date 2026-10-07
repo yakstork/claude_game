@@ -27,6 +27,11 @@ export interface CarCareer {
   /** Выбранный цвет кузова/неона заводской машины; null — заводской */
   body: number | null;
   neon: number | null;
+  /** Узор полосы: 0 — нет, 1..STRIPE_COUNT (должен быть куплен) */
+  stripe: number;
+  /** Номер на борту 0..99 или null; доступен после покупки «слота номера» для машины */
+  number: number | null;
+  numberOwned: boolean;
 }
 
 export interface Career {
@@ -35,7 +40,7 @@ export interface Career {
   earned: number;
   cars: Record<string, CarCareer>;
   /** Купленные цвета (общие для всех заводских машин) */
-  owned: { body: number[]; neon: number[] };
+  owned: { body: number[]; neon: number[]; stripes: number[] };
 }
 
 // ─── Цены ──────────────────────────────────────────────────────────────────
@@ -43,6 +48,10 @@ export interface Career {
 const PRICE_BASE = [150, 260, 420, 650, 950];
 const BRANCH_PRICE_MUL: Record<UpgradeBranch, number> = { engine: 1, grip: 0.9, nitro: 0.8 };
 export const COLOR_PRICE: Record<ColorKind, number> = { body: 180, neon: 140 };
+export const STRIPE_COUNT = 3;
+export const STRIPE_NAMES = ['—', 'ЦЕНТР', 'ДВА', 'БОРТ'];
+export const STRIPE_PRICE = 220;
+export const NUMBER_PRICE = 100;
 
 /** Цена перехода на уровень `target` (1..5); null — вне диапазона */
 export function upgradePrice(branch: UpgradeBranch, target: number): number | null {
@@ -53,11 +62,11 @@ export function upgradePrice(branch: UpgradeBranch, target: number): number | nu
 // ─── Состояние ─────────────────────────────────────────────────────────────
 
 export function emptyCarCareer(): CarCareer {
-  return { levels: { engine: 0, grip: 0, nitro: 0 }, body: null, neon: null };
+  return { levels: { engine: 0, grip: 0, nitro: 0 }, body: null, neon: null, stripe: 0, number: null, numberOwned: false };
 }
 
 export function emptyCareer(): Career {
-  return { credits: 0, earned: 0, cars: {}, owned: { body: [], neon: [] } };
+  return { credits: 0, earned: 0, cars: {}, owned: { body: [], neon: [], stripes: [] } };
 }
 
 /** Прогресс машины (создаётся при первом обращении) */
@@ -111,6 +120,48 @@ export function selectColor(c: Career, carId: string, kind: ColorKind, color: nu
   if (!carId) return false;
   if (color !== null && color !== factory && !(isPaletteColor(kind, color) && c.owned[kind].includes(color))) return false;
   carCareer(c, carId)[kind] = color === factory ? null : color;
+  return true;
+}
+
+/** Купить узор полосы (общий для всех заводских машин) */
+export function buyStripe(c: Career, pattern: number): BuyResult {
+  if (!Number.isInteger(pattern) || pattern < 1 || pattern > STRIPE_COUNT) return 'invalid';
+  if (c.owned.stripes.includes(pattern)) return 'owned';
+  if (c.credits < STRIPE_PRICE) return 'poor';
+  c.credits -= STRIPE_PRICE;
+  c.owned.stripes.push(pattern);
+  return 'ok';
+}
+
+/** Выбрать узор полосы для машины (0 — без полосы; иначе узор должен быть куплен) */
+export function selectStripe(c: Career, carId: string, pattern: number): boolean {
+  if (!carId || !Number.isInteger(pattern) || pattern < 0 || pattern > STRIPE_COUNT) return false;
+  if (pattern > 0 && !c.owned.stripes.includes(pattern)) return false;
+  carCareer(c, carId).stripe = pattern;
+  return true;
+}
+
+/** Купить «слот номера» для машины */
+export function buyNumberSlot(c: Career, carId: string): BuyResult {
+  if (!carId) return 'invalid';
+  const cc = carCareer(c, carId);
+  if (cc.numberOwned) return 'owned';
+  if (c.credits < NUMBER_PRICE) return 'poor';
+  c.credits -= NUMBER_PRICE;
+  cc.numberOwned = true;
+  return 'ok';
+}
+
+/** Выбрать номер 0..99 (null — без номера); нужен купленный слот */
+export function selectNumber(c: Career, carId: string, n: number | null): boolean {
+  if (!carId) return false;
+  const cc = carCareer(c, carId);
+  if (n === null) {
+    cc.number = null;
+    return true;
+  }
+  if (!cc.numberOwned || !Number.isInteger(n) || n < 0 || n > 99) return false;
+  cc.number = n;
   return true;
 }
 
@@ -251,6 +302,9 @@ export function sanitizeCareer(raw: unknown): Career {
   const owned = (typeof r.owned === 'object' && r.owned !== null ? r.owned : {}) as Record<string, unknown>;
   c.owned.body = colorList(owned.body, 'body');
   c.owned.neon = colorList(owned.neon, 'neon');
+  if (Array.isArray(owned.stripes)) {
+    for (const x of owned.stripes) if (typeof x === 'number' && Number.isInteger(x) && x >= 1 && x <= STRIPE_COUNT && !c.owned.stripes.includes(x)) c.owned.stripes.push(x);
+  }
   if (typeof r.cars === 'object' && r.cars !== null && !Array.isArray(r.cars)) {
     for (const [id, v] of Object.entries(r.cars as Record<string, unknown>)) {
       if (typeof v !== 'object' || v === null || id === '__proto__') continue;
@@ -263,7 +317,14 @@ export function sanitizeCareer(raw: unknown): Career {
         // выбранный цвет должен быть куплен
         body: body !== null && c.owned.body.includes(body) ? body : null,
         neon: neon !== null && c.owned.neon.includes(neon) ? neon : null,
+        stripe: 0,
+        number: null,
+        numberOwned: cv.numberOwned === true,
       };
+      // поля ливреи появились позже: у старых сохранений их нет — значения по умолчанию
+      const st = int(cv.stripe, 0, STRIPE_COUNT);
+      c.cars[id].stripe = st === 0 || c.owned.stripes.includes(st) ? st : 0;
+      if (c.cars[id].numberOwned && typeof cv.number === 'number' && Number.isInteger(cv.number) && cv.number >= 0 && cv.number <= 99) c.cars[id].number = cv.number;
     }
   }
   return c;
