@@ -60,6 +60,9 @@ import type { CameraView, RaceMode } from './types';
 import { GhostPlayer, GhostRecorder } from '../race/ghost';
 import { Cup } from '../race/cup';
 import { StuntScorer } from '../race/stunts';
+import { PICKUP_TUNING, PickupSystem, type PickupKind } from '../race/pickups';
+import { pickupLayoutFor } from '../world/pickups';
+import { PickupMesh } from '../world/pickupMesh';
 import { ACHIEVEMENTS, evaluate, loadProgress, saveProgress, type AchievementProgress } from '../race/achievements';
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
@@ -162,6 +165,9 @@ export class Game {
   private fpsTimer = 0;
   private lastResult: RaceResult | null = null;
   private readonly stunts = new StuntScorer();
+  private pickups: PickupSystem | null = null;
+  private pickupMesh: PickupMesh | null = null;
+  private readonly onPickup = (kind: PickupKind, car: number, _index: number): void => this.handlePickup(kind, car);
   private lastStrikes = 0;
   /** Прогресс наград */
   private achievements: AchievementProgress = loadProgress();
@@ -529,7 +535,21 @@ export class Game {
     }
     this.ghost = null;
     this.effects.clear();
+    if (this.pickupMesh) {
+      this.scene.remove(this.pickupMesh.group);
+      this.pickupMesh.dispose();
+      this.pickupMesh = null;
+    }
+    this.pickups = null;
     if (this.previewModel) this.scene.remove(this.previewModel.group);
+  }
+
+  /** Пластина — буст (звук игроку даёт HUD по росту boostTime); канистра — звук только игроку */
+  private handlePickup(kind: PickupKind, car: number): void {
+    const c = this.cars[car];
+    if (!c) return;
+    if (kind === 'pad') c.physics.applyBoost(PICKUP_TUNING.padBoostSeconds, PICKUP_TUNING.padBoostPower);
+    else if (c.isPlayer) this.audio.play('nitroStart');
   }
 
   startRace(carIndex: number): void {
@@ -593,6 +613,9 @@ export class Game {
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
     this.stunts.reset();
+    this.pickups = new PickupSystem(this.track, pickupLayoutFor(this.track.id));
+    this.pickupMesh = new PickupMesh(this.track, this.pickups);
+    this.scene.add(this.pickupMesh.group);
     this.stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
     const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
     this.audio.setEngineProfile(ePitch, eGrowl);
@@ -731,6 +754,7 @@ export class Game {
     resolveCarCollisions(this.physicsList);
     updateSlipstream(this.states, dt);
     this.replay.record(dt);
+    if (this.state === 'racing') this.pickups?.update(dt, this.states, this.onPickup);
 
     // события физики
     this.hitWallThisStep = false;
@@ -1013,6 +1037,7 @@ export class Game {
     this.effects.update(this.paused ? 0 : dt, this.camera, player ? Math.abs(player.speed) : 0, speedLines);
 
     this.world.update(this.camera.position);
+    if (!this.paused) this.pickupMesh?.update(dt);
     // гром — с задержкой после вспышки молнии (звук идёт медленнее света)
     const strikes = this.world.lightningStrikes;
     if (strikes !== this.lastStrikes) {
