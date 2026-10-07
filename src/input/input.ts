@@ -5,26 +5,36 @@
  */
 import type { ControlMode, MenuAction, TouchState, VehicleControls } from '../core/types';
 import { INPUT_TUNING } from '../vehicle/handling';
+import { codesFor, defaultLayout } from './keybinds';
+import type { BindAction, KeyLayout } from './keybinds';
 
-const KEY_ACTIONS: Record<string, MenuAction> = {
+/** Неизменные клавиши меню: подтверждение и возврат */
+const FIXED_KEY_ACTIONS: Record<string, MenuAction> = {
   ArrowUp: 'up',
-  KeyW: 'up',
   ArrowDown: 'down',
-  KeyS: 'down',
   ArrowLeft: 'left',
-  KeyA: 'left',
   ArrowRight: 'right',
-  KeyD: 'right',
   Enter: 'confirm',
   NumpadEnter: 'confirm',
-  Escape: 'pause',
-  KeyP: 'pause',
   Backspace: 'back',
-  KeyR: 'reset',
-  KeyC: 'camera',
-  // R занята («на трассу»), радио — на M
-  KeyM: 'radio',
 };
+
+/** Таблица код → действие меню по раскладке игрока (руль/газ/тормоз заодно двигают по меню) */
+export function buildKeyActions(layout: KeyLayout): Record<string, MenuAction> {
+  const m: Record<string, MenuAction> = { ...FIXED_KEY_ACTIONS };
+  const add = (action: BindAction, menu: MenuAction): void => {
+    for (const c of codesFor(layout, action)) m[c] = menu;
+  };
+  add('throttle', 'up');
+  add('brake', 'down');
+  add('left', 'left');
+  add('right', 'right');
+  add('pause', 'pause');
+  add('reset', 'reset');
+  add('camera', 'camera');
+  add('radio', 'radio');
+  return m;
+}
 
 // Standard gamepad: 0 A, 1 B, 2 X, 3 Y, 5 RB, 6 LT, 7 RT, 8 Back, 9 Start, 12-15 D-pad
 const PAD_ACTIONS: [number, MenuAction][] = [
@@ -63,21 +73,38 @@ export class InputManager {
   private readonly out: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
   private touch: TouchState | null = null;
   lastDevice: InputDevice = 'keyboard';
+  private layout: KeyLayout = defaultLayout();
+  private keyActions: Record<string, MenuAction> = buildKeyActions(this.layout);
+  private codes: Record<BindAction, string[]> = this.makeCodes();
 
   /** target по умолчанию window; без DOM (Node) подписок нет */
   constructor(target: Pick<Window, 'addEventListener'> | null = typeof window === 'undefined' ? null : window) {
     if (!target) return;
     target.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+      if (e.code === 'Space' || e.code.startsWith('Arrow') || this.codes.handbrake.includes(e.code)) e.preventDefault();
       this.lastDevice = 'keyboard';
       if (!e.repeat) {
-        const a = KEY_ACTIONS[e.code];
+        const a = this.keyActions[e.code];
         if (a) this.actions.push(a);
       }
       this.keys.add(e.code);
     });
     target.addEventListener('keyup', (e) => this.keys.delete(e.code));
     target.addEventListener('blur', () => this.keys.clear());
+  }
+
+  private makeCodes(): Record<BindAction, string[]> {
+    const o = {} as Record<BindAction, string[]>;
+    for (const a of Object.keys(this.layout) as BindAction[]) o[a] = codesFor(this.layout, a);
+    return o;
+  }
+
+  /** Новая раскладка клавиш (из экрана «УПРАВЛЕНИЕ») */
+  setKeys(layout: KeyLayout): void {
+    this.layout = { ...layout };
+    this.keyActions = buildKeyActions(this.layout);
+    this.codes = this.makeCodes();
+    this.keys.clear();
   }
 
   /** Источник сенсорных кнопок (живой объект, его мутирует UI); null — нет. */
@@ -137,9 +164,9 @@ export class InputManager {
     this.lastTime = now;
 
     const t = this.touch;
-    const left = this.key('KeyA', 'ArrowLeft') || (t !== null && t.left);
-    const right = this.key('KeyD', 'ArrowRight') || (t !== null && t.right);
-    const drift = this.key('Space') || (t !== null && t.drift);
+    const left = this.key(...this.codes.left) || (t !== null && t.left);
+    const right = this.key(...this.codes.right) || (t !== null && t.right);
+    const drift = this.key(...this.codes.handbrake) || (t !== null && t.drift);
     const target = (right ? 1 : 0) - (left ? 1 : 0);
     if (target !== 0) {
       // плавное нарастание; при смене направления — быстрый переход через ноль
@@ -153,11 +180,11 @@ export class InputManager {
     }
 
     const o = this.out;
-    o.throttle = this.key('KeyW', 'ArrowUp') || (t !== null && t.throttle) ? 1 : 0;
-    o.brake = this.key('KeyS', 'ArrowDown') || (t !== null && t.brake) ? 1 : 0;
+    o.throttle = this.key(...this.codes.throttle) || (t !== null && t.throttle) ? 1 : 0;
+    o.brake = this.key(...this.codes.brake) || (t !== null && t.brake) ? 1 : 0;
     o.steer = this.keySteer;
     o.handbrake = drift;
-    o.nitro = this.key('ShiftLeft', 'ShiftRight') || (t !== null && t.nitro);
+    o.nitro = this.key(...this.codes.nitro) || (t !== null && t.nitro);
     if (t && (t.left || t.right || t.throttle || t.brake || t.drift || t.nitro)) this.lastDevice = 'touch';
 
     const p = this.pad();
