@@ -403,7 +403,7 @@ export class Hud {
       this.wrongWay.classList.toggle('on', d.wrongWay);
     }
 
-    this.minimap.draw(d.minimap);
+    this.minimap.draw(d.minimap, d.minimapMarks ?? null);
   }
 
   // ── события (не каждый кадр) ─────────────────────────────────────────────

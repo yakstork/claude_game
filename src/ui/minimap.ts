@@ -2,7 +2,7 @@
  * Мини-карта: контур трассы рисуется один раз в offscreen-canvas со свечением,
  * каждый кадр — копия фона + точки машин. Мировой +X — вправо, +Z — вверх.
  */
-import type { MinimapDot } from '../core/types';
+import type { MinimapDot, MinimapMarks } from '../core/types';
 
 const VIOLET = '#7a04eb';
 const MAGENTA = '#ff2a6d';
@@ -129,13 +129,43 @@ export class Minimap {
   }
 
   /** Каждый кадр: фон + точки. Без аллокаций. */
-  draw(dots: MinimapDot[]): void {
+  draw(dots: MinimapDot[], marks: MinimapMarks | null = null): void {
     const c = this.ctx;
     if (!c || this.size === 0) return;
     const S = this.size;
     const u = S / 200;
     c.clearRect(0, 0, S, S);
     c.drawImage(this.bg, 0, 0);
+    if (marks) {
+      // бустер-пластины: маленькие шевроны по курсу трассы
+      c.strokeStyle = YELLOW;
+      c.lineWidth = 1.6 * u;
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+      const r = 3.2 * u;
+      for (let i = 0; i < marks.padX.length; i++) {
+        const x = this.mx(marks.padX[i]);
+        const y = this.my(marks.padZ[i]);
+        // курс в экранных осях: +X вправо, +Z вверх
+        const dx = Math.sin(marks.padHeading[i]);
+        const dy = -Math.cos(marks.padHeading[i]);
+        const px = -dy;
+        const py = dx;
+        c.beginPath();
+        c.moveTo(x - dx * r - px * r, y - dy * r - py * r);
+        c.lineTo(x + dx * r * 0.6, y + dy * r * 0.6);
+        c.lineTo(x - dx * r + px * r, y - dy * r + py * r);
+        c.stroke();
+      }
+      // канистры: точки, подобранные скрыты
+      c.fillStyle = WHITE;
+      for (let i = 0; i < marks.canX.length; i++) {
+        if (marks.canTimer[i] > 0) continue;
+        c.beginPath();
+        c.arc(this.mx(marks.canX[i]), this.my(marks.canZ[i]), 2.2 * u, 0, Math.PI * 2);
+        c.fill();
+      }
+    }
     let player: MinimapDot | null = null;
     for (let i = 0; i < dots.length; i++) {
       const d = dots[i];
@@ -147,6 +177,13 @@ export class Minimap {
       c.beginPath();
       c.arc(this.mx(d.x), this.my(d.z), 4 * u, 0, Math.PI * 2);
       c.fill();
+      if (d.rival) {
+        c.lineWidth = 1.8 * u;
+        c.strokeStyle = PINK;
+        c.beginPath();
+        c.arc(this.mx(d.x), this.my(d.z), 7 * u, 0, Math.PI * 2);
+        c.stroke();
+      }
     }
     if (player) {
       c.beginPath();

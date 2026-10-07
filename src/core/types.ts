@@ -309,6 +309,20 @@ export interface MinimapDot {
   /** CSS-цвет */
   color: string;
   isPlayer: boolean;
+  /** Соперник игрока: розовое кольцо */
+  rival?: boolean;
+}
+
+/** Бустер-пластины и канистры на мини-карте (мировые XZ; заполняется один раз за гонку) */
+export interface MinimapMarks {
+  padX: Float32Array;
+  padZ: Float32Array;
+  /** Курс пластины (направление шеврона), рад */
+  padHeading: Float32Array;
+  canX: Float32Array;
+  canZ: Float32Array;
+  /** Живой массив таймеров: > 0 — канистра подобрана, не рисуем */
+  canTimer: Float32Array;
 }
 
 export interface HudData {
@@ -341,6 +355,8 @@ export interface HudData {
   /** Подпись таймера и строка цели под ним */
   challengeLabel?: string;
   challengeGoal?: string;
+  /** Метки пикапов для мини-карты (null — нет) */
+  minimapMarks?: MinimapMarks | null;
 }
 
 export interface ResultRow {

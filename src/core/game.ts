@@ -15,6 +15,7 @@ import type {
   CarSpec,
   CustomBuild,
   HudData,
+  MinimapMarks,
   MenuAction,
   MinimapDot,
   RaceResult,
@@ -755,6 +756,7 @@ export class Game {
       this.pickupMesh = null;
     }
     this.pickups = null;
+    this.hud.minimapMarks = null;
     this.rivalMarker?.dispose();
     this.rivalMarker = null;
     this.rivalSlot = -1;
@@ -778,6 +780,26 @@ export class Game {
   }
 
   /** «Рация» соперника: обгоны и последний круг (реплики из шаблонов, 2 с) */
+  /** Мировые координаты пластин и канистр для мини-карты (один раз за гонку) */
+  private buildMinimapMarks(p: PickupSystem): MinimapMarks {
+    const track = this.track;
+    const n = p.padCount;
+    const m = p.canCount;
+    const marks: MinimapMarks = { padX: new Float32Array(n), padZ: new Float32Array(n), padHeading: new Float32Array(n), canX: new Float32Array(m), canZ: new Float32Array(m), canTimer: p.canTimer };
+    for (let i = 0; i < n; i++) {
+      const s = track.sampleAt(p.padS[i]);
+      marks.padX[i] = s.position.x + s.right.x * p.padLateral[i];
+      marks.padZ[i] = s.position.z + s.right.z * p.padLateral[i];
+      marks.padHeading[i] = Math.atan2(s.tangent.x, s.tangent.z);
+    }
+    for (let i = 0; i < m; i++) {
+      const s = track.sampleAt(p.canS[i]);
+      marks.canX[i] = s.position.x + s.right.x * p.canLateral[i];
+      marks.canZ[i] = s.position.z + s.right.z * p.canLateral[i];
+    }
+    return marks;
+  }
+
   private updateRival(dt: number): void {
     if (this.rivalSlot < 0 || !this.race || this.state !== 'racing') return;
     this.radioCool -= dt;
@@ -893,6 +915,7 @@ export class Game {
     if (this.dailyCtl.modifier === 'nitroCans') this.player.physics.state.nitro = 0;
     this.pickups = new PickupSystem(this.track, this.track.def.pickups ?? pickupLayoutFor(this.track.id));
     this.pickupMesh = new PickupMesh(this.track, this.pickups);
+    this.hud.minimapMarks = this.buildMinimapMarks(this.pickups);
     for (const c of this.cars) {
       c.bot?.setPads(this.pickups.padS, this.pickups.padLateral);
       c.bot?.setCans(this.pickups.canS, this.pickups.canLateral, this.pickups.canTimer);
@@ -1623,6 +1646,7 @@ export class Game {
       d.z = c.renderPos.z;
       d.color = c.color;
       d.isPlayer = c.isPlayer;
+      d.rival = i === this.rivalSlot;
     }
     dots.length = nd;
     this.ui.updateHud(h);
