@@ -249,6 +249,16 @@ export class UIManager {
     this.loading.setTrack(this.menu.trackName);
   }
 
+  /** Главное меню на экране без оверлеев (можно запускать демо-гонку) */
+  get canAttract(): boolean {
+    return this.screen === 'menu' && !this.tips.visible;
+  }
+
+  /** Демо-гонка на фоне: меню полупрозрачно */
+  setAttractLook(on: boolean): void {
+    this.host.classList.toggle('attract', on);
+  }
+
   showMainMenu(): void {
     this.hud.clearTransient();
     this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);

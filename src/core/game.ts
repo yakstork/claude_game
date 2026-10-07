@@ -24,6 +24,7 @@ import type {
   VehicleControls,
   VehicleState,
 } from './types';
+import { Attract } from './attract';
 import { Track, createProjection } from '../world/track';
 import { TRACKS, type TrackDefinition } from '../world/trackData';
 import { World } from '../world/world';
@@ -114,6 +115,8 @@ interface RaceCar {
 
 export interface GameOptions {
   autostart: boolean;
+  /** Демо-гонка после бездействия в меню (?attract=0 и ?autostart=1 — выключено) */
+  attract: boolean;
   carIndex: number;
   quality: Settings['quality'] | null;
   showFps: boolean;
@@ -163,6 +166,7 @@ export class Game {
   private finishT = 0;
   private resultsShown = false;
   private playerAutopilot: BotDriver | null = null;
+  private readonly attract: Attract;
   private previewModel: CarModel | null = null;
   private readonly previewState = createVehicleState();
   private hitWallThisStep = false;
@@ -425,6 +429,20 @@ export class Game {
     render.setView(this.scene, this.camera);
     this.applySettings(this.settings, false);
 
+    this.attract = new Attract({
+      scene: this.scene,
+      camera: this.camera,
+      world: this.world,
+      canStart: () => this.state === 'menu' && this.ui.canAttract && !this.replay.takesOver,
+      settings: () => this.settings,
+      track: () => this.track,
+      setPreviewVisible: (v) => {
+        if (this.previewModel) this.previewModel.group.visible = v;
+      },
+      setMenuTranslucent: (on) => this.ui.setAttractLook(on),
+      setVolumes: (k) => this.audio.setVolumes(this.settings.masterVolume * k, this.settings.musicVolume, this.settings.sfxVolume),
+    });
+    this.attract.enabled = opts.attract && !opts.autostart;
     this.loop = new GameLoop(
       {
         step: (dt) => this.step(dt),
@@ -928,6 +946,10 @@ export class Game {
   // ─── Шаг симуляции ─────────────────────────────────────────────────────
 
   private step(dt: number): void {
+    if (this.attract.active) {
+      this.attract.step(dt);
+      return;
+    }
     if (this.paused || !this.race || this.replay.takesOver) return;
     if (this.state !== 'countdown' && this.state !== 'racing' && this.state !== 'finished') return;
     const race = this.race;
@@ -1283,6 +1305,16 @@ export class Game {
       this.audio.updateEngine(null);
       this.render.render();
       this.replay.afterRender();
+      return;
+    }
+
+    if (this.state === 'menu') this.attract.tick();
+    if (this.attract.active) {
+      this.attract.frame(dt, alpha);
+      this.audio.updateEngine(null);
+      this.world.update(this.camera.position);
+      this.render.setNeonBoost(this.world.headlights);
+      this.render.render();
       return;
     }
 

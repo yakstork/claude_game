@@ -38,7 +38,7 @@ for (const phone of phones) {
 
     test('меню касанием, старт, мультитач газ+руль+дрифт, пауза, поворот в портрет', async ({ page, context }) => {
       const errors = collectErrors(page);
-      await page.goto('/');
+      await page.goto('/?attract=0');
       await page.waitForFunction(() => window.__neonRush?.info().state === 'menu', null, { timeout: 90_000 });
 
       let i = await info(page);
