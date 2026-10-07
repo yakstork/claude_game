@@ -199,7 +199,7 @@ export class VehiclePhysics {
   blockedTime = 0;
 
   /** Живой конфиг управления (объект из HANDLING: панель тюнинга меняет его на лету) */
-  private readonly cfg: HandlingConfig;
+  private cfg: HandlingConfig;
   // проекция центра на трассу (кэш конца прошлого шага)
   private readonly proj = createProjection();
   private projX = NaN;
@@ -329,6 +329,11 @@ export class VehiclePhysics {
   wheelCenter(i: number, out: Vector3): Vector3 {
     const c = this.state.wheels[i].contact;
     return out.set(c.x, c.y + R, c.z);
+  }
+
+  /** Подменить конфиг управления этой машины (карьера: улучшения игрока; общий HANDLING не трогаем) */
+  useHandling(cfg: HandlingConfig): void {
+    this.cfg = cfg;
   }
 
   /** Полный сброс (старт / респаун). position — примерно на дороге, высота уточняется. */

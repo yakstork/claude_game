@@ -34,6 +34,7 @@ import { resolveCarCollisions } from '../vehicle/collisions';
 import { updateSlipstream } from '../vehicle/slipstream';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from '../vehicle/specs';
 import { getHandling } from '../vehicle/handling';
+import { GarageController } from './garageController';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
 import { BotDriver } from '../ai/botDriver';
@@ -173,6 +174,8 @@ export class Game {
   private ghostModel: CarModel | null = null;
   private ghostKey = '';
   private ghostBeaten = false;
+  /** Карьера: кредиты, улучшения, цвета */
+  private readonly garageCtl: GarageController;
   /** Статистика гонки игрока (для наград) */
   private stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
 
@@ -193,6 +196,15 @@ export class Game {
     this.scene.add(this.effects.group);
 
     this.syncCustomSpec();
+    // карьера: цвета заводских машин и улучшения (src/core/garageController.ts)
+    this.garageCtl = new GarageController(CAR_SPECS, {
+      preview: (i) => this.setPreviewCar(i),
+      recolored: (i) => {
+        this.ui.updateCarSpec(i, CAR_SPECS[i]);
+        if (this.state === 'menu') this.setPreviewCar(i);
+      },
+      sound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
+    });
     const uiRoot = document.getElementById('ui')!;
     this.ui = new UIManager(uiRoot, {
       cars: CAR_SPECS,
@@ -203,6 +215,7 @@ export class Game {
       customPalette: CUSTOM_PALETTE,
       tracks: TRACKS.map((d) => this.trackInfo(d)),
       trackIndex: this.trackIndex,
+      garage: { api: this.garageCtl, cars: CAR_SPECS.map((c) => ({ id: c.id, name: c.name, custom: c.id === CUSTOM_CAR_ID })) },
       callbacks: {
         onPreviewCar: (i) => this.setPreviewCar(i),
         onStartRace: (i) => {
@@ -530,6 +543,7 @@ export class Game {
         renderQuat: physics.state.quaternion.clone(),
         roadHeight: pose.position.y,
       };
+      if (!profile) this.garageCtl.applyToPhysics(physics, spec.id);
       this.cars.push(car);
     });
     for (const c of this.cars) {
@@ -859,6 +873,19 @@ export class Game {
       lapTimes: player.lapTimes.slice(),
       cup: this.cup && !this.cup.finished ? this.cup.addRace(rows.map((r) => r.name)) : undefined,
     };
+    result.credits = this.garageCtl.awardRace({
+      mode: this.mode,
+      difficulty: this.settings.difficulty,
+      position: playerPos,
+      racers: this.cars.length,
+      laps: this.laps,
+      driftScore: result.driftScore,
+      newBestLap,
+      newBestRace,
+      newBestDrift,
+      cupWon: result.cup?.finished === true && result.cup.rows.find((r) => r.isPlayer)?.position === 1,
+    });
+    this.ui.syncCredits();
     this.lastResult = result;
     this.uiMode = 'results';
     // награды: по итогам гонки
