@@ -37,9 +37,9 @@ class MemStorage {
 }
 
 describe('achievements', () => {
-  it('ровно 12 уникальных достижений', () => {
-    expect(ACHIEVEMENTS.length).toBe(12);
-    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(12);
+  it('ровно 18 уникальных достижений', () => {
+    expect(ACHIEVEMENTS.length).toBe(18);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(18);
   });
 
   it('слабая гонка ничего не открывает, кроме счётчика', () => {
@@ -111,7 +111,37 @@ describe('achievements', () => {
 
   it('sanitize отбрасывает мусор', () => {
     const p = sanitize({ unlocked: ['first_win', 'first_win', 'nope', 5], races: -3, winStreak: 'x', podiums: 2.7, wonTracks: ['a', 1] });
-    expect(p).toEqual({ unlocked: ['first_win'], races: 0, winStreak: 0, podiums: 2, wonTracks: ['a'] });
+    expect(p).toEqual({ unlocked: ['first_win'], races: 0, winStreak: 0, podiums: 2, wonTracks: ['a'], genTracks: [] });
     expect(sanitize(null)).toEqual(emptyProgress());
+  });
+
+  describe('награды новых режимов', () => {
+    it('золотой занос, последний герой, песчаная буря', () => {
+      expect(evaluate(st({ mode: 'drift', driftGold: true, racers: 1, position: 1 }), emptyProgress()).unlocked).toContain('drift_gold');
+      expect(evaluate(st({ mode: 'drift', driftGold: false }), emptyProgress()).unlocked).not.toContain('drift_gold');
+      expect(evaluate(st({ mode: 'elimination', position: 1 }), emptyProgress()).unlocked).toContain('last_hero');
+      expect(evaluate(st({ mode: 'elimination', position: 2 }), emptyProgress()).unlocked).not.toContain('last_hero');
+      expect(evaluate(st({ trackId: 'canyon', position: 1 }), emptyProgress()).unlocked).toContain('canyon_win');
+      expect(evaluate(st({ trackId: 'canyon', position: 2 }), emptyProgress()).unlocked).not.toContain('canyon_win');
+    });
+    it('лига (30 звёзд) и серия вызова дня (3)', () => {
+      expect(evaluate(st({ campaignStars: 29 }), emptyProgress()).unlocked).not.toContain('league_30');
+      expect(evaluate(st({ campaignStars: 30 }), emptyProgress()).unlocked).toContain('league_30');
+      expect(evaluate(st({ dailyStreak: 2 }), emptyProgress()).unlocked).not.toContain('daily_3');
+      expect(evaluate(st({ dailyStreak: 3 }), emptyProgress()).unlocked).toContain('daily_3');
+    });
+    it('исследователь: 5 разных сгенерированных трасс', () => {
+      let p = emptyProgress();
+      for (const id of ['gen-1', 'gen-2', 'gen-2', 'gen-3', 'gen-4']) p = evaluate(st({ trackId: id }), p).progress;
+      expect(p.genTracks).toHaveLength(4);
+      expect(p.unlocked).not.toContain('explorer');
+      const r = evaluate(st({ trackId: 'gen-5' }), p);
+      expect(r.unlocked).toContain('explorer');
+    });
+    it('старое сохранение без genTracks не ломается', () => {
+      const p = sanitize({ unlocked: ['first_win'], races: 3, winStreak: 1, podiums: 1, wonTracks: ['sunset'] });
+      expect(p.genTracks).toEqual([]);
+      expect(p.unlocked).toEqual(['first_win']);
+    });
   });
 });

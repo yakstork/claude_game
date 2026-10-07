@@ -24,6 +24,12 @@ export interface RaceStats {
   newBestLap: boolean;
   /** Кубок завершён и выигран (только на последней гонке кубка) */
   cupWon: boolean;
+  /** Золото в дрифт-вызове (опционально — старые вызовы не ломаются) */
+  driftGold?: boolean;
+  /** Всего звёзд кампании после этой гонки */
+  campaignStars?: number;
+  /** Текущая серия вызова дня */
+  dailyStreak?: number;
 }
 
 /** Сохраняемое состояние. */
@@ -37,6 +43,8 @@ export interface AchievementProgress {
   podiums: number;
   /** id трасс, на которых есть победа */
   wonTracks: string[];
+  /** id сгенерированных трасс (gen-<seed>), на которых был заезд */
+  genTracks: string[];
 }
 
 export interface AchievementDef {
@@ -58,6 +66,9 @@ export const DRIFT_SCORE_GOAL = 20000;
 export const RACES_GOAL = 10;
 export const STREAK_GOAL = 3;
 export const PODIUMS_GOAL = 5;
+export const LEAGUE_STARS_GOAL = 30;
+export const DAILY_STREAK_GOAL = 3;
+export const GEN_TRACKS_GOAL = 5;
 
 /** Победа над соперниками (заезд на время не считается). */
 export function isWin(s: RaceStats): boolean {
@@ -77,12 +88,18 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { id: 'races_10', title: 'ВЕТЕРАН', desc: `Заверши ${RACES_GOAL} гонок`, icon: '⚑', tone: 'pink', test: (_s, p) => p.races >= RACES_GOAL },
   { id: 'streak_3', title: 'СЕРИЯ', desc: `Выиграй ${STREAK_GOAL} гонки подряд`, icon: '▲', tone: 'yellow', test: (_s, p) => p.winStreak >= STREAK_GOAL },
   { id: 'podium_5', title: 'ПОДИУМ', desc: `Займи место в тройке ${PODIUMS_GOAL} раз`, icon: '♦', tone: 'orange', test: (_s, p) => p.podiums >= PODIUMS_GOAL },
+  { id: 'drift_gold', title: 'ЗОЛОТОЙ ЗАНОС', desc: 'Возьми золото в дрифт-вызове', icon: '✺', tone: 'yellow', test: (s) => s.mode === 'drift' && s.driftGold === true },
+  { id: 'last_hero', title: 'ПОСЛЕДНИЙ ГЕРОЙ', desc: 'Выиграй режим «Выбывание»', icon: '☄', tone: 'pink', test: (s) => s.mode === 'elimination' && isWin(s) },
+  { id: 'league_30', title: 'ЛИГА', desc: `Набери ${LEAGUE_STARS_GOAL} звёзд в кампании`, icon: '✪', tone: 'cyan', test: (s) => (s.campaignStars ?? 0) >= LEAGUE_STARS_GOAL },
+  { id: 'daily_3', title: 'ТРИ ДНЯ ПОДРЯД', desc: `Серия вызова дня — ${DAILY_STREAK_GOAL} дня`, icon: '☼', tone: 'orange', test: (s) => (s.dailyStreak ?? 0) >= DAILY_STREAK_GOAL },
+  { id: 'canyon_win', title: 'ПЕСЧАНАЯ БУРЯ', desc: 'Выиграй гонку на трассе Neon Canyon', icon: '❖', tone: 'orange', test: (s) => isWin(s) && s.trackId === 'canyon' },
+  { id: 'explorer', title: 'ИССЛЕДОВАТЕЛЬ', desc: `Проедь ${GEN_TRACKS_GOAL} разных сгенерированных трасс`, icon: '⌖', tone: 'cyan', test: (_s, p) => p.genTracks.length >= GEN_TRACKS_GOAL },
 ];
 
 export const ACHIEVEMENT_IDS: readonly string[] = ACHIEVEMENTS.map((a) => a.id);
 
 export function emptyProgress(): AchievementProgress {
-  return { unlocked: [], races: 0, winStreak: 0, podiums: 0, wonTracks: [] };
+  return { unlocked: [], races: 0, winStreak: 0, podiums: 0, wonTracks: [], genTracks: [] };
 }
 
 /**
@@ -99,7 +116,9 @@ export function evaluate(
     winStreak: progress.winStreak,
     podiums: progress.podiums,
     wonTracks: progress.wonTracks.slice(),
+    genTracks: progress.genTracks.slice(),
   };
+  if (stats.trackId.startsWith('gen-') && !p.genTracks.includes(stats.trackId) && p.genTracks.length < 64) p.genTracks.push(stats.trackId);
   // серия и подиумы считаются в гонках с соперниками (заезд на время их не прерывает)
   if (stats.racers > 1 && stats.mode !== 'timeAttack') {
     if (stats.position === 1) {
@@ -148,6 +167,7 @@ export function sanitize(raw: unknown): AchievementProgress {
     winStreak: count(o.winStreak),
     podiums: count(o.podiums),
     wonTracks: strings(o.wonTracks).slice(0, 32),
+    genTracks: strings(o.genTracks).filter((t) => t.startsWith('gen-')).slice(0, 64),
   };
 }
 

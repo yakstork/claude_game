@@ -73,6 +73,8 @@ import { StuntScorer } from '../race/stunts';
 import { PICKUP_TUNING, PickupSystem, type PickupKind } from '../race/pickups';
 import { pickupLayoutFor } from '../world/pickups';
 import { PickupMesh } from '../world/pickupMesh';
+import { totalStars } from '../race/campaign';
+import { currentStreak, dailySeed } from '../race/daily';
 import { ACHIEVEMENTS, evaluate, loadProgress, saveProgress, type AchievementProgress } from '../race/achievements';
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
@@ -1347,6 +1349,9 @@ export class Game {
         // «рекорд круга» — только когда прежний рекорд был и побит
         newBestLap: this.stats.ghostRecord || (newBestLap && prevLap !== undefined),
         cupWon: cupRow?.position === 1,
+        driftGold: result.challenge?.medal === 'gold',
+        campaignStars: totalStars(this.campaignCtl.progress()),
+        dailyStreak: currentStreak(this.dailyCtl.data, dailySeed(new Date())),
       },
       this.achievements,
     );

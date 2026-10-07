@@ -6,7 +6,7 @@
 .awards-head { display: flex; align-items: baseline; justify-content: center; gap: 1em; }
 .awards-title { margin-bottom: 0.3em; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan), 0 0 0.12em var(--cyan); }
 .awards-count { font-style: italic; letter-spacing: 0.14em; color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
-.awards-grid { flex: 1 1 auto; min-height: 0; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6em; margin: 0.4em 0 0.8em; align-content: start; padding: 0.2em; }
+.awards-grid { flex: 1 1 auto; min-height: 0; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6em; margin: 0.4em 0 0.8em; align-content: start; overflow-y: auto; overscroll-behavior: contain; padding: 0.2em; }
 .award {
   --t: var(--pink); display: flex; gap: 0.7em; align-items: center; padding: 0.5em 0.7em; min-width: 0;
   background: rgba(43, 15, 84, 0.55); border-left: 3px solid var(--t); animation: nr-rowin 0.4s ease-out both;
