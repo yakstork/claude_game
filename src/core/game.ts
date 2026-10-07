@@ -59,6 +59,8 @@ import { CUSTOM_CAR_ID, recordKey } from './types';
 import type { CameraView, RaceMode } from './types';
 import { GhostPlayer, GhostRecorder } from '../race/ghost';
 import { Cup } from '../race/cup';
+import { Elimination } from '../race/elimination';
+import { CHALLENGE_DURATION, DriftChallenge, medalFor, medalThresholds, nextGoal, submitChallengeScore } from '../race/driftChallenge';
 import { StuntScorer } from '../race/stunts';
 import { PICKUP_TUNING, PickupSystem, type PickupKind } from '../race/pickups';
 import { pickupLayoutFor } from '../world/pickups';
@@ -173,6 +175,17 @@ export class Game {
   private achievements: AchievementProgress = loadProgress();
   /** Текущий кубок (серия гонок), null — вне кубка */
   cup: Cup | null = null;
+  /** Дрифт-вызов: таймер 90 с (только в режиме 'drift') */
+  private challenge: DriftChallenge | null = null;
+  /** Режимы без кругов: гонка идёт по таймеру, а не по дистанции */
+  private get timedMode(): boolean {
+    return this.mode === 'drift' || this.mode === 'elimination';
+  }
+  /** Выбывание: каждые N секунд вылетает последний */
+  private elim: Elimination | null = null;
+  /** Время гонки (с), на котором выбыла машина; индекс — машина */
+  private elimTimes: number[] = [];
+  private readonly elimProgress: number[] = [];
   /** Параметры текущей гонки (из настроек на момент старта) */
   laps = 3;
   playerSlot = RACE_PLAYER_SLOT;
@@ -562,8 +575,11 @@ export class Game {
     this.mode = this.settings.raceMode;
     if (this.mode !== 'cup') this.cup = null;
     else if (this.cup) this.switchTrack(this.cup.nextTrack);
-    this.laps = this.settings.laps;
-    const solo = this.mode === 'timeAttack';
+    this.laps = this.timedMode ? 999 : this.settings.laps;
+    const solo = this.mode === 'timeAttack' || this.mode === 'drift';
+    this.challenge = this.mode === 'drift' ? new DriftChallenge() : null;
+    this.elim = null;
+    this.elimTimes = [];
     this.playerSlot = solo ? 0 : RACE_PLAYER_SLOT;
     this.difficulty = DIFFICULTY[this.settings.difficulty];
 
@@ -599,6 +615,7 @@ export class Game {
       this.states.push(c.physics.state);
       this.physicsList.push(c.physics);
     }
+    if (this.mode === 'elimination') this.elim = new Elimination(this.cars.length, this.playerSlot);
     this.race = new RaceManager(
       this.track,
       this.cars.map((c) => ({ name: c.name, isPlayer: c.isPlayer })),
@@ -649,7 +666,11 @@ export class Game {
     }
     this.hud.totalLaps = this.laps;
     this.hud.delta = null;
-    if (solo) {
+    if (this.mode === 'elimination') {
+      window.setTimeout(() => this.state === 'countdown' && this.ui.banner('ВЫБЫВАНИЕ · ПОСЛЕДНИЙ ВЫЛЕТАЕТ', 'orange'), 300);
+    } else if (this.mode === 'drift') {
+      window.setTimeout(() => this.state === 'countdown' && this.ui.banner(`ДРИФТ-ВЫЗОВ · ${CHALLENGE_DURATION} С`, 'pink'), 300);
+    } else if (solo) {
       const best = this.ghost ? `  ·  РЕКОРД ${formatTime(this.ghost.lapTime)}` : '';
       window.setTimeout(() => this.state === 'countdown' && this.ui.banner(`ЗАЕЗД НА ВРЕМЯ${best}`, 'cyan'), 300);
     }
@@ -731,6 +752,7 @@ export class Game {
     const player = this.player;
     const playerProgress = race.progress(this.playerSlot);
     for (let i = 0; i < this.cars.length; i++) {
+      if (this.elim?.isOut(i)) continue;
       const c = this.cars[i];
       c.prevPos.copy(c.physics.state.position);
       c.prevQuat.copy(c.physics.state.quaternion);
@@ -759,6 +781,7 @@ export class Game {
     // события физики
     this.hitWallThisStep = false;
     for (let i = 0; i < this.cars.length; i++) {
+      if (this.elim?.isOut(i)) continue;
       const c = this.cars[i];
       for (const ev of c.physics.events) {
         const near = c.isPlayer || c.physics.state.position.distanceToSquared(player.physics.state.position) < 60 * 60;
@@ -802,8 +825,10 @@ export class Game {
     this.playerWasDrifting = drifting;
 
     race.update(dt, this.states);
+    if (this.elim && this.state === 'racing') this.stepElimination(dt, race);
     for (const ev of race.events) {
       if (ev.car !== this.playerSlot) continue;
+      if (this.timedMode) continue;
       if (ev.type === 'lap') {
         this.onPlayerLap(ev.lapTime);
         this.audio.play('lap');
@@ -859,6 +884,17 @@ export class Game {
       }
     }
 
+    const chal = this.challenge;
+    if (chal && this.state === 'racing' && chal.update(dt)) {
+      this.state = 'finished';
+      this.finishT = 0;
+      for (const d of this.drift.flush()) {
+        if (d.type === 'comboEnd') this.ui.popup(d.label, `+${d.points.toLocaleString('ru-RU')}`, 'pink');
+      }
+      this.audio.play('finish');
+      this.ui.banner('ВРЕМЯ!', 'pink');
+    }
+
     if (this.state === 'finished') {
       this.finishT += dt;
       if (this.finishT > 2.6 && !this.resultsShown) this.showResults();
@@ -894,24 +930,32 @@ export class Game {
         bestLap: r.st.bestLap,
       }),
     );
+    if (this.elim) this.fillEliminationRows(rows, this.elim, race);
     const playerPos = rows.find((r) => r.isPlayer)?.position ?? player.position;
     const carId = CAR_SPECS[this.selectedCar].id;
     const rec = this.records;
-    const time = player.finishTime ?? race.raceTime;
+    const time = this.challenge ? this.challenge.duration : this.elim ? (this.elimTimes[this.playerSlot] ?? this.elim.time) : (player.finishTime ?? race.raceTime);
     // рекорды — по трассе и машине; для Sunset Loop учитываем и старые ключи без трассы
     const key = recordKey(this.track.id, carId);
     const legacy = this.track.id === 'sunset' ? carId : null;
     const prevLap = rec.bestLap[key] ?? (legacy ? rec.bestLap[legacy] : undefined);
     const prevRace = rec.bestRace[key] ?? (legacy ? rec.bestRace[legacy] : undefined);
-    const newBestLap = player.bestLap !== null && (prevLap === undefined || player.bestLap < prevLap);
+    const newBestLap = !this.timedMode && player.bestLap !== null && (prevLap === undefined || player.bestLap < prevLap);
     // рекорд гонки — только для стандартной дистанции в 3 круга
-    const newBestRace = this.laps === 3 && (prevRace === undefined || time < prevRace);
+    const newBestRace = !this.timedMode && this.laps === 3 && (prevRace === undefined || time < prevRace);
     const newBestDrift = this.drift.total > rec.bestDrift;
     if (newBestLap && player.bestLap !== null) rec.bestLap[key] = player.bestLap;
     if (newBestRace) rec.bestRace[key] = time;
     if (newBestDrift) rec.bestDrift = Math.round(this.drift.total);
     rec.races += 1;
     if (playerPos === 1 && this.mode === 'race') rec.wins += 1;
+    // дрифт-вызов: рекорд очков по трассе и машине, медаль по порогам трассы
+    let challenge: RaceResult['challenge'];
+    if (this.mode === 'drift') {
+      const score = Math.round(this.drift.total);
+      const sub = submitChallengeScore(this.track.id, carId, score);
+      challenge = { medal: medalFor(score, this.track.id), thresholds: medalThresholds(this.track.id), previous: sub.previous, isRecord: sub.isRecord };
+    }
     saveRecords(rec);
     this.ui.setRecords(rec);
 
@@ -926,6 +970,8 @@ export class Game {
       newBestRace,
       newBestDrift,
       solo: this.mode === 'timeAttack',
+      challenge,
+      elimination: this.elim !== null,
       lapTimes: player.lapTimes.slice(),
       cup: this.cup && !this.cup.finished ? this.cup.addRace(rows.map((r) => r.name)) : undefined,
     };
@@ -1129,22 +1175,105 @@ export class Game {
     h.boost = boostTotal > 0 ? Math.min(1, ps.boostTime / boostTotal) : 0;
     h.boostPower = ps.boostTime > 0 ? ps.boostPower : 0;
     h.slipstream = this.state === 'racing' ? ps.slipstream : 0;
+    this.updateChallengeHud(h);
     this.audio.setBoostLevel(this.paused ? 0 : h.boostPower * h.boost);
     const dots = this.dots;
+    let nd = 0;
     for (let i = 0; i < this.cars.length; i++) {
+      if (this.elim?.isOut(i)) continue;
       const c = this.cars[i];
-      let d = dots[i];
+      let d = dots[nd];
       if (!d) {
         d = { x: 0, z: 0, color: c.color, isPlayer: c.isPlayer };
-        dots[i] = d;
+        dots[nd] = d;
       }
+      nd += 1;
       d.x = c.renderPos.x;
       d.z = c.renderPos.z;
       d.color = c.color;
       d.isPlayer = c.isPlayer;
     }
-    dots.length = this.cars.length;
+    dots.length = nd;
     this.ui.updateHud(h);
+  }
+
+  /** Результаты выбывания: оставшиеся по прогрессу, затем выбывшие с конца; время — момент выбывания */
+  private fillEliminationRows(rows: ResultRow[], elim: Elimination, race: RaceManager): void {
+    const alive: number[] = [];
+    for (let i = 0; i < this.cars.length; i++) if (!elim.isOut(i)) alive.push(i);
+    alive.sort((a, b) => race.progress(b) - race.progress(a));
+    const order = alive.concat(elim.order.slice().reverse());
+    rows.length = 0;
+    order.forEach((ci, k) => {
+      const c = this.cars[ci];
+      rows.push({ position: k + 1, name: c.name, color: c.color, isPlayer: c.isPlayer, time: this.elimTimes[ci] ?? elim.time, projected: false, bestLap: null });
+    });
+  }
+
+  /** Выбывание: шаг таймера, эффект и надпись, конец гонки */
+  private stepElimination(dt: number, race: RaceManager): void {
+    const elim = this.elim;
+    if (!elim) return;
+    const prog = this.elimProgress;
+    for (let i = 0; i < this.cars.length; i++) prog[i] = race.progress(i);
+    const out = elim.update(dt, prog);
+    if (out < 0) return;
+    const car = this.cars[out];
+    this.elimTimes[out] = elim.time;
+    const p = car.physics.state.position;
+    for (let k = 0; k < 4; k++) this.effects.sparksAt(p, car.physics.state.velocity, 2);
+    car.model.group.visible = false;
+    car.physics.frozen = true;
+    const li = this.physicsList.indexOf(car.physics);
+    if (li >= 0) this.physicsList.splice(li, 1);
+    this.audio.play('comboLost');
+    if (car.isPlayer) {
+      this.ui.banner('ВЫ ВЫБЫЛИ', 'pink');
+    } else {
+      this.ui.banner(`ВЫБЫЛ: ${car.name}`, 'orange');
+    }
+    if (elim.over) {
+      this.state = 'finished';
+      this.finishT = 0;
+      if (elim.playerWon) {
+        this.audio.play('finish');
+        this.ui.banner('ПОБЕДА!', 'yellow');
+      }
+    }
+  }
+
+  /** Место игрока среди оставшихся: 1 + число живых впереди */
+  private elimRank(elim: Elimination): number {
+    const race = this.race;
+    if (!race) return 1;
+    const mine = race.progress(this.playerSlot);
+    let rank = 1;
+    for (let i = 0; i < this.cars.length; i++) if (i !== this.playerSlot && !elim.isOut(i) && race.progress(i) > mine) rank += 1;
+    return rank;
+  }
+
+  /** Таймер и цель режима в HUD */
+  private updateChallengeHud(h: HudData): void {
+    const chal = this.challenge;
+    if (chal) {
+      h.challengeTime = chal.remaining;
+      h.challengeLabel = 'ДРИФТ-ВЫЗОВ';
+      const goal = nextGoal(this.drift.total, this.track.id);
+      h.challengeGoal = goal ? `${goal.medal === 'bronze' ? 'БРОНЗА' : goal.medal === 'silver' ? 'СЕРЕБРО' : 'ЗОЛОТО'} ${goal.points}` : 'ЗОЛОТО ВЗЯТО';
+      h.totalRacers = 1;
+    } else if (this.elim) {
+      const elim = this.elim;
+      const rank = elim.over ? elim.playerPlace : this.elimRank(elim);
+      h.challengeTime = elim.over ? 0 : elim.timeToNext;
+      h.challengeLabel = 'ВЫБЫВАНИЕ ЧЕРЕЗ';
+      h.challengeGoal = elim.over ? '' : rank === elim.aliveCount && elim.aliveCount > 1 ? 'ТЫ ПОСЛЕДНИЙ!' : `В ГОНКЕ ${elim.aliveCount}/${elim.count}`;
+      h.position = rank;
+      h.totalRacers = elim.aliveCount;
+    } else {
+      h.challengeTime = undefined;
+      h.challengeLabel = undefined;
+      h.challengeGoal = undefined;
+    }
   }
 
   // ─── Призрак лучшего круга и камера ────────────────────────────────────

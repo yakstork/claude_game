@@ -1,6 +1,6 @@
 /** Достижения: чистая логика (без DOM) + сохранение в localStorage. */
 
-export type AchievementMode = 'race' | 'timeAttack' | 'cup';
+export type AchievementMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination';
 export type AchievementDifficulty = 'easy' | 'normal' | 'hard';
 
 /** Итоги одной завершённой гонки — собирает игра. */

@@ -41,6 +41,8 @@ export class Hud {
   private readonly posNum: HTMLElement;
   private readonly posPanel: HTMLElement;
   private readonly deltaEl: HTMLElement;
+  private readonly lapPanel: HTMLElement;
+  private cChallenge = '';
   private cDelta = '';
   private readonly slipEl: HTMLElement;
   private cSlip = -1;
@@ -110,6 +112,7 @@ export class Hud {
 
     // ── круг и таймеры (справа сверху)
     const lap = el('div', 'panel cyan hud-lap', undefined, root);
+    this.lapPanel = lap;
     this.lapLabel = el('div', 'hud-lap-title', 'КРУГ 1/3', lap);
     this.lapCur = el('div', 'hud-lap-cur', formatTime(null), lap);
     // разница с лучшим кругом (призраком) в той же точке трассы
@@ -194,7 +197,7 @@ export class Hud {
   /** Сброс состояния при показе HUD (новая гонка). */
   reset(outline: { x: number; z: number }[]): void {
     this.cPos = this.cTotal = this.cDriftTotal = this.cLap = this.cLaps = -1;
-    this.cLapTime = this.cBest = this.cLast = this.cRace = this.cSpeed = '';
+    this.cLapTime = this.cBest = this.cLast = this.cRace = this.cSpeed = this.cChallenge = '';
     this.cArc = this.cNitro = this.cNitroState = this.cComboPts = this.cComboMult = -1;
     this.cBoost = this.cBoostPower = -1;
     this.cBoostOn = false;
@@ -253,13 +256,35 @@ export class Hud {
       this.cDriftTotal = dt;
       this.driftTotalEl.textContent = formatScore(dt);
     }
-    if (d.lap !== this.cLap || d.totalLaps !== this.cLaps) {
+    const ch = d.challengeTime !== undefined;
+    if (ch !== this.lapPanel.classList.contains('challenge')) this.lapPanel.classList.toggle('challenge', ch);
+    if (ch) {
+      const t = Math.ceil(d.challengeTime ?? 0);
+      const txt = `${d.challengeLabel ?? ''}|${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}|${d.challengeGoal ?? ''}`;
+      if (txt !== this.cChallenge) {
+        this.cChallenge = txt;
+        const [a, b, c] = txt.split('|');
+        this.lapLabel.textContent = a;
+        this.lapCur.textContent = b;
+        this.deltaEl.hidden = c === '';
+        this.deltaEl.textContent = c;
+        this.deltaEl.classList.remove('ahead');
+      }
+    } else if (this.cChallenge !== '') {
+      this.cChallenge = '';
+      this.cLap = this.cLaps = -1;
+      this.cLapTime = '';
+      this.cDelta = '\u0000';
+    }
+    if (ch) {
+      /* таймер режима вместо кругов */
+    } else if (d.lap !== this.cLap || d.totalLaps !== this.cLaps) {
       this.cLap = d.lap;
       this.cLaps = d.totalLaps;
       this.lapLabel.textContent = `КРУГ ${d.lap}/${d.totalLaps}`;
     }
     const cur = formatTime(d.lapTime);
-    if (cur !== this.cLapTime) {
+    if (!ch && cur !== this.cLapTime) {
       this.cLapTime = cur;
       this.lapCur.textContent = cur;
     }

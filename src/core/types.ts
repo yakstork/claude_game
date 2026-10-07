@@ -244,7 +244,7 @@ export interface Settings {
   cameraView: CameraView;
 }
 
-export type RaceMode = 'race' | 'timeAttack' | 'cup';
+export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type CameraView = 'far' | 'near' | 'bumper';
 export const LAP_OPTIONS = [1, 3, 5] as const;
@@ -306,6 +306,11 @@ export interface HudData {
   delta: number | null;
   /** Аэродинамический мешок за соперником 0..1 */
   slipstream: number;
+  /** Режимы с таймером: оставшиеся секунды (undefined — обычная гонка) */
+  challengeTime?: number;
+  /** Подпись таймера и строка цели под ним */
+  challengeLabel?: string;
+  challengeGoal?: string;
 }
 
 export interface ResultRow {
@@ -338,6 +343,19 @@ export interface RaceResult {
   cup?: CupSummary;
   /** Карьера: награда за гонку (NC) и баланс после неё */
   credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
+  /** Дрифт-вызов: медаль и рекорд */
+  challenge?: ChallengeResult;
+  /** Выбывание: в таблице время — момент выбывания */
+  elimination?: boolean;
+}
+
+export interface ChallengeResult {
+  medal: 'none' | 'bronze' | 'silver' | 'gold';
+  /** Пороги очков [бронза, серебро, золото] */
+  thresholds: [number, number, number];
+  /** Прежний рекорд по трассе и машине (0 — не было) */
+  previous: number;
+  isRecord: boolean;
 }
 
 export type UiSound = 'move' | 'select' | 'back';
