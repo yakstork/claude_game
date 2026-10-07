@@ -412,6 +412,8 @@ export class Game {
     this.chase.view = s.cameraView;
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
+    this.world.setTimeOfDay(s.timeOfDay);
+    this.previewModel?.setHeadlights(this.world.headlights, s.quality === 'high');
     this.effects.density = s.quality === 'high' ? 1 : 0.5;
     this.camera.far = s.quality === 'high' ? 2000 : 1600;
     this.camera.updateProjectionMatrix();
@@ -447,6 +449,7 @@ export class Game {
     const spec = CAR_SPECS[this.selectedCar];
     const model = new CarModel(spec);
     this.previewModel = model;
+    model.setHeadlights(this.world.headlights, this.settings.quality === 'high');
     if (this.state === 'menu') this.scene.add(model.group);
     // статичное состояние: машина стоит на дороге
     const pose = this.track.sampleAt(PREVIEW_S);
@@ -918,6 +921,7 @@ export class Game {
         this.track.project(c.renderPos, st.trackS, _proj);
         c.roadHeight = _proj.height;
         c.model.update(st, c.roadHeight, this.paused ? 0 : dt);
+        c.model.setHeadlights(this.world.headlights, this.settings.quality === 'high');
         c.model.group.position.copy(c.renderPos);
         c.model.group.quaternion.copy(c.renderQuat);
         if (!this.paused) this.effects.updateCar(i, st, dt);
@@ -945,6 +949,7 @@ export class Game {
     this.effects.update(this.paused ? 0 : dt, this.camera, player ? Math.abs(player.speed) : 0, speedLines);
 
     this.world.update(this.camera.position);
+    this.render.setNeonBoost(this.world.headlights);
     // гром — с задержкой после вспышки молнии (звук идёт медленнее света)
     const strikes = this.world.lightningStrikes;
     if (strikes !== this.lastStrikes) {

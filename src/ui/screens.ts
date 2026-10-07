@@ -1,5 +1,5 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
-import type { CameraView, CarSpec, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
+import type { TimeOfDay, CameraView, CarSpec, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
 import { isTouchDevice } from '../core/device';
 import { el, onTap } from './dom';
 import {
@@ -85,7 +85,7 @@ const CONTROL_MODES: { mode: ControlMode; full: string; short: string }[] = [
   { mode: 'touch', full: 'СЕНСОРНЫЕ КНОПКИ', short: 'КНОПКИ' },
 ];
 
-type ChoiceKey = 'raceMode' | 'difficulty' | 'laps' | 'cameraView';
+type ChoiceKey = 'raceMode' | 'difficulty' | 'laps' | 'cameraView' | 'timeOfDay';
 interface ChoiceDef<K extends ChoiceKey = ChoiceKey> {
   key: K;
   label: string;
@@ -128,6 +128,15 @@ export const RACE_CHOICES: ChoiceDef[] = [
       { value: 'far' as CameraView, full: 'ДАЛЬНЯЯ', short: 'ДАЛЬ' },
       { value: 'near' as CameraView, full: 'БЛИЖНЯЯ', short: 'БЛИЖЕ' },
       { value: 'bumper' as CameraView, full: 'БАМПЕР' },
+    ],
+  },
+  {
+    key: 'timeOfDay',
+    label: 'ВРЕМЯ СУТОК',
+    options: [
+      { value: 'sunset' as TimeOfDay, full: 'ЗАКАТ' },
+      { value: 'night' as TimeOfDay, full: 'НОЧЬ' },
+      { value: 'dawn' as TimeOfDay, full: 'РАССВЕТ', short: 'РАССВ.' },
     ],
   },
 ];
@@ -244,6 +253,7 @@ export class SettingsScreen {
     });
 
     this.addChoice(list2, RACE_CHOICES[3]);
+    this.addChoice(list2, RACE_CHOICES[4]);
     for (const def of TOUCH_SLIDERS) this.addSlider(list2, def);
 
     const back = makeButton(el('div', 'set-actions', undefined, panel), 'НАЗАД');
