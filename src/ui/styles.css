@@ -1108,3 +1108,9 @@
 .hud-slip:not(.on) { opacity: 0 !important; }
 .mode-btn span { white-space: nowrap; }
 @media (max-height: 520px) { .mode-btn span { font-size: 0.85em; } }
+
+/* Режимы с таймером (дрифт-вызов, выбывание): большой таймер вместо кругов */
+.hud-lap.challenge { min-width: 11em; }
+.hud-lap.challenge .hud-lap-rows { display: none; }
+.hud-lap.challenge .hud-lap-cur { font-size: 3.4em; margin: 0.05em 0 0.1em; line-height: 1; }
+.hud-lap.challenge .hud-delta { font-size: 0.95em; letter-spacing: 0.08em; color: var(--yellow, #f9c80e); }

@@ -25,7 +25,7 @@ import { DEFAULT_BUDGET, DEFAULT_PALETTE, defaultCustomBuild } from './customLog
 import type { CustomPalette } from './customLogic';
 import { el } from './dom';
 import { Hud } from './hud';
-import { MainMenu } from './menu';
+import { MainMenu, nextRaceMode } from './menu';
 import { Nav } from './nav';
 import { RotatePrompt } from './rotatePrompt';
 import { clampIndex } from './trackLogic';
@@ -394,7 +394,7 @@ export class UIManager {
 
   private toggleRaceMode(): void {
     const cur = this.settings.value;
-    const next: Settings = { ...cur, raceMode: cur.raceMode === 'race' ? 'cup' : cur.raceMode === 'cup' ? 'timeAttack' : 'race' };
+    const next: Settings = { ...cur, raceMode: nextRaceMode(cur.raceMode) };
     this.settings.setSettings(next);
     this.opts.callbacks.onUiSound('move');
     this.handleSettings(next);

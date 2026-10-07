@@ -1,5 +1,5 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
-import type { CameraView, CarSpec, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
+import type { CameraView, CarSpec, ChallengeResult, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
 import { isTouchDevice } from '../core/device';
 import { el, onTap } from './dom';
 import {
@@ -101,6 +101,7 @@ export const RACE_CHOICES: ChoiceDef[] = [
       { value: 'race' as RaceMode, full: 'ГОНКА' },
       { value: 'cup' as RaceMode, full: 'КУБОК' },
       { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ' },
+      { value: 'drift' as RaceMode, full: 'ДРИФТ', short: 'ДРИФТ' },
     ],
   },
   {
@@ -490,8 +491,13 @@ export class ResultsScreen {
     // итог кубка: победа в кубке — праздник, иначе — место в зачёте
     const cupPlace = cup?.rows.find((x) => x.isPlayer)?.position ?? r.playerPosition;
     const cupDone = cup !== undefined && cup.finished;
-    const celebrate = cupDone ? cupPlace === 1 : win || (r.solo === true && r.newBestLap);
-    const title = cupDone
+    const chal = r.challenge;
+    const celebrate = chal ? chal.medal !== 'none' || chal.isRecord : cupDone ? cupPlace === 1 : win || (r.solo === true && r.newBestLap);
+    const title = chal
+      ? chal.isRecord
+        ? 'НОВЫЙ РЕКОРД!'
+        : 'ДРИФТ-ВЫЗОВ'
+      : cupDone
       ? cupPlace === 1
         ? 'КУБОК ВЫИГРАН!'
         : `КУБОК · ${cupPlace}-Е МЕСТО`
@@ -520,6 +526,12 @@ export class ResultsScreen {
     let fastest = Infinity;
     for (const row of r.rows) if (row.bestLap !== null && row.bestLap < fastest) fastest = row.bestLap;
 
+    if (chal) {
+      this.challengeBlock(body, r, chal);
+      this.confetti(celebrate);
+      this.nav.reset(0);
+      return;
+    }
     const table = el('div', 'rtable', undefined, body);
     const hr = el('div', 'rrow rhead', undefined, table);
     el('span', undefined, '#', hr);
@@ -570,6 +582,26 @@ export class ResultsScreen {
     }
     this.confetti(celebrate);
     this.nav.reset(0);
+  }
+
+  /** Дрифт-вызов: очки, медаль, цели и рекорд вместо таблицы гонки. */
+  private challengeBlock(parent: HTMLElement, r: RaceResult, c: ChallengeResult): void {
+    const medals = ['bronze', 'silver', 'gold'] as const;
+    const names = { bronze: 'БРОНЗА', silver: 'СЕРЕБРО', gold: 'ЗОЛОТО' };
+    const tones = { bronze: 'orange', silver: 'cyan', gold: 'yellow' };
+    const big = el('div', 'rsummary', undefined, parent);
+    this.stat(big, 'ОЧКИ', formatScore(r.driftScore), 'pink');
+    this.stat(big, 'МЕДАЛЬ', c.medal === 'none' ? '—' : names[c.medal], c.medal === 'none' ? '' : tones[c.medal]);
+    this.stat(big, 'РЕКОРД', formatScore(Math.max(c.previous, c.isRecord ? r.driftScore : 0)), 'yellow');
+    const goals = el('div', 'laps', undefined, parent);
+    el('span', 'hud-label', 'ЦЕЛИ', goals);
+    medals.forEach((m, i) => {
+      const got = r.driftScore >= c.thresholds[i];
+      const chip = el('div', `lap${got ? ' best' : ''}`, undefined, goals);
+      chip.style.animationDelay = `${0.2 + i * 0.1}s`;
+      el('span', 'lap-n', names[m], chip);
+      el('span', 'lap-t', formatScore(c.thresholds[i]), chip);
+    });
   }
 
   private cupTable(parent: HTMLElement, cup: CupInfo): void {
