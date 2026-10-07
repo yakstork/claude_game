@@ -19,6 +19,8 @@ import { quantize01 } from './trackLogic';
 
 const MAX_POPUPS = 3;
 const POPUP_MS = 1700;
+/** Реплика соперника по «рации», мс */
+const RADIO_MS = 2000;
 const BANNER_MS = 2100;
 
 // Геометрия дуги спидометра: 240°, от 150° до 390° по часовой (координаты SVG).
@@ -92,6 +94,8 @@ export class Hud {
   private cWrong = false;
 
   private bannerTimer = 0;
+  private radioEl: HTMLElement | null = null;
+  private radioTimer = 0;
   private readonly popupTimers = new Map<HTMLElement, number>();
   private countdownKey = '';
 
@@ -138,6 +142,8 @@ export class Hud {
     this.comboPts = el('span', 'hud-combo-pts', '+0', this.combo);
     this.comboMult = el('span', 'hud-combo-mult', 'x1', this.combo);
     this.popups = el('div', 'hud-popups', undefined, centerCol);
+    this.radioEl = el('div', 'hud-radio', undefined, root);
+    this.radioEl.hidden = true;
 
     // ── плашка «не туда», отсчёт
     this.wrongWay = el('div', 'hud-wrong', 'НЕ ТУДА!', root);
@@ -218,7 +224,23 @@ export class Hud {
     this.popupTimers.clear();
     window.clearTimeout(this.bannerTimer);
     this.bannerSlot.replaceChildren();
+    window.clearTimeout(this.radioTimer);
+    if (this.radioEl) this.radioEl.hidden = true;
     this.setCountdown(null);
+  }
+
+  /** Реплика-«рация» соперника на 2 с: «ИМЯ: текст» */
+  radio(who: string, text: string): void {
+    const r = this.radioEl;
+    if (!r) return;
+    window.clearTimeout(this.radioTimer);
+    r.replaceChildren();
+    el('span', 'hud-radio-who', who, r);
+    el('span', 'hud-radio-text', text, r);
+    r.hidden = false;
+    this.radioTimer = window.setTimeout(() => {
+      r.hidden = true;
+    }, RADIO_MS);
   }
 
   /** Вызывается после показа корня: пересчитать разрешение мини-карты. */

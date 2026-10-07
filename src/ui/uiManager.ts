@@ -21,6 +21,7 @@ import './awards.css';
 import './garage.css';
 import './campaign.css';
 import './daily.css';
+import './rival.css';
 import { DailyScreen } from './daily';
 import type { DailyApi } from './daily';
 import { CampaignScreen } from './campaign';
@@ -661,6 +662,11 @@ export class UIManager {
 
   banner(text: string, tone: PopupTone = 'pink'): void {
     this.hud.banner(text, tone);
+  }
+
+  /** Реплика соперника по «рации» (2 с) */
+  radio(who: string, text: string): void {
+    this.hud.radio(who, text);
   }
 
   // ── данные ────────────────────────────────────────────────────────────────
