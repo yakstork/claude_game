@@ -261,6 +261,8 @@ export interface Settings {
   weather: Weather;
   /** Радиостанция в гонке */
   radio: RadioStation;
+  /** Эффекты скорости (аберрация, радиальный блюр, FOV-кик, тряска) — выкл для укачивания */
+  speedFx: boolean;
   /** Seed карточки «ГЕНЕРАТОР» (случайная трасса; рекорды по ключу gen-<seed>) */
   trackSeed: number;
 }

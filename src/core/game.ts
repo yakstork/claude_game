@@ -1094,6 +1094,7 @@ export class Game {
           if (c.isPlayer) {
             this.audio.play('land');
             this.chase.kick(ev.strength * 0.7);
+            if (ev.strength > 0.25) this.chase.landing(ev.strength);
           }
         }
       }
@@ -1429,6 +1430,7 @@ export class Game {
     if (!this.paused) this.pickupMesh?.update(dt);
     if (!this.paused) this.rivalMarker?.update(dt);
     this.render.setNeonBoost(this.world.headlights);
+    this.updateSpeedFx(dt);
     // гром — с задержкой после вспышки молнии (звук идёт медленнее света)
     const strikes = this.world.lightningStrikes;
     if (strikes !== this.lastStrikes) {
@@ -1484,6 +1486,22 @@ export class Game {
   }
 
   /** Финиш игрока: орбита камеры и салют над аркой */
+  private speedFxV = 0;
+  private nitroPrev = false;
+
+  /** «Сок» скорости: радиальный блюр/аберрация при нитро и бусте (плавно) */
+  private updateSpeedFx(dt: number): void {
+    const on = this.settings.speedFx;
+    this.chase.fxEnabled = on;
+    const ps = this.cars.length && this.state === 'racing' && !this.paused ? this.player.physics.state : null;
+    const target = on && ps && this.introT <= 0 && (ps.nitroActive || ps.boostTime > 0) ? 1 : 0;
+    const nitro = !!ps?.nitroActive;
+    if (nitro && !this.nitroPrev) this.chase.boostKick();
+    this.nitroPrev = nitro;
+    this.speedFxV += (target - this.speedFxV) * Math.min(1, dt * (target > this.speedFxV ? 8 : 4));
+    this.render.setSpeedFx(this.speedFxV < 0.01 ? 0 : this.speedFxV);
+  }
+
   private startFinishShow(): void {
     this.finishCam = true;
     const s = this.track.sampleAt(0);
@@ -1551,6 +1569,7 @@ export class Game {
     // буст: новый — когда boostTime вырос; доля = остаток / полная длительность текущего буста
     if (ps.boostTime > this.boostPrev + 1e-4) {
       this.audio.playBoost(ps.boostPower);
+      this.chase.boostKick();
       if (this.state === 'racing') this.pstats.addBoost();
     }
     this.boostPrev = ps.boostTime;

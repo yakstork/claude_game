@@ -29,6 +29,11 @@ export class ChaseCamera {
   private readonly pos = new Vector3();
   private readonly lookAt = new Vector3();
   private shake = 0;
+  /** Эффекты скорости включены (настройка для чувствительных к укачиванию) */
+  fxEnabled = true;
+  private punch = 0;
+  private punchTarget = 0;
+  private landShake = 0;
   private t = 0;
   private fov = BASE_FOV;
   private previewAngle = 0.6;
@@ -42,6 +47,16 @@ export class ChaseCamera {
   /** Импульс тряски (удар, приземление), 0..1 */
   kick(amount: number): void {
     this.shake = Math.min(1.2, this.shake + amount);
+  }
+
+  /** Начало буста/нитро: плавный FOV-кик +6° */
+  boostKick(): void {
+    if (this.fxEnabled) this.punchTarget = 6;
+  }
+
+  /** Приземление после прыжка (трамплин): мягкая низкочастотная тряска, 0..1 */
+  landing(strength: number): void {
+    if (this.fxEnabled) this.landShake = Math.min(1, this.landShake + strength);
   }
 
   /** Мгновенно поставить камеру за машиной */
@@ -77,6 +92,10 @@ export class ChaseCamera {
 
   update(dt: number, inp: ChaseInput): void {
     this.t += dt;
+    // FOV-кик: быстро нарастает к цели, цель затухает
+    this.punch += (this.punchTarget - this.punch) * Math.min(1, dt * 9);
+    this.punchTarget = Math.max(0, this.punchTarget - dt * 7);
+    this.landShake *= Math.exp(-dt * 3.2);
     // рыскание камеры догоняет курс — в заносе камера видит машину боком
     const yawRate = inp.drifting ? 3.2 : 5.5;
     let d = inp.heading - this.yaw;
@@ -90,7 +109,7 @@ export class ChaseCamera {
       this.lookAt.copy(_look);
       const sk = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
       const tf = BASE_FOV + 8 + (MAX_FOV - BASE_FOV - 6) * sk * sk + (inp.nitro ? 6 : 0);
-      this.fov += (tf - this.fov) * Math.min(1, dt * 3);
+      this.fov += (tf + this.punch - this.fov) * Math.min(1, dt * 3);
       this.shake = Math.max(0, this.shake - dt * 2.2);
       this.apply(this.shake * 0.2);
       return;
@@ -107,7 +126,7 @@ export class ChaseCamera {
 
     const speedK = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
     const targetFov = BASE_FOV + (MAX_FOV - BASE_FOV - 6) * speedK * speedK + (inp.nitro ? 6 : 0);
-    this.fov += (targetFov - this.fov) * Math.min(1, dt * 3);
+    this.fov += (targetFov + this.punch - this.fov) * Math.min(1, dt * 3);
 
     // тряска: лёгкая от скорости + импульсы
     const speedShake = Math.max(0, speedK - 0.55) * 0.06 + (inp.nitro ? 0.05 : 0);
@@ -123,6 +142,7 @@ export class ChaseCamera {
       c.position.x += (Math.sin(t * 47.3) + Math.sin(t * 91.1) * 0.5) * shake * 0.12;
       c.position.y += (Math.sin(t * 53.7) + Math.sin(t * 77.9) * 0.5) * shake * 0.1;
     }
+    if (this.landShake > 0.01) c.position.y += Math.sin(this.t * 19) * this.landShake * 0.22;
     c.lookAt(this.lookAt);
     const fov = this.fov * this.fovScale;
     if (Math.abs(c.fov - fov) > 0.01) {

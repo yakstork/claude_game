@@ -21,6 +21,8 @@ export class RenderSystem {
   private neonBoost = 0;
   /** Яркость кадра: ночью темнее (множитель до тонмаппинга, неон добирает bloom) */
   private readonly exposure = uniform(1);
+  /** Эффекты скорости 0..1: радиальный блюр + усиленная аберрация (только high) */
+  private readonly speedFx = uniform(0);
 
   private constructor(renderer: WebGPURenderer) {
     this.renderer = renderer;
@@ -64,6 +66,10 @@ export class RenderSystem {
     this.exposure.value = 1 - 0.45 * k;
   }
 
+  setSpeedFx(k: number): void {
+    this.speedFx.value = k;
+  }
+
   getQuality(): Quality {
     return this.quality;
   }
@@ -91,9 +97,17 @@ export class RenderSystem {
     // лёгкая виньетка + хроматическая аберрация к краям кадра (только high)
     const off = screenUV.sub(vec2(0.5, 0.5));
     const edge = smoothstep(float(0.25), float(0.75), length(off));
-    const shift = off.mul(edge).mul(0.006);
+    const fx = this.speedFx;
+    const shift = off.mul(edge).mul(fx.mul(0.012).add(0.006));
     const aberrated = color.sample(screenUV.add(shift)).r.toVar();
-    const rgb = color.sample(screenUV).rgb;
+    // радиальный блюр от центра: 3 дополнительные выборки вдоль луча к центру
+    const blur = off.mul(fx.mul(0.09).mul(smoothstep(float(0.12), float(0.7), length(off))));
+    const rgb = color
+      .sample(screenUV)
+      .rgb.add(color.sample(screenUV.sub(blur.mul(0.33))).rgb)
+      .add(color.sample(screenUV.sub(blur.mul(0.66))).rgb)
+      .add(color.sample(screenUV.sub(blur)).rgb)
+      .mul(0.25);
     const ca = rgb.setX(aberrated).setZ(color.sample(screenUV.sub(shift)).b);
     const vignette = float(1.0).sub(edge.mul(0.38));
     pipeline.outputNode = ca.mul(vignette).mul(this.exposure).add(bloomPass);
