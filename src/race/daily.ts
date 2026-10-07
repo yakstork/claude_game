@@ -99,8 +99,13 @@ function pickWeighted<T>(rnd: () => number, items: readonly (readonly [T, number
   return items[items.length - 1][0];
 }
 
-/** Скорость (м/с) для порогов заезда на время: бронза / серебро / золото */
-const LAP_SPEEDS: [number, number, number] = [31, 34, 37];
+/**
+ * Опорная средняя скорость круга (м/с) по трассам: автопилот skill 0.9, среднее по 5 машинам
+ * (калибровка симуляцией). Серебро = опорный круг, бронза медленнее на 6%, золото быстрее на 5%.
+ */
+const TRACK_REF_SPEED: Record<string, number> = { sunset: 42.1, heights: 35.2, coast: 39.9, storm: 44.7, canyon: 41.7 };
+const DEFAULT_REF_SPEED = 40;
+const LAP_FACTORS: [number, number, number] = [0.94, 1, 1.055];
 
 export function dailyChallenge(seed: number, ctx: DailyContext): DailyChallenge {
   const rnd = mulberry32(seed * 2654435761 + 1013904223);
@@ -131,7 +136,8 @@ export function dailyChallenge(seed: number, ctx: DailyContext): DailyChallenge 
   if (mode === 'timeAttack') {
     const L = ctx.trackLength(trackId);
     const r = (v: number) => Math.round(v * 10) / 10;
-    goal = { kind: 'lap', thresholds: [r(L / LAP_SPEEDS[0]), r(L / LAP_SPEEDS[1]), r(L / LAP_SPEEDS[2])] };
+    const v = TRACK_REF_SPEED[trackId] ?? DEFAULT_REF_SPEED;
+    goal = { kind: 'lap', thresholds: [r(L / (v * LAP_FACTORS[0])), r(L / (v * LAP_FACTORS[1])), r(L / (v * LAP_FACTORS[2]))] };
   } else if (mode === 'drift') {
     goal = { kind: 'drift', thresholds: medalThresholds(trackId) };
   } else {

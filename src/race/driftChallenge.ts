@@ -4,16 +4,23 @@ export const CHALLENGE_DURATION = 90;
 
 export type Medal = 'none' | 'bronze' | 'silver' | 'gold';
 
-/** Базовые пороги очков [бронза, серебро, золото]. */
-export const BASE_MEDALS: readonly [number, number, number] = [5000, 11000, 18000];
+/** Серебро по умолчанию (медиана автопилота skill 0.9 по машинам); бронза = 0.5×, золото = 1.5×. */
+export const BASE_SILVER = 11000;
 
-/** Множитель порогов по трассам (длинные и плавные трассы дают больше дрифта). */
-const TRACK_SCALE: Record<string, number> = { sunset: 1, heights: 0.9, coast: 1.1, storm: 0.9 };
+/**
+ * Серебро по трассам: медиана очков (дрифт + трюки) автопилота skill 0.9 за 90 с по 5 машинам
+ * (калибровка симуляцией в Node). Золото требует хорошей игры.
+ */
+const TRACK_SILVER: Record<string, number> = { sunset: 12900, heights: 14400, coast: 11200, storm: 6300, canyon: 7400 };
+
+/** Пороги [бронза, серебро, золото] от серебра, округлённые до сотен. */
+export function thresholdsFromSilver(silver: number): [number, number, number] {
+  const r = (v: number) => Math.round(v / 100) * 100;
+  return [r(silver * 0.5), r(silver), r(silver * 1.5)];
+}
 
 export function medalThresholds(trackId: string): [number, number, number] {
-  const k = TRACK_SCALE[trackId] ?? 1;
-  const r = (v: number) => Math.round((v * k) / 100) * 100;
-  return [r(BASE_MEDALS[0]), r(BASE_MEDALS[1]), r(BASE_MEDALS[2])];
+  return thresholdsFromSilver(TRACK_SILVER[trackId] ?? BASE_SILVER);
 }
 
 export function medalFor(score: number, trackId: string): Medal {

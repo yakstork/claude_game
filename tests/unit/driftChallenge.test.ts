@@ -22,6 +22,13 @@ describe('driftChallenge', () => {
     expect(nextGoal(0, 'coast')?.medal).toBe('bronze');
     expect(nextGoal(1e6, 'coast')).toBeNull();
   });
+  it('пороги всех трасс возрастают', () => {
+    for (const id of ['sunset', 'heights', 'coast', 'storm', 'canyon']) {
+      const [b, s, g] = medalThresholds(id);
+      expect(b).toBeGreaterThan(0);
+      expect(b < s && s < g).toBe(true);
+    }
+  });
   it('неизвестная трасса — базовые пороги', () => {
     expect(medalThresholds('zzz')[0]).toBeGreaterThan(0);
   });
