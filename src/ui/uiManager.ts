@@ -108,7 +108,7 @@ export class UIManager {
     this.host = el('div', 'nr-ui', undefined, root);
     const play = (k: 'move' | 'select' | 'back'): void => cb.onUiSound(k);
 
-    this.hud = new Hud(this.host);
+    this.hud = new Hud(this.host, () => cb.onRadio?.());
     // сенсорные кнопки — над HUD и под экранами меню/паузы
     this.touch = new TouchControls(this.host, {
       onPause: () => {
@@ -683,6 +683,11 @@ export class UIManager {
 
   setSettings(s: Settings): void {
     this.settings.setSettings(s);
+  }
+
+  /** Название станции в HUD */
+  setRadio(label: string): void {
+    this.hud.setRadio(label);
   }
 
   setRecords(r: Records): void {

@@ -38,6 +38,16 @@ export class SfxPlayer {
     this.dest.connect(out);
   }
 
+  /** Радио: шум-свип переключения станции (полоса вверх-вниз + короткий «щелчок настройки») */
+  playRadioSweep(): void {
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const d = this.dest;
+    playNoise(ctx, d, { filter: 'bandpass', freq: 400, freqEnd: 4200, q: 3, start: t, dur: 0.18, gain: 0.22, attack: 0.02 });
+    playNoise(ctx, d, { filter: 'bandpass', freq: 4200, freqEnd: 700, q: 3, start: t + 0.17, dur: 0.2, gain: 0.2, attack: 0.02 });
+    playTone(ctx, d, { type: 'sine', freq: 900, freqEnd: 1400, start: t + 0.34, dur: 0.06, gain: 0.05, attack: 0.005 });
+  }
+
   /**
    * Ускорение (бонус за дрифт/старт): восходящий «вжух» с бас-ударом; power 0..1 — сила
    * (громче, выше свип, дольше хвост). Отдельный метод: SfxName расширять нельзя.

@@ -22,6 +22,8 @@ const KEY_ACTIONS: Record<string, MenuAction> = {
   Backspace: 'back',
   KeyR: 'reset',
   KeyC: 'camera',
+  // R занята («на трассу»), радио — на M
+  KeyM: 'radio',
 };
 
 // Standard gamepad: 0 A, 1 B, 2 X, 3 Y, 5 RB, 6 LT, 7 RT, 8 Back, 9 Start, 12-15 D-pad
@@ -29,6 +31,7 @@ const PAD_ACTIONS: [number, MenuAction][] = [
   [0, 'confirm'],
   [1, 'back'],
   [3, 'reset'],
+  [4, 'radio'],
   [8, 'camera'],
   [9, 'pause'],
   [12, 'up'],

@@ -4,7 +4,8 @@
  * До unlock() (первый жест) все методы — безопасные no-op; желаемые громкость,
  * трек и пауза запоминаются и применяются после unlock.
  */
-import type { EngineAudioParams, MusicTrack, SfxName } from '../core/types';
+import type { EngineAudioParams, MusicTrack, RadioStation, SfxName } from '../core/types';
+import { STATION_NAMES } from './theory';
 import { Ambience } from './ambience';
 import type { AmbienceKind } from './ambience';
 import { EngineSynth } from './engine';
@@ -76,6 +77,24 @@ export class AudioManager {
     this.volMusic = clamp01(music);
     this.volSfx = clamp01(sfx);
     this.safe(() => this.applyVolumes(false));
+  }
+
+  private radio: RadioStation = 'neon';
+
+  /** Выбрать радиостанцию (до unlock() запоминается). withSweep — шум-свип перехода. */
+  setRadio(station: RadioStation, withSweep = false): void {
+    this.radio = station;
+    this.safe(() => {
+      this.music?.setStation(station);
+      if (withSweep) this.sfx?.playRadioSweep();
+    });
+  }
+
+  /** Подпись для HUD: «NEON FM — Night Drive» (без песни, если звук ещё не запущен или радио выкл.) */
+  radioLabel(): string {
+    const name = STATION_NAMES[this.radio];
+    const song = this.radio === 'off' ? null : this.music?.song;
+    return song ? `${name} — ${song.name}` : name;
   }
 
   playMusic(track: MusicTrack | null): void {
@@ -264,6 +283,7 @@ export class AudioManager {
     this.engine.setProfile(this.enginePitch, this.engineGrowl);
     this.sfx = new SfxPlayer(ctx, sfxBus);
     this.music = new MusicSequencer(ctx, musicBus);
+    this.music.setStation(this.radio);
     this.music.setIntensity(this.musicLevel);
     this.ambience = new Ambience(ctx, sfxBus);
     this.ambience.set(this.wantedAmbience);

@@ -22,7 +22,7 @@ export interface VehicleControls {
   nitro: boolean;
 }
 
-export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'pause' | 'reset' | 'camera';
+export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'pause' | 'reset' | 'camera' | 'radio';
 
 // ─── Машины ────────────────────────────────────────────────────────────────
 
@@ -259,12 +259,17 @@ export interface Settings {
   timeOfDay: TimeOfDay;
   /** Погода на любой трассе: ясно / дождь / туман (Storm Boulevard всегда с дождём) */
   weather: Weather;
+  /** Радиостанция в гонке */
+  radio: RadioStation;
 }
 
 export type Weather = 'clear' | 'rain' | 'fog';
 
 export type TimeOfDay = 'sunset' | 'night' | 'dawn';
 
+/** Радио: NEON FM, DARKWAVE 88, CHROME BEAT или выкл. */
+export type RadioStation = 'neon' | 'dark' | 'chrome' | 'off';
+export const RADIO_ORDER: readonly RadioStation[] = ['neon', 'dark', 'chrome', 'off'];
 export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination' | 'versus';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type CameraView = 'far' | 'near' | 'bumper';
@@ -411,6 +416,8 @@ export interface UICallbacks {
   onPhoto?(): void;
   /** Кампания: «ДАЛЕЕ» на результатах события — вернуться к карте */
   onCampaignMap?(): void;
+  /** Тап по названию станции в HUD */
+  onRadio?(): void;
 }
 
 // ─── Звук ──────────────────────────────────────────────────────────────────

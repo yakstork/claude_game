@@ -1,7 +1,8 @@
 /** Синтвейв-секвенсор с lookahead-планированием (ноты создаются с точным start(time)). */
-import type { MusicTrack } from '../core/types';
+import type { MusicTrack, RadioStation } from '../core/types';
 import { createImpulseResponse, disconnectAll, playNoise, playTone } from './noise';
-import { getStepEvents, getTrackConfig, loopSteps, midiToFreq, RACE_VARIANTS, stepDuration } from './theory';
+import { getStepEvents, getTrackConfig, loopSteps, midiToFreq, songInfo, stationSongCount, stationVariant, stepDuration } from './theory';
+import type { PlayableStation } from './theory';
 import type { SongStyle } from './theory';
 import type { ArpEvent, BassEvent, PadEvent } from './theory';
 
@@ -324,8 +325,15 @@ export class MusicSequencer {
   private current: TrackPlayer | null = null;
   private level: 0 | 1 = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
-  /** Следующая гоночная композиция: старт случайный, дальше по кругу. */
-  private nextRace = Math.floor(Math.random() * RACE_VARIANTS);
+  /** Следующая композиция станции: старт случайный, дальше по кругу. */
+  private readonly nextSong: Record<PlayableStation, number> = {
+    neon: Math.floor(Math.random() * stationSongCount('neon')),
+    dark: Math.floor(Math.random() * stationSongCount('dark')),
+    chrome: Math.floor(Math.random() * stationSongCount('chrome')),
+  };
+  private station: RadioStation = 'neon';
+  /** Какой трек нужен (при выключенном радио гоночный не играет, но запоминается) */
+  private wanted: MusicTrack | null = null;
 
   constructor(
     private readonly ctx: BaseAudioContext,
@@ -342,28 +350,61 @@ export class MusicSequencer {
     return this.current ? this.current.variant : 0;
   }
 
+  get radio(): RadioStation {
+    return this.station;
+  }
+
+  /** Станция и название играющей гоночной композиции (null — не играет). */
+  get song(): { station: PlayableStation; name: string } | null {
+    return this.current && this.current.track === 'race' ? songInfo(this.current.variant) : null;
+  }
+
+  /** Сменить станцию; если играет гоночный трек — сразу переключается (с кроссфейдом). */
+  setStation(station: RadioStation): void {
+    if (station === this.station) return;
+    this.station = station;
+    if (this.wanted === 'race') {
+      if (this.current) {
+        this.current.fadeOutAndDispose();
+        this.current = null;
+      }
+      this.startWanted();
+    }
+  }
+
   setTrack(track: MusicTrack | null): void {
-    if ((this.current?.track ?? null) === track) return;
+    if (track === this.wanted && (this.current?.track ?? null) === (this.shouldPlay(track) ? track : null)) return;
+    this.wanted = track;
     if (this.current) {
       this.current.fadeOutAndDispose();
       this.current = null;
     }
-    if (track !== null) {
-      let variant = 0;
-      if (track === 'race') {
-        variant = this.nextRace;
-        this.nextRace = (this.nextRace + 1) % RACE_VARIANTS;
-      }
-      const p = new TrackPlayer(this.ctx, this.dest, track, variant);
-      const at = this.ctx.currentTime + 0.06;
-      if (this.level) p.setIntensity(this.level);
-      p.start(at);
-      this.current = p;
-      p.pump(this.ctx.currentTime + LOOKAHEAD_S);
-      this.ensureTimer();
-    } else {
+    this.startWanted();
+  }
+
+  private shouldPlay(track: MusicTrack | null): boolean {
+    return track !== null && !(track === 'race' && this.station === 'off');
+  }
+
+  private startWanted(): void {
+    const track = this.wanted;
+    if (track === null || !this.shouldPlay(track)) {
       this.stopTimer();
+      return;
     }
+    let variant = 0;
+    if (track === 'race') {
+      const st = this.station as PlayableStation;
+      variant = stationVariant(st, this.nextSong[st]);
+      this.nextSong[st] = (this.nextSong[st] + 1) % stationSongCount(st);
+    }
+    const p = new TrackPlayer(this.ctx, this.dest, track, variant);
+    const at = this.ctx.currentTime + 0.06;
+    if (this.level) p.setIntensity(this.level);
+    p.start(at);
+    this.current = p;
+    p.pump(this.ctx.currentTime + LOOKAHEAD_S);
+    this.ensureTimer();
   }
 
   /** Финальный круг вкл/выкл; новый трек всегда стартует с 0. */
