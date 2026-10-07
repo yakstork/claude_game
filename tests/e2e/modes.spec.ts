@@ -43,5 +43,24 @@ test('все режимы и кампания стартуют без ошибо
   await page.evaluate(() => window.__neonRush!.game.debugSimulate(8));
   await page.evaluate(() => window.__neonRush!.game.enterMenu());
 
+  // трасса-генератор (6-я карточка) и «Вызов дня»
+  await page.evaluate(() => {
+    const g = window.__neonRush!.game;
+    g.selectTrack(5);
+    g.applySettings({ ...g.settings, raceMode: 'race', laps: 1 }, false);
+    g.startRace(0);
+  });
+  await page.waitForFunction(() => window.__neonRush!.info().state === 'countdown', null, { timeout: 20_000 });
+  await page.evaluate(() => window.__neonRush!.game.debugSimulate(8));
+  expect(await page.evaluate(() => window.__neonRush!.game.track.id)).toMatch(/^gen-/);
+  await page.evaluate(() => window.__neonRush!.game.enterMenu());
+  await page.evaluate(() => {
+    const g = window.__neonRush!.game as unknown as { dailyCtl: { start(): void } };
+    g.dailyCtl.start();
+  });
+  await page.waitForFunction(() => window.__neonRush!.info().state === 'countdown', null, { timeout: 20_000 });
+  await page.evaluate(() => window.__neonRush!.game.debugSimulate(8));
+  await page.evaluate(() => window.__neonRush!.game.enterMenu());
+
   expect(errors).toEqual([]);
 });
