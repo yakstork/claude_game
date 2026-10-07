@@ -95,7 +95,7 @@ for (const phone of phones) {
       expect(Object.values(released).some(Boolean)).toBe(false);
 
       // пауза кнопкой и продолжение
-      await page.locator('.nr-tc-pause').tap();
+      await page.locator('.nr-tc-pause:not(.nr-tc-cam)').tap();
       await page.waitForFunction(() => window.__neonRush!.info().paused, null, { timeout: 10_000 });
       await page.getByText('Продолжить', { exact: false }).first().tap();
       await page.waitForFunction(() => !window.__neonRush!.info().paused, null, { timeout: 10_000 });
