@@ -96,6 +96,32 @@ export class RenderSystem {
     else this.renderer.render(this.scene, this.camera);
   }
 
+  /**
+   * Два вида на одном экране (верх/низ) — режим «2 игрока». Постобработка (bloom) в этом
+   * режиме отключена: сцена рендерится напрямую с viewport/scissor на каждую половину.
+   */
+  renderSplit(top: Camera, bottom: Camera): void {
+    if (!this.scene) return;
+    const r = this.renderer;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const half = Math.floor(h / 2);
+    const prevAuto = r.autoClear;
+    r.setScissorTest(true);
+    r.autoClear = true;
+    // y в WebGPURenderer отсчитывается сверху (в WebGL-бэкенде three переворачивает сам)
+    r.setViewport(0, 0, w, half);
+    r.setScissor(0, 0, w, half);
+    r.render(this.scene, top);
+    r.autoClear = false;
+    r.setViewport(0, half, w, h - half);
+    r.setScissor(0, half, w, h - half);
+    r.render(this.scene, bottom);
+    r.autoClear = prevAuto;
+    r.setScissorTest(false);
+    r.setViewport(0, 0, w, h);
+  }
+
   /** Число draw calls последнего кадра (для отладки/QA) */
   drawCalls(): number {
     const info = this.renderer.info as unknown as { render: { drawCalls?: number; calls?: number } };

@@ -33,6 +33,8 @@ export class ChaseCamera {
   private previewAngle = 0.6;
   /** Вид: дальняя / ближняя chase-камера или камера на бампере */
   view: CameraView = 'far';
+  /** Множитель вертикального FOV (split-screen: полуэкран очень широкий) */
+  fovScale = 1;
 
   constructor(readonly camera: PerspectiveCamera) {}
 
@@ -121,8 +123,9 @@ export class ChaseCamera {
       c.position.y += (Math.sin(t * 53.7) + Math.sin(t * 77.9) * 0.5) * shake * 0.1;
     }
     c.lookAt(this.lookAt);
-    if (Math.abs(c.fov - this.fov) > 0.01) {
-      c.fov = this.fov;
+    const fov = this.fov * this.fovScale;
+    if (Math.abs(c.fov - fov) > 0.01) {
+      c.fov = fov;
       c.updateProjectionMatrix();
     }
   }

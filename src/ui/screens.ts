@@ -101,6 +101,7 @@ export const RACE_CHOICES: ChoiceDef[] = [
       { value: 'race' as RaceMode, full: 'ГОНКА' },
       { value: 'cup' as RaceMode, full: 'КУБОК' },
       { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ' },
+      { value: 'versus' as RaceMode, full: '2 ИГРОКА' },
     ],
   },
   {
@@ -493,8 +494,8 @@ export class ResultsScreen {
     // итог кубка: победа в кубке — праздник, иначе — место в зачёте
     const cupPlace = cup?.rows.find((x) => x.isPlayer)?.position ?? r.playerPosition;
     const cupDone = cup !== undefined && cup.finished;
-    const celebrate = cupDone ? cupPlace === 1 : win || (r.solo === true && r.newBestLap);
-    const title = cupDone
+    const celebrate = r.title !== undefined || (cupDone ? cupPlace === 1 : win || (r.solo === true && r.newBestLap));
+    const title = r.title ?? (cupDone
       ? cupPlace === 1
         ? 'КУБОК ВЫИГРАН!'
         : `КУБОК · ${cupPlace}-Е МЕСТО`
@@ -502,7 +503,7 @@ export class ResultsScreen {
         ? r.newBestLap
           ? 'НОВЫЙ РЕКОРД!'
           : 'ЗАЕЗД НА ВРЕМЯ'
-        : resultTitle(r.playerPosition);
+        : resultTitle(r.playerPosition));
     this.againLabel.textContent = cup ? (cup.finished ? 'НОВЫЙ КУБОК' : 'СЛЕДУЮЩАЯ ГОНКА') : 'ЕЩЁ РАЗ';
     const head = el('div', 'results-head', undefined, body);
     el('div', `results-title${celebrate ? ' win' : ''}`, title, head);

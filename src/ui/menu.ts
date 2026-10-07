@@ -31,7 +31,7 @@ export function buildLogo(parent: HTMLElement, cls: string, subtitle?: string): 
 }
 
 export function modeLabel(mode: RaceMode): string {
-  return mode === 'timeAttack' ? 'РЕЖИМ: НА ВРЕМЯ' : mode === 'cup' ? 'РЕЖИМ: КУБОК' : 'РЕЖИМ: БОТЫ';
+  return mode === 'versus' ? 'РЕЖИМ: 2 ИГРОКА' : mode === 'timeAttack' ? 'РЕЖИМ: НА ВРЕМЯ' : mode === 'cup' ? 'РЕЖИМ: КУБОК' : 'РЕЖИМ: БОТЫ';
 }
 
 export class MainMenu {

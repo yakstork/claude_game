@@ -244,7 +244,7 @@ export interface Settings {
   cameraView: CameraView;
 }
 
-export type RaceMode = 'race' | 'timeAttack' | 'cup';
+export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'versus';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type CameraView = 'far' | 'near' | 'bumper';
 export const LAP_OPTIONS = [1, 3, 5] as const;
@@ -336,6 +336,8 @@ export interface RaceResult {
   lapTimes?: number[];
   /** Кубок: таблица после этой гонки */
   cup?: CupSummary;
+  /** Свой заголовок (режим «2 игрока») */
+  title?: string;
 }
 
 export type UiSound = 'move' | 'select' | 'back';
