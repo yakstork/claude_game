@@ -51,17 +51,30 @@ export class CampaignController implements CampaignApi {
     const cur = this.hooks.settings();
     this.saved ??= { ...cur };
     this.active = ev;
-    this.hooks.setTempSettings({ ...cur, raceMode: ev.mode, laps: ev.laps, difficulty: ev.difficulty });
+    this.hooks.setTempSettings({ ...cur, raceMode: ev.mode, laps: ev.laps, difficulty: ev.difficulty, timeOfDay: ev.timeOfDay });
     this.hooks.setTrack(ev.trackId);
     const car = ev.carId ? this.hooks.carIndex(ev.carId) : -1;
     this.hooks.startRace(car >= 0 ? car : this.hooks.selectedCar());
   }
 
+  /** Настройки для записи в localStorage: пока идёт событие, временные подмены не сохраняются */
+  persistable(s: Settings): Settings {
+    const o = this.saved;
+    return o ? { ...s, raceMode: o.raceMode, laps: o.laps, difficulty: o.difficulty, timeOfDay: o.timeOfDay } : s;
+  }
+
+  /** Во время события настройки из UI не должны сбивать условия события */
+  impose(s: Settings): Settings {
+    const ev = this.active;
+    return ev ? { ...s, raceMode: ev.mode, laps: ev.laps, difficulty: ev.difficulty, timeOfDay: ev.timeOfDay } : s;
+  }
+
   /** Выход из события (в меню): вернуть настройки игрока */
   end(): void {
-    if (this.saved) this.hooks.restoreSettings(this.saved);
+    const saved = this.saved;
     this.saved = null;
     this.active = null;
+    if (saved) this.hooks.restoreSettings(saved);
   }
 
   /** Итог события: звёзды, прогресс, награда NC. Дописывает result.campaign. */
