@@ -47,24 +47,24 @@ export const STAR_REWARD = 100;
 export const EVENTS: CampaignEvent[] = [
   // Глава 1
   { id: 'c1e1', chapter: 1, title: 'Первый заезд', brief: 'Sunset Loop · 1 круг', trackId: 'sunset', mode: 'race', timeOfDay: 'sunset', laps: 1, difficulty: 'easy', carId: null, goal: { kind: 'position', stars: [5, 3, 1] } },
-  { id: 'c1e2', chapter: 1, title: 'На время', brief: 'Sunset Loop · лучший круг', trackId: 'sunset', mode: 'timeAttack', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'razor', goal: { kind: 'lap', stars: [64, 59, 55] } },
+  { id: 'c1e2', chapter: 1, title: 'На время', brief: 'Sunset Loop · лучший круг', trackId: 'sunset', mode: 'timeAttack', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'razor', goal: { kind: 'lap', stars: [54, 51, 48.5] } },
   { id: 'c1e3', chapter: 1, title: 'Высота', brief: 'Neon Heights · 3 круга · рассвет', trackId: 'heights', mode: 'race', timeOfDay: 'dawn', laps: 3, difficulty: 'easy', carId: 'razor', goal: { kind: 'position', stars: [4, 2, 1] } },
-  { id: 'c1e4', chapter: 1, title: 'Король заноса', brief: 'Sunset Loop · дрифт-вызов 90 с', trackId: 'sunset', mode: 'drift', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'grizzly', goal: { kind: 'drift', stars: [5000, 11000, 18000] } },
+  { id: 'c1e4', chapter: 1, title: 'Король заноса', brief: 'Sunset Loop · дрифт-вызов 90 с', trackId: 'sunset', mode: 'drift', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'grizzly', goal: { kind: 'drift', stars: [7600, 15100, 22700] } },
   // Глава 2
-  { id: 'c2e1', chapter: 2, title: 'Спринт по небу', brief: 'Neon Heights · лучший круг · рассвет', trackId: 'heights', mode: 'timeAttack', timeOfDay: 'dawn', laps: 3, difficulty: 'normal', carId: null, goal: { kind: 'lap', stars: [82, 76, 71] } },
+  { id: 'c2e1', chapter: 2, title: 'Спринт по небу', brief: 'Neon Heights · лучший круг · рассвет', trackId: 'heights', mode: 'timeAttack', timeOfDay: 'dawn', laps: 3, difficulty: 'normal', carId: null, goal: { kind: 'lap', stars: [73.5, 69.5, 66] } },
   { id: 'c2e2', chapter: 2, title: 'Полуночный берег', brief: 'Midnight Coast · 3 круга · ночь', trackId: 'coast', mode: 'race', timeOfDay: 'night', laps: 3, difficulty: 'normal', carId: null, goal: { kind: 'position', stars: [4, 2, 1] } },
-  { id: 'c2e3', chapter: 2, title: 'Прибой', brief: 'Midnight Coast · лучший круг', trackId: 'coast', mode: 'timeAttack', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'photon', goal: { kind: 'lap', stars: [64, 58, 54] } },
+  { id: 'c2e3', chapter: 2, title: 'Прибой', brief: 'Midnight Coast · лучший круг', trackId: 'coast', mode: 'timeAttack', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'photon', goal: { kind: 'lap', stars: [56.5, 53.5, 50.5] } },
   { id: 'c2e4', chapter: 2, title: 'Гроза', brief: 'Storm Boulevard · выбывание', trackId: 'storm', mode: 'elimination', timeOfDay: 'sunset', laps: 3, difficulty: 'normal', carId: 'photon', goal: { kind: 'position', stars: [4, 2, 1] } },
   // Глава 3
   { id: 'c3e1', chapter: 3, title: 'Закат: хард', brief: 'Sunset Loop · сложность ВЫСОКАЯ', trackId: 'sunset', mode: 'race', timeOfDay: 'sunset', laps: 3, difficulty: 'hard', carId: 'razor', goal: { kind: 'position', stars: [4, 2, 1] } },
-  { id: 'c3e2', chapter: 3, title: 'Тяжёлая высота', brief: 'Neon Heights · сложность ВЫСОКАЯ · рассвет', trackId: 'heights', mode: 'race', timeOfDay: 'dawn', laps: 3, difficulty: 'hard', carId: 'grizzly', goal: { kind: 'position', stars: [4, 2, 1] } },
-  { id: 'c3e3', chapter: 3, title: 'Дрифт-шоу', brief: 'Midnight Coast · дрифт-вызов 90 с', trackId: 'coast', mode: 'drift', timeOfDay: 'sunset', laps: 3, difficulty: 'hard', carId: 'grizzly', goal: { kind: 'drift', stars: [6000, 12100, 19800] } },
-  { id: 'c3e4', chapter: 3, title: 'Финал лиги', brief: 'Storm Boulevard · 5 кругов', trackId: 'storm', mode: 'race', timeOfDay: 'sunset', laps: 5, difficulty: 'hard', carId: null, goal: { kind: 'position', stars: [3, 2, 1] } },
+  { id: 'c3e2', chapter: 3, title: 'Тяжёлая высота', brief: 'Neon Heights · сложность ВЫСОКАЯ · рассвет', trackId: 'heights', mode: 'race', timeOfDay: 'dawn', laps: 3, difficulty: 'hard', carId: 'grizzly', goal: { kind: 'position', stars: [5, 4, 2] } },
+  { id: 'c3e3', chapter: 3, title: 'Дрифт-шоу', brief: 'Midnight Coast · дрифт-вызов 90 с', trackId: 'coast', mode: 'drift', timeOfDay: 'sunset', laps: 3, difficulty: 'hard', carId: 'grizzly', goal: { kind: 'drift', stars: [5900, 11800, 17700] } },
+  { id: 'c3e4', chapter: 3, title: 'Финал лиги', brief: 'Storm Boulevard · 5 кругов', trackId: 'storm', mode: 'race', timeOfDay: 'sunset', laps: 5, difficulty: 'hard', carId: null, goal: { kind: 'position', stars: [5, 4, 2] } },
   // Глава 4 — ночь
   { id: 'c4e1', chapter: 4, title: 'Ночной гран-тур', brief: 'Neon Heights · ночь · Nightshade', trackId: 'heights', mode: 'race', timeOfDay: 'night', laps: 3, difficulty: 'normal', carId: 'nightshade', goal: { kind: 'position', stars: [4, 2, 1] } },
   { id: 'c4e2', chapter: 4, title: 'Электрошок', brief: 'Midnight Coast · ночь · выбывание · Volt', trackId: 'coast', mode: 'elimination', timeOfDay: 'night', laps: 3, difficulty: 'hard', carId: 'volt', goal: { kind: 'position', stars: [3, 2, 1] } },
-  { id: 'c4e3', chapter: 4, title: 'Ночной дрифт', brief: 'Storm Boulevard · ночь · дрифт-вызов 90 с', trackId: 'storm', mode: 'drift', timeOfDay: 'night', laps: 3, difficulty: 'hard', carId: 'volt', goal: { kind: 'drift', stars: [4500, 9900, 16200] } },
-  { id: 'c4e4', chapter: 4, title: 'Неоновая ночь', brief: 'Sunset Loop · ночь · 5 кругов · финал', trackId: 'sunset', mode: 'race', timeOfDay: 'night', laps: 5, difficulty: 'hard', carId: null, goal: { kind: 'position', stars: [3, 2, 1] } },
+  { id: 'c4e3', chapter: 4, title: 'Ночной дрифт', brief: 'Storm Boulevard · ночь · дрифт-вызов 90 с', trackId: 'storm', mode: 'drift', timeOfDay: 'night', laps: 3, difficulty: 'hard', carId: 'volt', goal: { kind: 'drift', stars: [3800, 7600, 11400] } },
+  { id: 'c4e4', chapter: 4, title: 'Неоновая ночь', brief: 'Sunset Loop · ночь · 5 кругов · финал', trackId: 'sunset', mode: 'race', timeOfDay: 'night', laps: 5, difficulty: 'hard', carId: null, goal: { kind: 'position', stars: [5, 3, 1] } },
 ];
 
 export function eventById(id: string): CampaignEvent | undefined {
