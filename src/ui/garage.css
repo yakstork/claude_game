@@ -25,7 +25,8 @@
 .garage-price { text-align: right; font-size: 0.85em; font-style: italic; letter-spacing: 0.05em; color: var(--yellow); white-space: nowrap; }
 .garage-row.poor .garage-price, .garage-price.poor { color: var(--lilac); opacity: 0.8; }
 .garage-row.maxed .garage-price { color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); }
-.garage-row.colors { grid-template-columns: 4.2em minmax(0, 1fr) minmax(5.2em, auto); }
+.garage-row.colors { grid-template-columns: max-content minmax(0, 1fr) minmax(5.2em, auto); }
+.garage-row.colors .garage-name { white-space: nowrap; }
 .garage-swatches { display: flex; flex-wrap: wrap; gap: 0.3em; }
 .gsw { width: 1.5em; height: 1.1em; background: var(--sw); border: 2px solid transparent; transform: skewX(-20deg); cursor: pointer; box-sizing: border-box; }
 .gsw.locked { opacity: 0.4; }
@@ -54,7 +55,9 @@
   .garage-row { padding: 0.15em 0.5em; gap: 0.5em; }
   .garage-desc { display: none; }
   .gsw { width: 1.2em; height: 0.9em; }
-  .garage-row.colors { grid-template-columns: 3.6em minmax(0, 1fr) minmax(4.6em, auto); }
+  .garage-row.colors { grid-template-columns: max-content minmax(0, 1fr) minmax(4.6em, auto); }
+  .garage-row.colors { column-gap: 0.9em; }
+  .garage-row.colors .garage-name { white-space: nowrap; font-size: 0.85em; }
   .garage-actions .btn { padding: 0.15em 0.9em; font-size: 0.9em; min-width: 0; }
 }
 @media (pointer: coarse) {

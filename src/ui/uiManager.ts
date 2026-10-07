@@ -22,6 +22,7 @@ import './garage.css';
 import './campaign.css';
 import './keys.css';
 import { KeysScreen } from './keys';
+import { keysHint } from '../input/keybinds';
 import type { KeyBinds } from '../input/keybinds';
 import './daily.css';
 import './rival.css';
@@ -507,6 +508,7 @@ export class UIManager {
     this.hud.el.hidden = !hudVisible;
     this.loading.el.hidden = s !== 'loading';
     this.menu.el.hidden = s !== 'menu';
+    if (s === 'menu' && this.opts.keybinds) this.menu.setKeysHint(keysHint(this.opts.keybinds.layout));
     this.settings.el.hidden = s !== 'settings';
     this.customize.el.hidden = s !== 'customize';
     this.awards.el.hidden = s !== 'awards';

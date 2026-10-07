@@ -62,6 +62,8 @@ export class MainMenu {
   private readonly recRace: HTMLElement;
   private readonly recDrift: HTMLElement;
   private readonly recWins: HTMLElement;
+  private keysHintText = HINT_KEYS;
+  private touchHint = false;
   private readonly hint1: HTMLElement;
   private readonly hint2: HTMLElement;
   private readonly logoSub: HTMLElement;
@@ -328,10 +330,17 @@ export class MainMenu {
 
   /** Подсказка управления: кнопки на экране (сенсорный режим) или клавиатура/геймпад. */
   setTouchHint(touch: boolean): void {
-    const a = touch ? HINT_TOUCH_1 : HINT_KEYS;
+    this.touchHint = touch;
+    const a = touch ? HINT_TOUCH_1 : this.keysHintText;
     const b = touch ? HINT_TOUCH_2 : HINT_PAD;
     if (this.hint1.textContent !== a) this.hint1.textContent = a;
     if (this.hint2.textContent !== b) this.hint2.textContent = b;
+  }
+
+  /** Подсказка клавиатуры по текущей раскладке */
+  setKeysHint(text: string): void {
+    this.keysHintText = text;
+    this.setTouchHint(this.touchHint);
   }
 
   /** Листание: wrap, звук 'move', onPreviewCar. */

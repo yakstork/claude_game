@@ -165,6 +165,12 @@ export function codesFor(layout: KeyLayout, action: BindAction): string[] {
   return [layout[action], ...(FIXED_ALTS[action] ?? []).filter((c) => !bound.has(c))];
 }
 
+/** Строка подсказки меню по текущей раскладке */
+export function keysHint(layout: KeyLayout): string {
+  const k = (a: BindAction): string => keyLabel(layout[a]);
+  return `${k('throttle')}/↑ газ · ${k('brake')}/↓ тормоз · ${k('left')} ${k('right')} / ← → руль · ${k('handbrake')} ручник · ${k('nitro')} нитро · ${k('reset')} на трассу · ${k('pause')} пауза`;
+}
+
 /** Хранитель раскладки: общий для игры и экрана «УПРАВЛЕНИЕ» */
 export class KeyBinds {
   layout: KeyLayout;
