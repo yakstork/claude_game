@@ -22,6 +22,9 @@ import './garage.css';
 import './campaign.css';
 import './daily.css';
 import './rival.css';
+import './stats.css';
+import { StatsScreen } from './stats';
+import type { StatsApi } from './stats';
 import { DailyScreen } from './daily';
 import type { DailyApi } from './daily';
 import { CampaignScreen } from './campaign';
@@ -65,9 +68,11 @@ export interface UIOptions {
   campaign?: CampaignApi;
   /** Вызов дня: без него кнопки «ВЫЗОВ ДНЯ» нет */
   daily?: DailyApi;
+  /** Статистика: без неё кнопки «СТАТИСТИКА» нет */
+  stats?: StatsApi;
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'campaign' | 'daily' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'campaign' | 'daily' | 'stats' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -85,6 +90,7 @@ export class UIManager {
   private readonly garage: GarageScreen | null = null;
   private readonly campaign: CampaignScreen | null = null;
   private readonly daily: DailyScreen | null = null;
+  private readonly stats: StatsScreen | null = null;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly tips: TipsOverlay;
@@ -140,9 +146,11 @@ export class UIManager {
       opts.garage ? () => this.openGarage() : null,
       opts.campaign ? () => this.showCampaign() : null,
       opts.daily ? () => this.showDaily() : null,
+      opts.stats ? () => this.showStats() : null,
     );
     if (opts.campaign) this.campaign = new CampaignScreen(this.host, new Nav(play), opts.campaign, () => this.closeCampaign());
     if (opts.daily) this.daily = new DailyScreen(this.host, new Nav(play), opts.daily, () => this.closeDaily());
+    if (opts.stats) this.stats = new StatsScreen(this.host, new Nav(play), opts.stats, () => this.closeStats());
     if (opts.garage) {
       this.garage = new GarageScreen(
         this.host,
@@ -349,6 +357,19 @@ export class UIManager {
     this.setScreen('daily');
   }
 
+  /** «Статистика» (из меню). */
+  showStats(): void {
+    if (this.screen !== 'menu' || !this.stats) return;
+    this.stats.onShown();
+    this.setScreen('stats');
+  }
+
+  private closeStats(): void {
+    if (this.screen !== 'stats') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
   private closeDaily(): void {
     if (this.screen !== 'daily') return;
     this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
@@ -442,6 +463,7 @@ export class UIManager {
     if (this.garage) this.garage.el.hidden = s !== 'garage';
     if (this.campaign) this.campaign.el.hidden = s !== 'campaign';
     if (this.daily) this.daily.el.hidden = s !== 'daily';
+    if (this.stats) this.stats.el.hidden = s !== 'stats';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
     this.results.el.hidden = s !== 'results';
@@ -549,6 +571,8 @@ export class UIManager {
         return this.campaign?.nav ?? null;
       case 'daily':
         return this.daily?.nav ?? null;
+      case 'stats':
+        return this.stats?.nav ?? null;
       case 'pause':
         return this.pause.nav;
       case 'results':
@@ -575,11 +599,13 @@ export class UIManager {
         if (this.screen === 'awards') this.awards.scrollBy(-1);
         else nav.move(-1);
         this.campaign?.syncFocus();
+        this.stats?.syncFocus();
         break;
       case 'down':
         if (this.screen === 'awards') this.awards.scrollBy(1);
         else nav.move(1);
         this.campaign?.syncFocus();
+        this.stats?.syncFocus();
         break;
       case 'left':
       case 'right': {
@@ -611,6 +637,9 @@ export class UIManager {
         } else if (this.screen === 'daily') {
           cb.onUiSound('back');
           this.closeDaily();
+        } else if (this.screen === 'stats') {
+          cb.onUiSound('back');
+          this.closeStats();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -635,6 +664,9 @@ export class UIManager {
         } else if (this.screen === 'daily') {
           cb.onUiSound('back');
           this.closeDaily();
+        } else if (this.screen === 'stats') {
+          cb.onUiSound('back');
+          this.closeStats();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();

@@ -102,6 +102,8 @@ export class MainMenu {
     onCampaign: (() => void) | null = null,
     /** «ВЫЗОВ ДНЯ» (null — кнопки нет) */
     onDaily: (() => void) | null = null,
+    /** «СТАТИСТИКА» (null — кнопки нет) */
+    onStats: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -250,6 +252,12 @@ export class MainMenu {
       dailyBtn.setAttribute('role', 'button');
       el('span', undefined, 'ВЫЗОВ ДНЯ', dailyBtn);
     }
+    let statsBtn: HTMLElement | null = null;
+    if (onStats) {
+      statsBtn = el('div', 'btn', undefined, btns);
+      statsBtn.setAttribute('role', 'button');
+      el('span', undefined, 'СТАТИСТИКА', statsBtn);
+    }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
     const adjust = (dir: -1 | 1): boolean => {
@@ -284,6 +292,8 @@ export class MainMenu {
     if (campBtn && onCampaign) nav.add({ el: campBtn, activate: onCampaign, adjust });
     // «ВЫЗОВ ДНЯ» — после «КАМПАНИИ» (последним в Nav)
     if (dailyBtn && onDaily) nav.add({ el: dailyBtn, activate: onDaily, adjust });
+    // «СТАТИСТИКА» — самый последний пункт Nav
+    if (statsBtn && onStats) nav.add({ el: statsBtn, activate: onStats, adjust });
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);
