@@ -71,6 +71,7 @@ import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
 import { StartBoostJudge, START_BOOST } from './startBoost';
 import { ReplayController } from './replayController';
+import { SplitScreen } from './splitScreen';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
 
@@ -141,6 +142,8 @@ export class Game {
   uiMode: 'menu' | 'pause' | 'results' | 'replay' | 'photo' | null = null;
   /** Повтор гонки и фоторежим */
   readonly replay: ReplayController;
+  /** Режим «2 игрока» (split-screen) */
+  readonly split: SplitScreen;
 
   cars: RaceCar[] = [];
   race: RaceManager | null = null;
@@ -260,6 +263,8 @@ export class Game {
       },
     });
 
+    this.split = new SplitScreen(this.ui.layer, this.camera);
+    this.split.onFovScale = (k) => (this.chase.fovScale = k);
     this.replay = new ReplayController(
       this,
       {
@@ -539,6 +544,7 @@ export class Game {
       c.model.dispose();
     }
     this.replay.leaveSilently();
+    this.split.reset();
     this.cars = [];
     this.states.length = 0;
     this.physicsList.length = 0;
@@ -575,7 +581,9 @@ export class Game {
     this.clearRace();
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, carIndex));
     const playerSpec = CAR_SPECS[this.selectedCar];
-    this.mode = this.settings.raceMode;
+    const urlMode = new URLSearchParams(location.search).get('mode');
+    this.mode = urlMode === 'versus' ? 'versus' : this.settings.raceMode;
+    const versus = this.mode === 'versus';
     if (this.mode !== 'cup') this.cup = null;
     else if (this.cup) this.switchTrack(this.cup.nextTrack);
     this.laps = this.timedMode ? 999 : this.settings.laps;
@@ -583,14 +591,16 @@ export class Game {
     this.challenge = this.mode === 'drift' ? new DriftChallenge() : null;
     this.elim = null;
     this.elimTimes = [];
-    this.playerSlot = solo ? 0 : RACE_PLAYER_SLOT;
+    this.playerSlot = solo ? 0 : versus ? 2 : RACE_PLAYER_SLOT;
+    const p2Spec = CAR_SPECS[(this.selectedCar + 1) % CAR_SPECS.length];
     this.difficulty = DIFFICULTY[this.settings.difficulty];
 
     // решётка: 0–2 сильные боты, 3 — игрок, 4–5 — остальные; заезд на время — только игрок
     const bots = BOT_PROFILES.map((b) => applyDifficulty(b, this.settings.difficulty));
-    const order: (BotProfile | null)[] = solo ? [null] : [bots[0], bots[1], bots[2], null, bots[3], bots[4]];
+    const order: (BotProfile | null)[] = solo ? [null] : versus ? [bots[0], bots[1], null, bots[2], null, bots[3]] : [bots[0], bots[1], bots[2], null, bots[3], bots[4]];
     order.forEach((profile, slot) => {
-      const spec: CarSpec = profile ? { ...specById(profile.carId), bodyColor: profile.bodyColor, neonColor: profile.neonColor } : playerSpec;
+      const isP2 = versus && !profile && slot !== this.playerSlot;
+      const spec: CarSpec = profile ? { ...specById(profile.carId), bodyColor: profile.bodyColor, neonColor: profile.neonColor } : isP2 ? p2Spec : playerSpec;
       const physics = new VehiclePhysics(spec, this.track);
       const pose = this.track.gridPose(slot);
       physics.reset(pose.position, pose.heading, pose.s);
@@ -598,12 +608,12 @@ export class Game {
       const model = new CarModel(spec);
       this.scene.add(model.group);
       const car: RaceCar = {
-        name: profile ? profile.name : 'ВЫ',
+        name: profile ? profile.name : versus ? (isP2 ? 'ИГРОК 2' : 'ИГРОК 1') : 'ВЫ',
         spec,
         physics,
         model,
         bot: profile ? new BotDriver(this.track, profile, raceSeed + slot * 77) : null,
-        color: profile ? cssColor(profile.bodyColor) : cssColor(PALETTE.white),
+        color: profile ? cssColor(profile.bodyColor) : isP2 ? cssColor(PALETTE.pink) : cssColor(PALETTE.white),
         isPlayer: !profile,
         prevPos: physics.state.position.clone(),
         prevQuat: physics.state.quaternion.clone(),
@@ -630,6 +640,7 @@ export class Game {
     this.drift.reset();
     this.effects.clear();
     this.replay.begin(this.states);
+    this.split.begin(versus, this.playerSlot, 4);
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
     this.stunts.reset();
@@ -640,6 +651,7 @@ export class Game {
     const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
     this.audio.setEngineProfile(ePitch, eGrowl);
     this.chase.view = this.settings.cameraView;
+    this.split.chase2.view = this.settings.cameraView;
 
     this.state = 'countdown';
     this.paused = false;
@@ -760,7 +772,10 @@ export class Game {
       c.prevPos.copy(c.physics.state.position);
       c.prevQuat.copy(c.physics.state.quaternion);
       let controls: VehicleControls;
-      if (c.isPlayer) {
+      if (this.split.active && c.isPlayer) {
+        controls = this.split.controls(i, dt, c.physics.state, c.spec, this.states, this.track);
+        if (this.state === 'countdown') controls = NO_CONTROLS;
+      } else if (c.isPlayer) {
         if (this.state === 'finished' || this.playerAutopilot) {
           if (!this.playerAutopilot) this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5);
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
@@ -830,6 +845,14 @@ export class Game {
     race.update(dt, this.states);
     if (this.elim && this.state === 'racing') this.stepElimination(dt, race);
     for (const ev of race.events) {
+      if (this.split.active) {
+        if (this.split.onRaceEvent(ev)) {
+          this.state = 'finished';
+          this.finishT = 0;
+          this.audio.play('finish');
+        }
+        continue;
+      }
       if (ev.car !== this.playerSlot) continue;
       if (this.timedMode) continue;
       if (ev.type === 'lap') {
@@ -908,6 +931,12 @@ export class Game {
     if (!this.race) return;
     this.resultsShown = true;
     this.replay.stopRecording();
+    if (this.split.active) {
+      this.lastResult = this.split.buildResult(this.race, this.cars, CAR_SPECS[this.selectedCar].id);
+      this.uiMode = 'results';
+      this.ui.showResults(this.lastResult);
+      return;
+    }
     const race = this.race;
     const player = race.standing(this.playerSlot);
     const rows: ResultRow[] = [];
@@ -997,7 +1026,7 @@ export class Game {
     const cupRow = result.cup?.finished ? result.cup.rows.find((r) => r.isPlayer) : undefined;
     const ach = evaluate(
       {
-        mode: this.mode,
+        mode: this.mode === 'versus' ? 'race' : this.mode,
         difficulty: this.settings.difficulty,
         trackId: this.track.id,
         position: playerPos,
@@ -1037,6 +1066,7 @@ export class Game {
     this.handleActions(this.input.consumeActions());
 
     if (this.replay.takesOver) {
+      this.split.syncAspect(false);
       this.replay.frame(dt);
       this.audio.updateEngine(null);
       this.render.render();
@@ -1070,6 +1100,12 @@ export class Game {
         inp.position = p.renderPos;
         this.chase.update(dt, inp);
       }
+      if (this.split.active && (!this.paused || this.state === 'countdown')) {
+        const c2 = this.cars[this.split.slots[1]];
+        const inp2 = this.chaseInput(c2);
+        inp2.position = c2.renderPos;
+        this.split.updateCamera2(dt, inp2);
+      }
       if (this.replay.photo) this.replay.updatePhoto(dt);
       this.updateHud();
       this.updateCountdown();
@@ -1101,7 +1137,11 @@ export class Game {
       this.fpsTimer = 0;
       this.ui.setFps(Math.round(this.loop.fps));
     }
-    this.render.render();
+    const splitView = this.split.active && !this.replay.photo && this.cars.length > 0;
+    this.split.syncAspect(splitView);
+    this.split.updateHud(splitView && (this.uiMode === null || this.uiMode === 'pause') && this.state !== 'menu', this.race, this.states, this.laps);
+    if (splitView) this.render.renderSplit(this.camera, this.split.camera2);
+    else this.render.render();
     this.replay.afterRender();
   }
 

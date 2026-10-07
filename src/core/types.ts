@@ -248,7 +248,7 @@ export interface Settings {
 
 export type TimeOfDay = 'sunset' | 'night' | 'dawn';
 
-export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination';
+export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination' | 'versus';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type CameraView = 'far' | 'near' | 'bumper';
 export const LAP_OPTIONS = [1, 3, 5] as const;
@@ -345,6 +345,8 @@ export interface RaceResult {
   lapTimes?: number[];
   /** Кубок: таблица после этой гонки */
   cup?: CupSummary;
+  /** Свой заголовок (режим «2 игрока») */
+  title?: string;
   /** Карьера: награда за гонку (NC) и баланс после неё */
   credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
   /** Дрифт-вызов: медаль и рекорд */
