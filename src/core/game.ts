@@ -891,8 +891,12 @@ export class Game {
     if (this.dailyCtl.modifier === 'nitroCans') this.player.physics.state.nitro = 0;
     this.pickups = new PickupSystem(this.track, this.track.def.pickups ?? pickupLayoutFor(this.track.id));
     this.pickupMesh = new PickupMesh(this.track, this.pickups);
-    for (const c of this.cars) c.bot?.setPads(this.pickups.padS, this.pickups.padLateral);
+    for (const c of this.cars) {
+      c.bot?.setPads(this.pickups.padS, this.pickups.padLateral);
+      c.bot?.setCans(this.pickups.canS, this.pickups.canLateral, this.pickups.canTimer);
+    }
     this.playerAutopilot?.setPads(this.pickups.padS, this.pickups.padLateral);
+    this.playerAutopilot?.setCans(this.pickups.canS, this.pickups.canLateral, this.pickups.canTimer);
     this.scene.add(this.pickupMesh.group);
     this.stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
     const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
@@ -1042,7 +1046,10 @@ export class Game {
         if (this.state === 'finished' || this.playerAutopilot) {
           if (!this.playerAutopilot) {
             this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5);
-            if (this.pickups) this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);
+            if (this.pickups) {
+              this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);
+              this.playerAutopilot.setCans(this.pickups.canS, this.pickups.canLateral, this.pickups.canTimer);
+            }
           }
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
           // после финиша плавно тормозим у арки, чтобы салют оставался в кадре

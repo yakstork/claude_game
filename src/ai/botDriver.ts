@@ -137,6 +137,9 @@ const MIS_NONE = 0;
 const MIS_LATE = 1;
 const MIS_WIDE = 2;
 
+/** Бот с нитро ниже этой доли тянется к ближайшей доступной канистре на прямой */
+export const CAN_AIM_BELOW = 0.4;
+
 export class BotDriver {
   /** Текущий темп (доля возможностей машины; для отладки и тестов) */
   pace = 1;
@@ -196,6 +199,9 @@ export class BotDriver {
   /** Положения бустер-пластин (s, lateral) — задаются игрой; null — цели нет */
   private padS: ArrayLike<number> | null = null;
   private padLat: ArrayLike<number> | null = null;
+  private canS: ArrayLike<number> | null = null;
+  private canLat: ArrayLike<number> | null = null;
+  private canTimer: ArrayLike<number> | null = null;
   private overtakeTimer = 0;
   private slowTime = 0;
   private reverseTimer = 0;
@@ -301,15 +307,29 @@ export class BotDriver {
    * Относительно целевой линии в точке пластины; 0 — цели нет.
    */
   private padShift(s: number, look: number): number {
-    const padS = this.padS;
-    const padLat = this.padLat;
+    return this.pickupShift(s, look, this.padS, this.padLat, null);
+  }
+
+  /** Сообщить боту, где лежат канистры нитро (массивы s, смещений и таймеров появления; не копируются) */
+  setCans(canS: ArrayLike<number> | null, canLateral: ArrayLike<number> | null, canTimer: ArrayLike<number> | null): void {
+    this.canS = canS;
+    this.canLat = canLateral;
+    this.canTimer = canTimer;
+  }
+
+  /** То же для канистры (только доступной: таймер 0), когда нитро бота ниже CAN_AIM_BELOW */
+  private canShift(s: number, look: number): number {
+    return this.pickupShift(s, look, this.canS, this.canLat, this.canTimer);
+  }
+
+  private pickupShift(s: number, look: number, padS: ArrayLike<number> | null, padLat: ArrayLike<number> | null, timer: ArrayLike<number> | null): number {
     if (!padS || !padLat) return 0;
     const track = this.track;
     let best = -1;
     let bestD = PAD_AIM_RANGE + look;
     for (let i = 0; i < padS.length; i++) {
       const d = track.deltaS(s, padS[i]);
-      if (d > 2 && d < bestD) {
+      if (d > 2 && d < bestD && (!timer || timer[i] <= 0)) {
         bestD = d;
         best = i;
       }
@@ -567,7 +587,10 @@ export class BotDriver {
     if (sidePush > 0 && shiftTarget === 0) shiftTarget = -side * Math.min(3, 0.9 * sidePush);
     // пластина впереди: если не обгоняем, не сидим в мешке и не защищаемся — слегка смещаем линию к ней
     if (shiftTarget === 0 && !overtaking && !drafting && sidePush <= 0 && this.defendTimer <= 0 && !this.inZone) {
-      shiftTarget = this.padShift(s, 10 + Math.abs(speed) * 0.6);
+      const lookA = 10 + Math.abs(speed) * 0.6;
+      // мало нитро — сначала ищем доступную канистру, затем пластину
+      if (self.nitro < CAN_AIM_BELOW) shiftTarget = this.canShift(s, lookA);
+      if (shiftTarget === 0) shiftTarget = this.padShift(s, lookA);
       padAim = shiftTarget !== 0;
     }
     this.avoidShift += (shiftTarget - this.avoidShift) * (1 - Math.exp(-dt * (padAim ? 7 : 2.5)));
