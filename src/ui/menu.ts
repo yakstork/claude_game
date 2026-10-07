@@ -91,6 +91,8 @@ export class MainMenu {
     onAwards: (() => void) | null = null,
     /** «ГАРАЖ» (null — кнопки нет) */
     onGarage: (() => void) | null = null,
+    /** «КАМПАНИЯ» (null — кнопки нет) */
+    onCampaign: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -227,6 +229,12 @@ export class MainMenu {
       const gl = el('span', undefined, 'ГАРАЖ', garageBtn);
       this.creditsEl = el('span', 'credits', '', gl);
     }
+    let campBtn: HTMLElement | null = null;
+    if (onCampaign) {
+      campBtn = el('div', 'btn', undefined, btns);
+      campBtn.setAttribute('role', 'button');
+      el('span', undefined, 'КАМПАНИЯ', campBtn);
+    }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
     const adjust = (dir: -1 | 1): boolean => {
@@ -258,6 +266,7 @@ export class MainMenu {
 
     // «ГАРАЖ» — самый последний пункт Nav (фокус по умолчанию остаётся на «ГОНКА»)
     if (garageBtn && onGarage) nav.add({ el: garageBtn, activate: onGarage, adjust });
+    if (campBtn && onCampaign) nav.add({ el: campBtn, activate: onCampaign, adjust });
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);

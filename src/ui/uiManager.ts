@@ -19,6 +19,9 @@ import './styles.css';
 import './polish.css';
 import './awards.css';
 import './garage.css';
+import './campaign.css';
+import { CampaignScreen } from './campaign';
+import type { CampaignApi } from './campaign';
 import { AwardsScreen } from './awards';
 import type { AwardItem } from './awards';
 import { CustomizeScreen } from './customize';
@@ -54,9 +57,11 @@ export interface UIOptions {
   trackIndex?: number;
   /** Гараж (карьера): без него кнопки «ГАРАЖ» в меню нет */
   garage?: { api: GarageApi; cars: GarageCarInfo[] };
+  /** Кампания: без неё кнопки «КАМПАНИЯ» нет */
+  campaign?: CampaignApi;
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'campaign' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -72,6 +77,7 @@ export class UIManager {
   private readonly customize: CustomizeScreen;
   private readonly awards: AwardsScreen;
   private readonly garage: GarageScreen | null = null;
+  private readonly campaign: CampaignScreen | null = null;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly tips: TipsOverlay;
@@ -125,7 +131,9 @@ export class UIManager {
       () => this.tips.show(),
       () => this.openAwards(),
       opts.garage ? () => this.openGarage() : null,
+      opts.campaign ? () => this.showCampaign() : null,
     );
+    if (opts.campaign) this.campaign = new CampaignScreen(this.host, new Nav(play), opts.campaign, () => this.closeCampaign());
     if (opts.garage) {
       this.garage = new GarageScreen(
         this.host,
@@ -318,6 +326,19 @@ export class UIManager {
     this.setScreen('awards');
   }
 
+  /** Карта кампании (из меню или с экрана результатов). */
+  showCampaign(): void {
+    if ((this.screen !== 'menu' && this.screen !== 'results') || !this.campaign) return;
+    this.campaign.onShown();
+    this.setScreen('campaign');
+  }
+
+  private closeCampaign(): void {
+    if (this.screen !== 'campaign') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
   private openGarage(): void {
     if (this.screen !== 'menu' || !this.garage) return;
     this.garage.onShown(this.menu.index);
@@ -397,6 +418,7 @@ export class UIManager {
     this.customize.el.hidden = s !== 'customize';
     this.awards.el.hidden = s !== 'awards';
     if (this.garage) this.garage.el.hidden = s !== 'garage';
+    if (this.campaign) this.campaign.el.hidden = s !== 'campaign';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
     this.results.el.hidden = s !== 'results';
@@ -500,6 +522,8 @@ export class UIManager {
         return this.awards.nav;
       case 'garage':
         return this.garage?.nav ?? null;
+      case 'campaign':
+        return this.campaign?.nav ?? null;
       case 'pause':
         return this.pause.nav;
       case 'results':
@@ -525,10 +549,12 @@ export class UIManager {
       case 'up':
         if (this.screen === 'awards') this.awards.scrollBy(-1);
         else nav.move(-1);
+        this.campaign?.syncFocus();
         break;
       case 'down':
         if (this.screen === 'awards') this.awards.scrollBy(1);
         else nav.move(1);
+        this.campaign?.syncFocus();
         break;
       case 'left':
       case 'right': {
@@ -554,6 +580,9 @@ export class UIManager {
         } else if (this.screen === 'garage') {
           cb.onUiSound('back');
           this.closeGarage();
+        } else if (this.screen === 'campaign') {
+          cb.onUiSound('back');
+          this.closeCampaign();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -572,6 +601,9 @@ export class UIManager {
         } else if (this.screen === 'garage') {
           cb.onUiSound('back');
           this.closeGarage();
+        } else if (this.screen === 'campaign') {
+          cb.onUiSound('back');
+          this.closeCampaign();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();

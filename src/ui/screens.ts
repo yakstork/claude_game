@@ -459,6 +459,7 @@ export class ResultsScreen {
   private readonly btnRow: HTMLElement;
   private fx: HTMLElement | null = null;
   private readonly againLabel: HTMLElement;
+  private readonly nextBtn: HTMLElement;
 
   constructor(
     parent: HTMLElement,
@@ -482,6 +483,10 @@ export class ResultsScreen {
     nav.add({ el: again, activate: () => cb.onRestart() });
     nav.add({ el: replay, activate: () => cb.onReplay?.() });
     nav.add({ el: menu, activate: () => cb.onQuitToMenu() });
+    // «ДАЛЕЕ» к карте кампании — последний пункт Nav, виден только после события кампании
+    this.nextBtn = makeButton(this.btnRow, 'ДАЛЕЕ');
+    this.nextBtn.hidden = true;
+    nav.add({ el: this.nextBtn, activate: () => cb.onCampaignMap?.() });
   }
 
   /** trackName — имя трассы (мелко рядом с машиной); не задано — не показывается. */
@@ -573,6 +578,17 @@ export class ResultsScreen {
       el('span', 'rcredits-bal', `БАЛАНС ${formatCredits(cr.balance)}`, box);
     }
 
+    const cg = r.campaign;
+    if (cg) {
+      const box = el('div', 'rcampaign', undefined, body);
+      const st = el('div', 'rcampaign-stars', undefined, box);
+      for (let i = 0; i < 3; i++) el('i', i < cg.stars ? 'on' : '', '★', st);
+      for (const g of cg.goals) el('div', `rcampaign-goal${g.on ? ' on' : ''}`, g.text, box);
+      if (cg.reward > 0) el('div', 'rcampaign-note', `НОВЫХ ЗВЁЗД: ${cg.newStars} · +${cg.reward} NC`, box);
+    }
+    this.nextBtn.hidden = !cg;
+    this.btnRow.classList.toggle('four', !!cg);
+
     if (cup) {
       this.cupTable(body, cup);
       // таблица кубка ниже результатов гонки: на невысоких экранах плавно докрутить до неё
@@ -581,7 +597,7 @@ export class ResultsScreen {
       }, 2400);
     }
     this.confetti(celebrate);
-    this.nav.reset(0);
+    this.nav.reset(cg && cg.stars > 0 ? 3 : 0);
   }
 
   private cupTable(parent: HTMLElement, cup: CupInfo): void {
