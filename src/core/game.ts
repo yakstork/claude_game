@@ -1728,6 +1728,7 @@ export class Game {
       this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[0], name: 'AUTO', skill: 0.9 }, 7);
       if (this.pickups) this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);
     }
+    this.split.forceAuto = this.split.active;
     const dt = 1 / 120;
     for (let t = 0; t < seconds && !this.resultsShown; t += dt) this.step(dt);
     if (this.cars.length) this.chase.snap(this.chaseInput(this.player));

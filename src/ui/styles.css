@@ -465,6 +465,8 @@
 .rstat-val.pink { color: var(--pink); text-shadow: 0 0 0.5em rgba(255, 110, 199, 0.6); }
 .results-actions { display: flex; justify-content: center; align-items: center; gap: 1.6em; margin-top: 0.9em; }
 .results-actions .btn { min-width: 10em; padding-left: 1.2em; padding-right: 1.2em; }
+.results-actions .btn, .results-actions .btn > span { white-space: nowrap; }
+.results-actions .btn.big { font-size: 1.15em; }
 
 /* ── FPS ──────────────────────────────────────────────────────────────────── */
 .fps {
