@@ -31,14 +31,14 @@ export function buildLogo(parent: HTMLElement, cls: string, subtitle?: string): 
 }
 
 /** Порядок режимов в кнопке «РЕЖИМ». */
-export const RACE_MODE_CYCLE: readonly RaceMode[] = ['race', 'cup', 'timeAttack', 'drift'];
+export const RACE_MODE_CYCLE: readonly RaceMode[] = ['race', 'cup', 'timeAttack', 'drift', 'elimination'];
 
 export function nextRaceMode(mode: RaceMode): RaceMode {
   return RACE_MODE_CYCLE[(RACE_MODE_CYCLE.indexOf(mode) + 1) % RACE_MODE_CYCLE.length];
 }
 
 export function modeLabel(mode: RaceMode): string {
-  return mode === 'timeAttack' ? 'РЕЖИМ: НА ВРЕМЯ' : mode === 'cup' ? 'РЕЖИМ: КУБОК' : mode === 'drift' ? 'РЕЖИМ: ДРИФТ' : 'РЕЖИМ: БОТЫ';
+  return mode === 'timeAttack' ? 'РЕЖИМ: НА ВРЕМЯ' : mode === 'cup' ? 'РЕЖИМ: КУБОК' : mode === 'drift' ? 'РЕЖИМ: ДРИФТ' : mode === 'elimination' ? 'РЕЖИМ: ВЫБЫВАНИЕ' : 'РЕЖИМ: БОТЫ';
 }
 
 export class MainMenu {

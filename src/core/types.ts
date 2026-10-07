@@ -244,7 +244,7 @@ export interface Settings {
   cameraView: CameraView;
 }
 
-export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift';
+export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination';
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export type CameraView = 'far' | 'near' | 'bumper';
 export const LAP_OPTIONS = [1, 3, 5] as const;
@@ -343,6 +343,8 @@ export interface RaceResult {
   cup?: CupSummary;
   /** Дрифт-вызов: медаль и рекорд */
   challenge?: ChallengeResult;
+  /** Выбывание: в таблице время — момент выбывания */
+  elimination?: boolean;
 }
 
 export interface ChallengeResult {

@@ -102,6 +102,7 @@ export const RACE_CHOICES: ChoiceDef[] = [
       { value: 'cup' as RaceMode, full: 'КУБОК' },
       { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ' },
       { value: 'drift' as RaceMode, full: 'ДРИФТ', short: 'ДРИФТ' },
+      { value: 'elimination' as RaceMode, full: 'ВЫБЫВАНИЕ', short: 'ВЫБЫВ.' },
     ],
   },
   {
@@ -505,7 +506,11 @@ export class ResultsScreen {
         ? r.newBestLap
           ? 'НОВЫЙ РЕКОРД!'
           : 'ЗАЕЗД НА ВРЕМЯ'
-        : resultTitle(r.playerPosition);
+        : r.elimination
+          ? r.playerPosition === 1
+            ? 'ПОБЕДА!'
+            : `ВЫБЫЛ · ${r.playerPosition}-Е МЕСТО`
+          : resultTitle(r.playerPosition);
     this.againLabel.textContent = cup ? (cup.finished ? 'НОВЫЙ КУБОК' : 'СЛЕДУЮЩАЯ ГОНКА') : 'ЕЩЁ РАЗ';
     const head = el('div', 'results-head', undefined, body);
     el('div', `results-title${celebrate ? ' win' : ''}`, title, head);
@@ -536,8 +541,8 @@ export class ResultsScreen {
     const hr = el('div', 'rrow rhead', undefined, table);
     el('span', undefined, '#', hr);
     el('span', undefined, 'ПИЛОТ', hr);
-    el('span', 'num', 'ВРЕМЯ', hr);
-    el('span', 'num', 'ЛУЧШИЙ КРУГ', hr);
+    el('span', 'num', r.elimination ? 'ВЫБЫЛ' : 'ВРЕМЯ', hr);
+    el('span', 'num', r.elimination ? '' : 'ЛУЧШИЙ КРУГ', hr);
     r.rows.forEach((row, ri) => {
       const cls = `rrow${row.isPlayer ? ' me' : ''}${row.projected ? ' proj' : ''}`;
       const rr = el('div', cls, undefined, table);
@@ -550,12 +555,12 @@ export class ResultsScreen {
       el('span', undefined, row.name, who);
       el('span', 'num', `${row.projected ? '~' : ''}${formatTime(row.time)}`, rr);
       const fast = row.bestLap !== null && row.bestLap === fastest;
-      el('span', `num${fast ? ' fastest' : ''}`, formatTime(row.bestLap), rr);
+      el('span', `num${fast ? ' fastest' : ''}`, r.elimination ? '' : formatTime(row.bestLap), rr);
     });
 
     // времена кругов игрока (поле необязательное: пока гонка его не отдаёт — блок скрыт)
     const laps = r.lapTimes;
-    if (laps && laps.length > 1) {
+    if (laps && laps.length > 1 && !r.elimination) {
       let best = Infinity;
       for (const t of laps) if (t < best) best = t;
       const box = el('div', 'laps', undefined, body);
@@ -570,7 +575,8 @@ export class ResultsScreen {
 
     const sum = el('div', 'rsummary', undefined, body);
     this.stat(sum, 'ВРЕМЯ ГОНКИ', formatTime(r.playerTime), '');
-    this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
+    if (r.elimination) this.stat(sum, 'МЕСТО', `${r.playerPosition}/${r.rows.length}`, 'yellow');
+    else this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
     this.stat(sum, 'ОЧКИ ДРИФТА', formatScore(r.driftScore), 'pink');
 
     if (cup) {
