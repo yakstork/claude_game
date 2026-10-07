@@ -18,9 +18,13 @@ import { CUSTOM_CAR_ID } from '../core/types';
 import './styles.css';
 import './polish.css';
 import './awards.css';
+import './garage.css';
 import { AwardsScreen } from './awards';
 import type { AwardItem } from './awards';
 import { CustomizeScreen } from './customize';
+import { GarageScreen } from './garage';
+import type { GarageApi, GarageCarInfo } from './garage';
+import { formatCredits } from '../race/career';
 import { DEFAULT_BUDGET, DEFAULT_PALETTE, defaultCustomBuild } from './customLogic';
 import type { CustomPalette } from './customLogic';
 import { el } from './dom';
@@ -48,9 +52,11 @@ export interface UIOptions {
   tracks?: TrackInfo[];
   /** Индекс выбранной трассы (по умолчанию 0) */
   trackIndex?: number;
+  /** Гараж (карьера): без него кнопки «ГАРАЖ» в меню нет */
+  garage?: { api: GarageApi; cars: GarageCarInfo[] };
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -65,6 +71,7 @@ export class UIManager {
   private readonly settings: SettingsScreen;
   private readonly customize: CustomizeScreen;
   private readonly awards: AwardsScreen;
+  private readonly garage: GarageScreen | null = null;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
   private readonly tips: TipsOverlay;
@@ -117,7 +124,24 @@ export class UIManager {
       () => this.toggleRaceMode(),
       () => this.tips.show(),
       () => this.openAwards(),
+      opts.garage ? () => this.openGarage() : null,
     );
+    if (opts.garage) {
+      this.garage = new GarageScreen(
+        this.host,
+        new Nav(play),
+        opts.garage.cars,
+        // листание машин в гараже меняет и выбранную в меню
+        Object.assign(Object.create(opts.garage.api) as GarageApi, {
+          preview: (i: number) => {
+            this.menu.setCar(i, false);
+            opts.garage?.api.preview(i);
+          },
+        }),
+        () => this.closeGarage(),
+      );
+      this.menu.setCredits(formatCredits(opts.garage.api.career().credits));
+    }
     this.menu.setMode(opts.settings.raceMode);
     const budget = opts.customBudget ?? DEFAULT_BUDGET;
     const palette = opts.customPalette ?? DEFAULT_PALETTE;
@@ -284,6 +308,27 @@ export class UIManager {
     this.setScreen('awards');
   }
 
+  private openGarage(): void {
+    if (this.screen !== 'menu' || !this.garage) return;
+    this.garage.onShown(this.menu.index);
+    this.setScreen('garage');
+  }
+
+  private closeGarage(): void {
+    if (this.screen !== 'garage' || !this.garage) return;
+    this.syncCredits();
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
+  /** Обновить баланс в меню (и в гараже) из карьеры */
+  syncCredits(): void {
+    const g = this.opts.garage;
+    if (!g) return;
+    this.menu.setCredits(formatCredits(g.api.career().credits));
+    this.garage?.refresh();
+  }
+
   private closeAwards(): void {
     if (this.screen !== 'awards') return;
     this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
@@ -341,6 +386,7 @@ export class UIManager {
     this.settings.el.hidden = s !== 'settings';
     this.customize.el.hidden = s !== 'customize';
     this.awards.el.hidden = s !== 'awards';
+    if (this.garage) this.garage.el.hidden = s !== 'garage';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
     this.results.el.hidden = s !== 'results';
@@ -442,6 +488,8 @@ export class UIManager {
         return this.customize.nav;
       case 'awards':
         return this.awards.nav;
+      case 'garage':
+        return this.garage?.nav ?? null;
       case 'pause':
         return this.pause.nav;
       case 'results':
@@ -493,6 +541,9 @@ export class UIManager {
         } else if (this.screen === 'awards') {
           cb.onUiSound('back');
           this.closeAwards();
+        } else if (this.screen === 'garage') {
+          cb.onUiSound('back');
+          this.closeGarage();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -508,6 +559,9 @@ export class UIManager {
         } else if (this.screen === 'awards') {
           cb.onUiSound('back');
           this.closeAwards();
+        } else if (this.screen === 'garage') {
+          cb.onUiSound('back');
+          this.closeGarage();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();

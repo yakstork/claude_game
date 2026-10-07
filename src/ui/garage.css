@@ -1,0 +1,64 @@
+/* ── Гараж и кредиты. Только палитра из :root. ───────────────────────────── */
+.garage { display: flex; align-items: center; justify-content: flex-start; pointer-events: none; z-index: 3;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.garage-wrap { margin-left: 2.2em; width: min(26em, 100%); max-height: 100%; display: flex; pointer-events: auto; }
+.garage-panel { --c: 18px; width: 100%; min-height: 0; max-height: 100%; display: flex; flex-direction: column; gap: 0.5em; padding: 0.9em 1.3em 1em; overflow: hidden; }
+.garage-panel.flash .garage-car-name { animation: nr-flash 0.35s ease-out; }
+.garage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1em; }
+.garage-title { margin: 0; font-size: 1.8em; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan), 0 0 0.12em var(--cyan); }
+.garage-balance { font-size: 1.15em; font-style: italic; letter-spacing: 0.08em; color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); white-space: nowrap; }
+.garage-car { display: flex; align-items: center; justify-content: space-between; gap: 0.6em; padding: 0.35em 0.6em; border-left: 3px solid var(--magenta); background: rgba(43, 15, 84, 0.55); cursor: pointer; }
+.garage-car.is-focus { background: rgba(255, 42, 109, 0.25); box-shadow: 0 0 0.9em rgba(255, 42, 109, 0.55); }
+.garage-car-name { flex: 1; font-size: 1.35em; font-style: italic; letter-spacing: 0.05em; color: var(--white); text-shadow: 0 0 0.45em var(--magenta); }
+.garage-step { width: 1.6em; height: 1.6em; display: grid; place-items: center; font-size: 1.3em; line-height: 1; color: var(--cyan); border: 1px solid var(--cyan); transform: skewX(-12deg); }
+.garage-ups, .garage-colors { display: grid; gap: 0.35em; }
+.garage-row { display: grid; grid-template-columns: minmax(0, 1.25fr) auto minmax(5.2em, auto); align-items: center; gap: 0.7em; padding: 0.35em 0.6em; border-left: 3px solid var(--cyan); background: rgba(43, 15, 84, 0.55); cursor: pointer; }
+.garage-row.b-grip { border-left-color: var(--pink); }
+.garage-row.b-nitro { border-left-color: var(--yellow); }
+.garage-row.is-focus { background: rgba(5, 217, 232, 0.22); box-shadow: 0 0 0.9em rgba(5, 217, 232, 0.55); }
+.garage-row.bought { animation: nr-flash 0.4s ease-out; }
+.garage-name { font-size: 0.9em; font-style: italic; letter-spacing: 0.12em; color: var(--white); }
+.garage-desc { display: block; font-size: 0.62em; letter-spacing: 0.04em; color: var(--lilac); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.garage-pips { display: flex; gap: 0.25em; }
+.pip { width: 1.05em; height: 0.7em; border: 1px solid rgba(185, 103, 255, 0.6); background: rgba(13, 2, 33, 0.85); transform: skewX(-20deg); }
+.pip.on { background: linear-gradient(90deg, var(--cyan), var(--magenta)); border-color: var(--pink); box-shadow: 0 0 0.5em rgba(255, 42, 109, 0.7); }
+.garage-price { text-align: right; font-size: 0.85em; font-style: italic; letter-spacing: 0.05em; color: var(--yellow); white-space: nowrap; }
+.garage-row.poor .garage-price, .garage-price.poor { color: var(--lilac); opacity: 0.8; }
+.garage-row.maxed .garage-price { color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); }
+.garage-row.colors { grid-template-columns: 4.2em minmax(0, 1fr) minmax(5.2em, auto); }
+.garage-swatches { display: flex; flex-wrap: wrap; gap: 0.3em; }
+.gsw { width: 1.5em; height: 1.1em; background: var(--sw); border: 2px solid transparent; transform: skewX(-20deg); cursor: pointer; box-sizing: border-box; }
+.gsw.locked { opacity: 0.4; }
+.gsw.sel { border-color: var(--white); box-shadow: 0 0 0.6em var(--sw); }
+.gsw.cur { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.garage-row.colors:not(.is-focus) .gsw.cur:not(.sel) { outline-color: transparent; }
+.garage-note { font-size: 0.7em; letter-spacing: 0.05em; color: var(--lilac); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.garage-actions { display: flex; justify-content: center; margin-top: 0.2em; }
+.garage-actions .btn { min-width: 9em; }
+
+/* кредиты в главном меню (кнопка «ГАРАЖ») и на результатах */
+.garage-btn .credits { margin-left: 0.7em; font-size: 0.75em; color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
+.garage-btn.is-focus .credits { color: #fff; }
+.rcredits { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0.3em 1em; padding: 0.5em 0 0.1em; border-top: 1px solid rgba(185, 103, 255, 0.35); margin-top: 0.4em; }
+.rcredits-total { font-size: 1.3em; font-style: italic; letter-spacing: 0.06em; color: var(--yellow); text-shadow: 0 0 0.6em var(--yellow); animation: nr-rowin 0.5s ease-out 0.5s both; }
+.rcredits-line { font-size: 0.68em; letter-spacing: 0.06em; color: var(--lilac); white-space: nowrap; }
+.rcredits-bal { font-size: 0.68em; letter-spacing: 0.06em; color: var(--cyan); }
+
+@media (max-height: 520px) {
+  .garage-wrap { margin-left: 1em; width: min(27em, 62%); }
+  .garage-panel { --c: 12px; gap: 0.25em; padding: 0.4em 0.9em 0.5em; }
+  .garage-title { font-size: 1.3em; }
+  .garage-car { padding: 0.15em 0.5em; }
+  .garage-car-name { font-size: 1.1em; }
+  .garage-ups, .garage-colors { gap: 0.2em; }
+  .garage-row { padding: 0.15em 0.5em; gap: 0.5em; }
+  .garage-desc { display: none; }
+  .gsw { width: 1.2em; height: 0.9em; }
+  .garage-row.colors { grid-template-columns: 3.6em minmax(0, 1fr) minmax(4.6em, auto); }
+  .garage-actions .btn { padding: 0.15em 0.9em; font-size: 0.9em; min-width: 0; }
+}
+@media (pointer: coarse) {
+  .gsw { width: 1.35em; height: 1.2em; }
+  .garage-step { width: 2em; height: 2em; }
+}
+@media (prefers-reduced-motion: reduce) { .garage-row.bought, .rcredits-total { animation: none; } }

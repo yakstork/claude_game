@@ -336,6 +336,8 @@ export interface RaceResult {
   lapTimes?: number[];
   /** Кубок: таблица после этой гонки */
   cup?: CupSummary;
+  /** Карьера: награда за гонку (NC) и баланс после неё */
+  credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
 }
 
 export type UiSound = 'move' | 'select' | 'back';

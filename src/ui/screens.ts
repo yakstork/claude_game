@@ -12,6 +12,7 @@ import {
   valueFromFraction,
 } from './format';
 import { addFullscreenButton } from './fullscreen';
+import { formatCredits } from '../race/career';
 import { buildLogo } from './menu';
 import { Nav } from './nav';
 import { trackLabel } from './trackLogic';
@@ -560,6 +561,14 @@ export class ResultsScreen {
     this.stat(sum, 'ВРЕМЯ ГОНКИ', formatTime(r.playerTime), '');
     this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
     this.stat(sum, 'ОЧКИ ДРИФТА', formatScore(r.driftScore), 'pink');
+
+    const cr = r.credits;
+    if (cr) {
+      const box = el('div', 'rcredits', undefined, body);
+      el('span', 'rcredits-total', `+${formatCredits(cr.total)}`, box);
+      for (const l of cr.lines) el('span', 'rcredits-line', `${l.label} +${l.value}`, box);
+      el('span', 'rcredits-bal', `БАЛАНС ${formatCredits(cr.balance)}`, box);
+    }
 
     if (cup) {
       this.cupTable(body, cup);
