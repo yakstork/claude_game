@@ -3,7 +3,7 @@ import { Track } from '../../src/world/track';
 import type { ControlPoint } from '../../src/world/trackData';
 import { VehiclePhysics } from '../../src/vehicle/physics';
 import { CAR_SPECS } from '../../src/vehicle/specs';
-import { inSlipstreamCone, updateSlipstream } from '../../src/vehicle/slipstream';
+import { inSlipstreamCone, parkEliminated, updateSlipstream } from '../../src/vehicle/slipstream';
 import type { VehicleControls } from '../../src/core/types';
 
 const DT = 1 / 120;
@@ -79,5 +79,18 @@ describe('слипстрим: эффект', () => {
     expect(gain).toBeGreaterThan(0.03);
     expect(gain).toBeLessThan(0.08);
     expect(sl.nitro).toBeGreaterThan(base.nitro + 0.1);
+  });
+});
+
+describe('выбывшая машина', () => {
+  it('припаркованная не даёт слипстрим машине позади', () => {
+    const leader = makeCar(60, 300);
+    const follower = makeCar(60, 280);
+    expect(inSlipstreamCone(follower.state, leader.state)).toBe(true);
+    parkEliminated(leader.state);
+    expect(inSlipstreamCone(follower.state, leader.state)).toBe(false);
+    for (let i = 0; i < 400; i++) updateSlipstream([follower.state, leader.state], DT);
+    expect(follower.state.slipstream).toBe(0);
+    expect(leader.state.position.y).toBeLessThan(-100);
   });
 });
