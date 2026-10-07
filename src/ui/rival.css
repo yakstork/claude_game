@@ -1,10 +1,10 @@
 /* ── Соперник: «рация» в HUD и счёт личных встреч на результатах. Палитра из :root. ── */
-.hud-radio { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); display: flex; align-items: baseline; gap: 0.6em; max-width: 90%;
+.hud-chatter { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); display: flex; align-items: baseline; gap: 0.6em; max-width: 90%;
   padding: 0.35em 1em; background: rgba(13, 2, 33, 0.78); border: 1px solid var(--magenta); border-left: 4px solid var(--pink); box-shadow: 0 0 1em rgba(255, 42, 109, 0.45);
   font-style: italic; letter-spacing: 0.05em; pointer-events: none; animation: radio-in 0.18s ease-out; }
-.hud-radio[hidden] { display: none; }
-.hud-radio-who { font-size: 0.8em; color: var(--pink); text-shadow: 0 0 0.5em var(--magenta); }
-.hud-radio-text { font-size: 1em; color: var(--white); }
+.hud-chatter[hidden] { display: none; }
+.hud-chatter-who { font-size: 0.8em; color: var(--pink); text-shadow: 0 0 0.5em var(--magenta); }
+.hud-chatter-text { font-size: 1em; color: var(--white); }
 @keyframes radio-in { from { opacity: 0; transform: translateX(-50%) translateY(0.5em); } to { opacity: 1; transform: translateX(-50%); } }
 .rrival { display: grid; justify-items: center; gap: 0.15em; padding: 0.5em 0 0.1em; border-top: 1px solid rgba(185, 103, 255, 0.35); margin-top: 0.4em; }
 .rrival-title { font-size: 0.75em; letter-spacing: 0.12em; color: var(--pink); }

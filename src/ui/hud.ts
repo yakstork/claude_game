@@ -94,7 +94,7 @@ export class Hud {
   private cWrong = false;
 
   private bannerTimer = 0;
-  private radioEl: HTMLElement | null = null;
+  private chatterEl: HTMLElement | null = null;
   private radioTimer = 0;
   private readonly popupTimers = new Map<HTMLElement, number>();
   private countdownKey = '';
@@ -149,8 +149,8 @@ export class Hud {
     this.comboPts = el('span', 'hud-combo-pts', '+0', this.combo);
     this.comboMult = el('span', 'hud-combo-mult', 'x1', this.combo);
     this.popups = el('div', 'hud-popups', undefined, centerCol);
-    this.radioEl = el('div', 'hud-radio', undefined, root);
-    this.radioEl.hidden = true;
+    this.chatterEl = el('div', 'hud-chatter', undefined, root);
+    this.chatterEl.hidden = true;
 
     // ── плашка «не туда», отсчёт
     this.wrongWay = el('div', 'hud-wrong', 'НЕ ТУДА!', root);
@@ -232,18 +232,18 @@ export class Hud {
     window.clearTimeout(this.bannerTimer);
     this.bannerSlot.replaceChildren();
     window.clearTimeout(this.radioTimer);
-    if (this.radioEl) this.radioEl.hidden = true;
+    if (this.chatterEl) this.chatterEl.hidden = true;
     this.setCountdown(null);
   }
 
   /** Реплика-«рация» соперника на 2 с: «ИМЯ: текст» */
   radio(who: string, text: string): void {
-    const r = this.radioEl;
+    const r = this.chatterEl;
     if (!r) return;
     window.clearTimeout(this.radioTimer);
     r.replaceChildren();
-    el('span', 'hud-radio-who', who, r);
-    el('span', 'hud-radio-text', text, r);
+    el('span', 'hud-chatter-who', who, r);
+    el('span', 'hud-chatter-text', text, r);
     r.hidden = false;
     this.radioTimer = window.setTimeout(() => {
       r.hidden = true;
