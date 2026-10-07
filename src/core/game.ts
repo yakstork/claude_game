@@ -26,7 +26,7 @@ import type {
 } from './types';
 import { Attract } from './attract';
 import { Track, createProjection } from '../world/track';
-import { TRACKS, type TrackDefinition } from '../world/trackData';
+import { GEN_INDEX, setGeneratedSeed, TRACKS, type TrackDefinition } from '../world/trackData';
 import { World } from '../world/world';
 import { PALETTE, cssColor } from '../world/palette';
 import { InputManager, resolveTouchMode } from '../input/input';
@@ -252,6 +252,7 @@ export class Game {
     if (opts.quality) this.settings.quality = opts.quality;
     if (opts.showFps) this.settings.showFps = true;
     this.records = loadRecords();
+    setGeneratedSeed(this.settings.trackSeed);
     this.selectedCar = Math.min(CAR_SPECS.length - 1, Math.max(0, opts.carIndex));
 
     const urlTrack = Number(new URLSearchParams(location.search).get('track') ?? NaN);
@@ -325,7 +326,7 @@ export class Game {
       },
       this.garageCtl,
       {
-        trackIds: TRACKS.map((t) => t.id ?? t.name),
+        trackIds: TRACKS.map((t) => t.id ?? t.name).filter((id) => !id.startsWith('gen-')),
         carIds: CAR_SPECS.filter((c) => c.id !== CUSTOM_CAR_ID).map((c) => c.id),
         trackLength: (id) => {
           let L = this.trackLengths.get(id);
@@ -375,6 +376,7 @@ export class Game {
         onUiSound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
         onCustomBuildChanged: (b) => this.applyCustomBuild(b),
         onSelectTrack: (i) => this.selectTrack(i),
+        onNewSeed: () => this.newTrackSeed(),
         onReplay: () => this.replay.startReplay(),
         onPhoto: () => this.paused && this.replay.startPhoto('pause'),
         onFirstInteraction: () => {
@@ -478,6 +480,21 @@ export class Game {
     this.world.setTrack(this.track);
     this.world.setQuality(this.settings.quality);
     this.setPreviewCar(this.selectedCar);
+  }
+
+  /** «НОВАЯ» на карточке «ГЕНЕРАТОР»: случайный seed, пересборка трассы, сохранение в настройках */
+  private newTrackSeed(): void {
+    if (this.state !== 'menu') return;
+    this.settings.trackSeed = 1 + Math.floor(Math.random() * 999999);
+    saveSettings(this.settings);
+    setGeneratedSeed(this.settings.trackSeed);
+    this.ui.updateTrack(GEN_INDEX, this.trackInfo(TRACKS[GEN_INDEX]));
+    if (this.trackIndex === GEN_INDEX) {
+      this.track = new Track(TRACKS[GEN_INDEX]);
+      this.world.setTrack(this.track);
+      this.world.setQuality(this.settings.quality);
+      this.setPreviewCar(this.selectedCar);
+    }
   }
 
   /** Смена трассы между гонками кубка (вне меню) */
@@ -611,6 +628,7 @@ export class Game {
   }
 
   applySettings(s: Settings, persist: boolean): void {
+    s = { ...s, trackSeed: this.settings.trackSeed }; // seed меняет только «НОВАЯ»
     this.settings = { ...this.campaignCtl.impose(s) };
     this.touchMode = resolveTouchMode(s.controlMode, isTouchDevice());
     this.ui.setTouchMode(this.touchMode);
@@ -851,7 +869,7 @@ export class Game {
     this.setupRival(order);
     this.dailyNitro = 0;
     if (this.dailyCtl.modifier === 'nitroCans') this.player.physics.state.nitro = 0;
-    this.pickups = new PickupSystem(this.track, pickupLayoutFor(this.track.id));
+    this.pickups = new PickupSystem(this.track, this.track.def.pickups ?? pickupLayoutFor(this.track.id));
     this.pickupMesh = new PickupMesh(this.track, this.pickups);
     for (const c of this.cars) c.bot?.setPads(this.pickups.padS, this.pickups.padLateral);
     this.playerAutopilot?.setPads(this.pickups.padS, this.pickups.padLateral);

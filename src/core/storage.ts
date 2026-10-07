@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS: Settings = {
   timeOfDay: 'sunset',
   weather: 'clear',
   radio: 'neon',
+  trackSeed: 1,
 };
 
 export const DEFAULT_CUSTOM_BUILD: CustomBuild = {
@@ -78,6 +79,7 @@ export function loadSettings(): Settings {
     laps: (LAP_OPTIONS as readonly number[]).includes(s.laps as number) ? (s.laps as number) : DEFAULT_SETTINGS.laps,
     cameraView: s.cameraView === 'near' || s.cameraView === 'bumper' ? s.cameraView : 'far',
     timeOfDay: s.timeOfDay === 'night' || s.timeOfDay === 'dawn' ? s.timeOfDay : 'sunset',
+    trackSeed: typeof s.trackSeed === 'number' && Number.isInteger(s.trackSeed) && s.trackSeed >= 1 && s.trackSeed <= 999999 ? s.trackSeed : DEFAULT_SETTINGS.trackSeed,
     weather: s.weather === 'rain' || s.weather === 'fog' ? s.weather : 'clear',
     radio: s.radio === 'dark' || s.radio === 'chrome' || s.radio === 'off' ? s.radio : 'neon',
   };

@@ -296,6 +296,10 @@
 }
 .track-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 0.7em; margin-top: 0.45em; }
 .track-tag { flex: 1 1 auto; min-width: 0; font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; font-size: 0.68em; line-height: 1.25; color: rgba(245, 233, 255, 0.82); }
+.track-new { flex: none; margin-left: 0.5em; padding: 0.15em 0.6em; font-size: 0.7em; font-style: italic; font-weight: 900; letter-spacing: 0.1em; cursor: pointer; color: var(--yellow, #ffe66d); border: 1px solid currentColor; transform: skewX(-12deg); }
+.track-new[hidden] { display: none; }
+.track-new:active { background: var(--yellow, #ffe66d); color: var(--void); }
+@media (hover: hover) { .track-new:hover { background: var(--yellow, #ffe66d); color: var(--void); } }
 .track-len { flex: none; font-size: 0.72em; font-style: italic; letter-spacing: 0.1em; white-space: nowrap; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); }
 .rec-track { display: block; margin-top: 0.15em; font-size: 0.72em; letter-spacing: 0.14em; color: var(--lilac); text-shadow: none; }
 .rec-track:empty { display: none; }

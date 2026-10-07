@@ -261,6 +261,8 @@ export interface Settings {
   weather: Weather;
   /** Радиостанция в гонке */
   radio: RadioStation;
+  /** Seed карточки «ГЕНЕРАТОР» (случайная трасса; рекорды по ключу gen-<seed>) */
+  trackSeed: number;
 }
 
 export type Weather = 'clear' | 'rain' | 'fog';
@@ -410,6 +412,8 @@ export interface UICallbacks {
   onCustomBuildChanged(build: CustomBuild): void;
   /** Выбор трассы в меню */
   onSelectTrack(index: number): void;
+  /** «НОВАЯ» на карточке «ГЕНЕРАТОР»: новый случайный seed */
+  onNewSeed?(): void;
   /** Повтор гонки (кнопка на экране результатов) */
   onReplay?(): void;
   /** Фоторежим (кнопка в паузе) */

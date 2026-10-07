@@ -15,7 +15,7 @@ import type { BotProfile, VehicleControls, VehicleState } from '../../src/core/t
 
 const DT = 1 / 120;
 afterEach(() => resetHandling());
-const tracks = TRACKS.map((d) => new Track(d));
+const tracks = TRACKS.filter((d) => !d.id?.startsWith('gen-')).map((d) => new Track(d));
 const sunset = new Track(SUNSET_LOOP);
 
 interface SoloStats {

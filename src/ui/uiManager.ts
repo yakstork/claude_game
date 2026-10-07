@@ -251,6 +251,12 @@ export class UIManager {
     this.menu.setCar(i, false);
   }
 
+  /** Обновить карточку трассы (генератор: новый seed) */
+  updateTrack(i: number, info: TrackInfo): void {
+    this.menu.updateTrack(i, info);
+    this.loading.setTrack(this.menu.trackName);
+  }
+
   /** Выбрать трассу в меню без уведомления (синхронизация с игрой): подпись под логотипом и рекорды. */
   setTrackIndex(i: number): void {
     this.menu.setTrack(i, false);

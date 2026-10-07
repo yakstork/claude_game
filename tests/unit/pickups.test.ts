@@ -10,7 +10,7 @@ describe('раскладка', () => {
   it('есть для каждой трассы: 3–6 пластин и канистры в пределах полотна', () => {
     for (const def of TRACKS) {
       const track = new Track(def);
-      const lay = pickupLayoutFor(track.id);
+      const lay = (def.pickups ?? pickupLayoutFor(track.id));
       expect(lay.pads.length).toBeGreaterThanOrEqual(3);
       expect(lay.pads.length).toBeLessThanOrEqual(7);
       expect(lay.cans.length).toBeGreaterThan(3);
@@ -20,7 +20,7 @@ describe('раскладка', () => {
         expect(Math.abs(sys.canLateral[i])).toBeLessThanOrEqual(hw - 1);
       }
     }
-    expect(Object.keys(PICKUP_LAYOUTS).sort()).toEqual(TRACKS.map((t) => t.id).sort());
+    expect(Object.keys(PICKUP_LAYOUTS).sort()).toEqual(TRACKS.filter((t) => !t.id?.startsWith('gen-')).map((t) => t.id).sort());
   });
 });
 

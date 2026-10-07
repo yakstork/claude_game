@@ -232,7 +232,7 @@ export class Environment {
 
   constructor(readonly track: Track) {
     this.isCoast = track.id === 'coast';
-    this.isCanyon = track.id === 'canyon';
+    this.isCanyon = track.id === 'canyon' || track.def.decor === 'canyon';
     this.field = new TrackDistanceField(track);
     this.buildTrackside();
     if (this.isCanyon) this.group.add(buildCanyon(track));
