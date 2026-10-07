@@ -71,6 +71,8 @@ import { ACHIEVEMENTS, evaluate, loadProgress, saveProgress, type AchievementPro
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
+import { STATION_NAMES } from '../audio/theory';
+import { RADIO_ORDER } from './types';
 import { StartBoostJudge, START_BOOST } from './startBoost';
 import { ReplayController } from './replayController';
 import { SplitScreen } from './splitScreen';
@@ -315,6 +317,7 @@ export class Game {
       campaign: this.campaignCtl,
       daily: this.dailyCtl,
       callbacks: {
+        onRadio: () => this.cycleRadio(),
         onCampaignMap: () => {
           this.enterMenu();
           this.ui.showCampaign();
@@ -544,6 +547,15 @@ export class Game {
   /** Сенсорные кнопки активны (настройка «Тип управления» + тип устройства) */
   touchMode = false;
 
+  /** Радио: следующая станция (клавиша M, кнопка геймпада LB, тап по названию в HUD) */
+  cycleRadio(): void {
+    const i = RADIO_ORDER.indexOf(this.settings.radio);
+    const next = RADIO_ORDER[(i + 1) % RADIO_ORDER.length];
+    this.applySettings({ ...this.settings, radio: next }, true);
+    this.audio.setRadio(next, true);
+    this.ui.banner(`РАДИО · ${this.audio.radioLabel()}`, 'cyan');
+  }
+
   applySettings(s: Settings, persist: boolean): void {
     this.settings = { ...this.campaignCtl.impose(s) };
     this.touchMode = resolveTouchMode(s.controlMode, isTouchDevice());
@@ -555,6 +567,8 @@ export class Game {
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
     this.world.setTimeOfDay(s.timeOfDay);
+    this.audio.setRadio(s.radio);
+    this.ui.setRadio(STATION_NAMES[s.radio]);
     this.world.setWeather(s.weather);
     this.previewModel?.setHeadlights(this.world.headlights, s.quality === 'high');
     this.effects.density = s.quality === 'high' ? 1 : 0.5;
@@ -1162,6 +1176,7 @@ export class Game {
       if (a === 'pause') this.pause();
       else if (a === 'reset' && this.state === 'racing') this.respawnAtCheckpoint(this.player, this.playerSlot);
       else if (a === 'camera' && this.cars.length) this.cycleCamera();
+      else if (a === 'radio' && this.cars.length) this.cycleRadio();
     }
   }
 

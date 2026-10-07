@@ -4,7 +4,7 @@
  * у готовых элементов — и только при изменении значения.
  */
 import type { HudData, PopupTone } from '../core/types';
-import { el, restartAnim, svgEl } from './dom';
+import { el, onTap, restartAnim, svgEl } from './dom';
 import {
   comboScale,
   formatScore,
@@ -95,7 +95,9 @@ export class Hud {
   private readonly popupTimers = new Map<HTMLElement, number>();
   private countdownKey = '';
 
-  constructor(parent: HTMLElement) {
+  private readonly radioEl: HTMLElement;
+
+  constructor(parent: HTMLElement, onRadio: () => void = () => undefined) {
     const root = el('div', 'screen hud', undefined, parent);
     root.hidden = true;
     this.el = root;
@@ -109,6 +111,11 @@ export class Hud {
     const dRow = el('div', 'hud-drift-row', undefined, pos);
     el('span', 'hud-label', 'ДРИФТ', dRow);
     this.driftTotalEl = el('span', 'hud-drift-total', '0', dRow);
+    // станция радио: тап переключает
+    this.radioEl = el('div', 'hud-radio', '', pos);
+    this.radioEl.setAttribute('role', 'button');
+    this.radioEl.setAttribute('aria-label', 'Сменить радиостанцию');
+    onTap(this.radioEl, onRadio);
 
     // ── круг и таймеры (справа сверху)
     const lap = el('div', 'panel cyan hud-lap', undefined, root);
@@ -397,6 +404,10 @@ export class Hud {
     if (t !== undefined) window.clearTimeout(t);
     this.popupTimers.delete(p);
     p.remove();
+  }
+
+  setRadio(label: string): void {
+    if (this.radioEl.textContent !== label) this.radioEl.textContent = label;
   }
 
   banner(text: string, tone: PopupTone = 'pink'): void {

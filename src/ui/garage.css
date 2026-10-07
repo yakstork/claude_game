@@ -72,3 +72,7 @@
 .garage-numpick { display: flex; align-items: center; gap: 0.5em; }
 .garage-numval { min-width: 2.2em; text-align: center; font-size: 1.05em; font-style: italic; letter-spacing: 0.08em; color: var(--yellow); cursor: pointer; }
 .garage-numpick .garage-step { width: 1.3em; height: 1.3em; font-size: 1.05em; cursor: pointer; }
+
+/* радио в HUD: название станции под позицией, тап переключает */
+.hud-radio { pointer-events: auto; cursor: pointer; margin-top: 0.5em; padding-top: 0.35em; border-top: 1px solid rgba(185, 103, 255, 0.35); font-size: 0.62em; font-style: italic; letter-spacing: 0.1em; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); white-space: nowrap; }
+.nr-touch-mode .hud-radio { margin-top: 0.2em; padding-top: 0.2em; font-size: 0.58em; }

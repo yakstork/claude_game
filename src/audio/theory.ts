@@ -1,5 +1,6 @@
 /** Чистые функции звука: частоты, параметры мотора, паттерны секвенсора (без Web Audio, тестируются в Node). */
-import type { EngineAudioParams, MusicTrack } from '../core/types';
+import type { EngineAudioParams, MusicTrack, RadioStation } from '../core/types';
+import { CHROME_SONGS, DARK_SONGS } from './stations';
 
 export const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -310,12 +311,41 @@ const RACE_SONGS: readonly TrackConfig[] = [
   },
 ];
 
+// Радиостанции: NEON FM — RACE_SONGS (variant 0..3); DARKWAVE 88 и CHROME BEAT — stations.ts.
+// Номер варианта кодирует станцию: 0..99 — NEON FM, 100+i — DARKWAVE 88, 200+i — CHROME BEAT.
+export type PlayableStation = Exclude<RadioStation, 'off'>;
+export const STATION_BASE: Record<PlayableStation, number> = { neon: 0, dark: 100, chrome: 200 };
+export const STATION_NAMES: Record<RadioStation, string> = { neon: 'NEON FM', dark: 'DARKWAVE 88', chrome: 'CHROME BEAT', off: 'РАДИО ВЫКЛ.' };
+const NEON_NAMES = ['Neon Rush', 'Night Drive', 'Chrome Horizon', 'Overdrive'];
+const DARK_NAMES = ['Black Mirror', 'Cold Static', 'Ghost Circuit'];
+const CHROME_NAMES = ['Turbo Chrome', 'Laser Highway', 'Grid Runner'];
+
+/** Сколько композиций у станции */
+export function stationSongCount(s: PlayableStation): number {
+  return s === 'neon' ? RACE_SONGS.length : s === 'dark' ? DARK_SONGS.length : CHROME_SONGS.length;
+}
+
+/** Закодированный номер варианта: станция + индекс композиции */
+export function stationVariant(s: PlayableStation, index: number): number {
+  const n = stationSongCount(s);
+  return STATION_BASE[s] + (((index % n) + n) % n);
+}
+
+/** Станция и название композиции по номеру варианта */
+export function songInfo(variant: number): { station: PlayableStation; name: string } {
+  if (variant >= 200) return { station: 'chrome', name: CHROME_NAMES[(variant - 200) % CHROME_NAMES.length] };
+  if (variant >= 100) return { station: 'dark', name: DARK_NAMES[(variant - 100) % DARK_NAMES.length] };
+  return { station: 'neon', name: NEON_NAMES[((variant % RACE_SONGS.length) + RACE_SONGS.length) % RACE_SONGS.length] };
+}
+
 /** Число гоночных композиций (выбор по кругу на каждую гонку). */
 export const RACE_VARIANTS = RACE_SONGS.length;
 
 /** Конфиг трека; variant — номер гоночной композиции (для menu игнорируется). */
 export function getTrackConfig(track: MusicTrack, variant = 0): TrackConfig {
   if (track === 'menu') return MENU;
+  if (variant >= 200) return CHROME_SONGS[(variant - 200) % CHROME_SONGS.length] ?? RACE;
+  if (variant >= 100) return DARK_SONGS[(variant - 100) % DARK_SONGS.length] ?? RACE;
   return RACE_SONGS[((variant % RACE_VARIANTS) + RACE_VARIANTS) % RACE_VARIANTS] ?? RACE;
 }
 

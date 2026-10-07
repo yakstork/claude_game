@@ -25,6 +25,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraView: 'far',
   timeOfDay: 'sunset',
   weather: 'clear',
+  radio: 'neon',
 };
 
 export const DEFAULT_CUSTOM_BUILD: CustomBuild = {
@@ -78,6 +79,7 @@ export function loadSettings(): Settings {
     cameraView: s.cameraView === 'near' || s.cameraView === 'bumper' ? s.cameraView : 'far',
     timeOfDay: s.timeOfDay === 'night' || s.timeOfDay === 'dawn' ? s.timeOfDay : 'sunset',
     weather: s.weather === 'rain' || s.weather === 'fog' ? s.weather : 'clear',
+    radio: s.radio === 'dark' || s.radio === 'chrome' || s.radio === 'off' ? s.radio : 'neon',
   };
 }
 
