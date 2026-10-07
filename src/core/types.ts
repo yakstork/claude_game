@@ -356,6 +356,10 @@ export interface UICallbacks {
   onCustomBuildChanged(build: CustomBuild): void;
   /** Выбор трассы в меню */
   onSelectTrack(index: number): void;
+  /** Повтор гонки (кнопка на экране результатов) */
+  onReplay?(): void;
+  /** Фоторежим (кнопка в паузе) */
+  onPhoto?(): void;
 }
 
 // ─── Звук ──────────────────────────────────────────────────────────────────

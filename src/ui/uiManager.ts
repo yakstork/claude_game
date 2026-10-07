@@ -247,6 +247,16 @@ export class UIManager {
     this.setScreen('results');
   }
 
+  /** Корневой слой UI (для оверлеев повтора и фоторежима) */
+  get layer(): HTMLElement {
+    return this.host;
+  }
+
+  /** Вернуть экран результатов без пересборки (после повтора) */
+  restoreResults(): void {
+    this.setScreen('results');
+  }
+
   /** Открыть настройки (из меню или паузы). */
   showSettings(): void {
     this.openSettings(this.screen === 'pause' ? 'pause' : 'menu');

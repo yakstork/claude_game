@@ -436,6 +436,7 @@ export class PauseScreen {
       { text: 'ПРОДОЛЖИТЬ', run: () => cb.onResume() },
       { text: 'РЕСТАРТ', run: () => cb.onRestart() },
       { text: 'НАСТРОЙКИ', run: onSettings },
+      { text: 'ФОТО', run: () => cb.onPhoto?.() },
     ];
     for (const it of items) {
       nav.add({ el: makeButton(list, it.text), activate: it.run });
@@ -475,8 +476,10 @@ export class ResultsScreen {
     this.btnRow = el('div', 'results-actions', undefined, panel);
     const again = makeButton(this.btnRow, 'ЕЩЁ РАЗ', 'big');
     this.againLabel = again.firstElementChild as HTMLElement;
+    const replay = makeButton(this.btnRow, 'ПОВТОР');
     const menu = makeButton(this.btnRow, 'В МЕНЮ');
     nav.add({ el: again, activate: () => cb.onRestart() });
+    nav.add({ el: replay, activate: () => cb.onReplay?.() });
     nav.add({ el: menu, activate: () => cb.onQuitToMenu() });
   }
 

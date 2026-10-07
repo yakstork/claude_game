@@ -64,6 +64,7 @@ import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
 import { StartBoostJudge, START_BOOST } from './startBoost';
+import { ReplayController } from './replayController';
 
 export type GameState = 'loading' | 'menu' | 'countdown' | 'racing' | 'finished';
 
@@ -131,7 +132,9 @@ export class Game {
   records: Records;
   state: GameState = 'loading';
   paused = false;
-  uiMode: 'menu' | 'pause' | 'results' | null = null;
+  uiMode: 'menu' | 'pause' | 'results' | 'replay' | 'photo' | null = null;
+  /** Повтор гонки и фоторежим */
+  readonly replay: ReplayController;
 
   cars: RaceCar[] = [];
   race: RaceManager | null = null;
@@ -217,11 +220,36 @@ export class Game {
         onUiSound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
         onCustomBuildChanged: (b) => this.applyCustomBuild(b),
         onSelectTrack: (i) => this.selectTrack(i),
+        onReplay: () => this.replay.startReplay(),
+        onPhoto: () => this.paused && this.replay.startPhoto('pause'),
         onFirstInteraction: () => {
           void this.audio.unlock();
         },
       },
     });
+
+    this.replay = new ReplayController(
+      this,
+      {
+        enter: (kind) => {
+          this.ui.hideAll();
+          this.uiMode = kind;
+          this.audio.updateEngine(null);
+          if (this.ghostModel) this.ghostModel.group.visible = false;
+        },
+        leave: (to) => {
+          this.input.clear();
+          if (to === 'results') {
+            this.uiMode = 'results';
+            this.ui.restoreResults();
+          } else {
+            this.uiMode = 'pause';
+            this.ui.showPause();
+          }
+        },
+      },
+      this.ui.layer,
+    );
 
     this.ui.setAchievements(ACHIEVEMENTS.map((a) => ({ id: a.id, title: a.title, desc: a.desc, icon: a.icon, tone: a.tone })));
     this.ui.setUnlocked(this.achievements.unlocked);
@@ -475,6 +503,7 @@ export class Game {
       this.scene.remove(c.model.group);
       c.model.dispose();
     }
+    this.replay.leaveSilently();
     this.cars = [];
     this.states.length = 0;
     this.physicsList.length = 0;
@@ -546,6 +575,7 @@ export class Game {
     }
     this.drift.reset();
     this.effects.clear();
+    this.replay.begin(this.states);
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
     this.stunts.reset();
@@ -648,7 +678,7 @@ export class Game {
   // ─── Шаг симуляции ─────────────────────────────────────────────────────
 
   private step(dt: number): void {
-    if (this.paused || !this.race) return;
+    if (this.paused || !this.race || this.replay.takesOver) return;
     if (this.state !== 'countdown' && this.state !== 'racing' && this.state !== 'finished') return;
     const race = this.race;
 
@@ -686,6 +716,7 @@ export class Game {
     }
     resolveCarCollisions(this.physicsList);
     updateSlipstream(this.states, dt);
+    this.replay.record(dt);
 
     // события физики
     this.hitWallThisStep = false;
@@ -799,6 +830,7 @@ export class Game {
   private showResults(): void {
     if (!this.race) return;
     this.resultsShown = true;
+    this.replay.stopRecording();
     const race = this.race;
     const player = race.standing(this.playerSlot);
     const rows: ResultRow[] = [];
@@ -904,6 +936,14 @@ export class Game {
   private frame(dt: number, alpha: number): void {
     this.handleActions(this.input.consumeActions());
 
+    if (this.replay.takesOver) {
+      this.replay.frame(dt);
+      this.audio.updateEngine(null);
+      this.render.render();
+      this.replay.afterRender();
+      return;
+    }
+
     if (this.state === 'menu' && this.previewModel) {
       const st = this.previewState;
       this.previewModel.update(st, st.position.y - CAR_GEOMETRY.wheelRadius, dt);
@@ -929,6 +969,7 @@ export class Game {
         inp.position = p.renderPos;
         this.chase.update(dt, inp);
       }
+      if (this.replay.photo) this.replay.updatePhoto(dt);
       this.updateHud();
       this.updateCountdown();
       const ps = p.physics.state;
@@ -958,6 +999,7 @@ export class Game {
       this.ui.setFps(Math.round(this.loop.fps));
     }
     this.render.render();
+    this.replay.afterRender();
   }
 
   private chaseInput(c: RaceCar) {
