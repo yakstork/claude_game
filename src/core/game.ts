@@ -786,6 +786,7 @@ export class Game {
       for (const ev of c.physics.events) {
         const near = c.isPlayer || c.physics.state.position.distanceToSquared(player.physics.state.position) < 60 * 60;
         if (ev.type === 'wall') {
+          this.effects.hit(i, ev.strength);
           if (ev.strength > 0.08 && near) this.effects.sparksAt(ev.point, c.physics.state.velocity, ev.strength);
           if (c.isPlayer) {
             if (ev.strength > 0.12) {
@@ -797,6 +798,7 @@ export class Game {
             if (ev.strength > 0.15 && this.state === 'racing') this.stats.wallHits += 1;
           }
         } else if (ev.type === 'car') {
+          this.effects.hit(i, ev.strength);
           if (ev.strength > 0.1 && near) this.effects.sparksAt(ev.point, c.physics.state.velocity, ev.strength * 0.7);
           if (c.isPlayer && ev.strength > 0.15) {
             this.audio.play('hit');
@@ -1054,6 +1056,7 @@ export class Game {
         c.renderQuat.slerpQuaternions(c.prevQuat, st.quaternion, a);
         this.track.project(c.renderPos, st.trackS, _proj);
         c.roadHeight = _proj.height;
+        c.model.damage = this.effects.damageLevel(i);
         c.model.update(st, c.roadHeight, this.paused ? 0 : dt);
         c.model.group.position.copy(c.renderPos);
         c.model.group.quaternion.copy(c.renderQuat);
@@ -1080,6 +1083,7 @@ export class Game {
     const player = this.cars.length ? this.player.physics.state : null;
     let speedLines = 0;
     if (player && !this.paused) speedLines = player.nitroActive ? 1 : Math.max(player.slipstream * 0.7, Math.min(0.5, Math.max(0, (Math.abs(player.speed) - 55) / 30)));
+    this.effects.setWet(this.world.ambience === 'rain' ? 1 : 0);
     this.effects.update(this.paused ? 0 : dt, this.camera, player ? Math.abs(player.speed) : 0, speedLines);
 
     this.world.update(this.camera.position);

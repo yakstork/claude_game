@@ -20,6 +20,7 @@ import type { CarModelKind, VehicleState } from '../core/types';
 import { GeometryBuilder } from '../world/geometryBuilder';
 import { setGlow } from '../world/materials';
 import { PALETTE } from '../world/palette';
+import { DAMAGE_HIGH, DAMAGE_MID, neonFlicker } from './damage';
 import { CAR_GEOMETRY } from './specs';
 
 export interface CarLook {
@@ -503,12 +504,13 @@ function buildWheel(neon: number): GeometryBuilder {
 }
 
 /** Общий материал машины: vertex colors + свечение по атрибуту glow */
-function carMaterial(): MeshStandardNodeMaterial {
+const makeGain = () => uniform(1);
+function carMaterial(neonGain: ReturnType<typeof makeGain>): MeshStandardNodeMaterial {
   const mat = new MeshStandardNodeMaterial({ roughness: 0.38, metalness: 0.2, flatShading: true });
   const g = attribute('glow', 'float');
   mat.colorNode = vertexColor();
   // неон — по атрибуту glow; кузову — лёгкий собственный подсвет, чтобы цвет читался в закатном свете
-  mat.emissiveNode = vertexColor().mul(g.mul(2.2).add(float(1).sub(g).mul(0.12)));
+  mat.emissiveNode = vertexColor().mul(g.mul(2.2).mul(neonGain).add(float(1).sub(g).mul(0.12)));
   return mat;
 }
 
@@ -528,9 +530,15 @@ export class CarModel {
   private readonly shadow: Mesh;
   private readonly flameIntensity = uniform(0);
   private readonly glowPulse = uniform(1);
+  /** Множитель неона корпуса (мерцание от урона) */
+  private readonly neonGain = makeGain();
+  /** Визуальный урон 0..1 (ставит game каждый кадр из EffectsManager) */
+  damage = 0;
+  private readonly crack: Mesh;
+  private crackT = 0;
 
   constructor(readonly look: CarLook) {
-    const mat = carMaterial();
+    const mat = carMaterial(this.neonGain);
     this.body = new Mesh(buildBody(look).build(), mat);
     this.group.add(this.body);
     const wheelGeo = buildWheel(look.neonColor).build();
@@ -540,6 +548,21 @@ export class CarModel {
       this.wheels.push(w);
       this.group.add(w);
     }
+
+    // трещина-глитч: рваная emissive-линия по бортам, видна при сильном уроне
+    const cg = new GeometryBuilder();
+    const cx = (CAR_GEOMETRY.width / 2) * 1.05 + 0.01;
+    const zig: [number, number, number][] = [[0.0, 0.42, 0.5], [0.12, 0.34, 0.5], [-0.1, 0.26, 0.4], [0.1, 0.18, 0.4], [-0.05, 0.1, 0.3]];
+    for (const side of [-1, 1]) {
+      for (const [dz, y, len] of zig) cg.box(0.02, 0.035, len, PALETTE.pink, 1, T(side * cx, y, 0.2 + dz));
+      cg.box(0.02, 0.2, 0.03, PALETTE.white, 1, T(side * cx, 0.3, 0.2));
+    }
+    const crackMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    crackMat.colorNode = vertexColor().mul(1.5);
+    setGlow(crackMat, vertexColor().mul(1.2));
+    this.crack = new Mesh(cg.build(), crackMat);
+    this.crack.visible = false;
+    this.group.add(this.crack);
 
     // неоновая подсветка днища: аддитивное пятно
     const ugMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
@@ -619,6 +642,17 @@ export class CarModel {
     const air = Math.min(1, Math.max(0, -localGround - r) / 4);
     this.shadow.scale.setScalar(1 + air * 0.6);
     this.glowPulse.value = 0.85 + Math.sin(performance.now() * 0.004) * 0.15;
+    // урон: мерцание неона корпуса и подсветки днища, трещина при сильном уроне
+    if (this.damage >= DAMAGE_MID) {
+      this.crackT += dt;
+      const f = neonFlicker(this.damage, performance.now() * 0.001);
+      this.neonGain.value = f;
+      this.glowPulse.value *= f;
+      this.crack.visible = this.damage >= DAMAGE_HIGH && (f > 0.5 || Math.sin(this.crackT * 53) > 0.2);
+    } else {
+      this.neonGain.value = 1;
+      this.crack.visible = false;
+    }
 
     const target = state.nitroActive ? 1 : 0;
     this.flameIntensity.value += (target - this.flameIntensity.value) * Math.min(1, dt * 12);

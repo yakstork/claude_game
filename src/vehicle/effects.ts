@@ -1,5 +1,5 @@
 /**
- * Эффекты машин: неоновые следы шин, low-poly дым заноса, искры от ударов,
+ * Эффекты машин: следы шин (дрифт/торможение), low-poly дым заноса, искры от ударов,
  * линии скорости вокруг камеры при нитро.
  */
 import {
@@ -36,12 +36,13 @@ import {
 import type { VehicleState } from '../core/types';
 import { PALETTE } from '../world/palette';
 import { setGlow } from '../world/materials';
+import { CarDamage, smokeRate, sparkRate } from './damage';
 
 // ─── Следы шин ───────────────────────────────────────────────────────────
 
 const SKID_MAX = 3000;
 const SKID_WIDTH = 0.26;
-const SKID_LIFE = 30;
+const SKID_LIFE = 40;
 
 interface SkidTrail {
   last: Vector3;
@@ -57,6 +58,8 @@ export class SkidMarks {
   private cursor = 0;
   private readonly trails = new Map<number, SkidTrail>();
   readonly now = uniform(0);
+  /** 0 — сухо, 1 — ливень (следы бледнее) */
+  readonly wet = uniform(0);
   private dirtyFrom = Infinity;
   private dirtyTo = -1;
 
@@ -72,9 +75,10 @@ export class SkidMarks {
     const age = this.now.sub(attribute('birth', 'float'));
     const fade = oneMinus(smoothstep(SKID_LIFE * 0.4, SKID_LIFE, age));
     const fresh = oneMinus(smoothstep(0.0, 2.5, age));
-    mat.colorNode = mix(color(0x0b0514), color(PALETTE.magenta), fresh.mul(0.55));
-    mat.opacityNode = fade.mul(0.62);
-    setGlow(mat, color(PALETTE.magenta).mul(fresh.mul(fade).mul(0.5)));
+    // тёмная полоса резины; только что оставленный след чуть подсвечен неоном; под дождём бледнее
+    mat.colorNode = mix(color(0x050309), color(PALETTE.magenta), fresh.mul(0.22));
+    mat.opacityNode = fade.mul(this.wet.mul(-0.55).add(1)).mul(0.78);
+    setGlow(mat, color(PALETTE.magenta).mul(fresh.mul(fade).mul(0.18)));
     this.mesh = new Mesh(g, mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 1;
@@ -401,6 +405,11 @@ export class EffectsManager {
   private readonly sparks: ParticlePool;
   private time = 0;
   private smokeAcc = 0;
+  private readonly damage: CarDamage[] = [];
+  private readonly dmgSmoke: ParticlePool;
+  private readonly prevSpeed: number[] = [];
+  private sparkAcc = 0;
+  private dmgSmokeAcc = 0;
   /** Множитель количества частиц (качество) */
   density = 1;
 
@@ -428,20 +437,34 @@ export class EffectsManager {
     flameMat.colorNode = fc;
     setGlow(flameMat, fc.mul(1.4));
 
-    this.group.add(this.trails.mesh, this.flames.mesh, this.skids.mesh, this.smoke.mesh, this.sparks.mesh, this.speedLines.mesh);
+    // тёмный дым из-под капота повреждённой машины
+    const dsMat = new MeshStandardNodeMaterial({ transparent: true, depthWrite: false, flatShading: true, roughness: 1, metalness: 0 });
+    this.dmgSmoke = new ParticlePool(new IcosahedronGeometry(1, 0), dsMat, 120, false, 'dsmokeLife');
+    const dl = this.dmgSmoke.lifeNode;
+    dsMat.colorNode = mix(color(0x2a2236), color(0x0c0814), dl);
+    dsMat.opacityNode = oneMinus(smoothstep(0.2, 1.0, dl)).mul(0.6);
+    dsMat.emissiveNode = color(PALETTE.orange).mul(oneMinus(dl).mul(0.05));
+
+    this.group.add(this.trails.mesh, this.dmgSmoke.mesh, this.flames.mesh, this.skids.mesh, this.smoke.mesh, this.sparks.mesh, this.speedLines.mesh);
   }
 
   /** Эффекты одной машины за кадр */
   updateCar(index: number, state: VehicleState, dt: number): void {
+    // сильное торможение (резкое падение скорости) тоже оставляет след
+    const prev = this.prevSpeed[index] ?? state.speed;
+    const decel = dt > 0 ? (prev - state.speed) / dt : 0;
+    this.prevSpeed[index] = state.speed;
+    const braking = state.onGround && state.speed > 18 && decel > 20 ? 0.75 : 0;
+    this.damageFx(index, state, dt);
     for (let w = 2; w < 4; w++) {
       const ws = state.wheels[w];
-      const skid = ws.onGround ? ws.skid : 0;
+      const skid = ws.onGround ? Math.max(ws.skid, braking) : 0;
       this.skids.add(index * 4 + w, ws.contact, skid, state.heading);
     }
     // передние колёса тоже оставляют след в сильном заносе
     for (let w = 0; w < 2; w++) {
       const ws = state.wheels[w];
-      this.skids.add(index * 4 + w, ws.contact, ws.onGround && ws.skid > 0.75 ? ws.skid : 0, state.heading);
+      this.skids.add(index * 4 + w, ws.contact, ws.onGround && (ws.skid > 0.75 || braking > 0) ? Math.max(ws.skid, braking) : 0, state.heading);
     }
 
     this.boostFx(index, state, dt);
@@ -457,6 +480,46 @@ export class EffectsManager {
         _v.set((Math.random() - 0.5) * 2, 1.2 + Math.random() * 1.5, (Math.random() - 0.5) * 2).addScaledVector(state.velocity, 0.25);
         this.smoke.spawn(_p, _v, 1.1 + Math.random() * 0.8, 0.55 + Math.random() * 0.4);
       }
+    }
+  }
+
+  /** Удар машины (сила события физики): копит визуальный урон */
+  hit(index: number, strength: number): void {
+    (this.damage[index] ??= new CarDamage()).hit(strength);
+  }
+
+  /** Накопленный визуальный урон машины 0..1 */
+  damageLevel(index: number): number {
+    return this.damage[index]?.level ?? 0;
+  }
+
+  /** Погода: 0 — сухо, 1 — ливень (бледные следы шин) */
+  setWet(wet: number): void {
+    this.skids.wet.value = wet;
+  }
+
+  /** Искры (средний урон) и дым из-под капота (сильный) */
+  private damageFx(index: number, state: VehicleState, dt: number): void {
+    const d = this.damage[index];
+    if (!d) return;
+    d.update(dt);
+    const sh = Math.sin(state.heading);
+    const ch = Math.cos(state.heading);
+    this.sparkAcc += dt * sparkRate(d.level) * this.density;
+    while (this.sparkAcc > 1) {
+      this.sparkAcc -= 1;
+      const lat = (Math.random() - 0.5) * 1.4;
+      _p.set(state.position.x + sh * (Math.random() * 3 - 1) + ch * lat, state.position.y + 0.3, state.position.z + ch * (Math.random() * 3 - 1) - sh * lat);
+      _v.set((Math.random() - 0.5) * 4, 1 + Math.random() * 3, (Math.random() - 0.5) * 4).addScaledVector(state.velocity, 0.7);
+      this.sparks.spawn(_p, _v, 0.2 + Math.random() * 0.3, 0.6 + Math.random() * 0.4);
+    }
+    this.dmgSmokeAcc += dt * smokeRate(d.level) * this.density;
+    while (this.dmgSmokeAcc > 1) {
+      this.dmgSmokeAcc -= 1;
+      const lat = (Math.random() - 0.5) * 0.8;
+      _p.set(state.position.x + sh * 1.3 + ch * lat, state.position.y + 0.6, state.position.z + ch * 1.3 - sh * lat);
+      _v.set((Math.random() - 0.5) * 0.8, 1.6 + Math.random() * 1.2, (Math.random() - 0.5) * 0.8).addScaledVector(state.velocity, 0.45);
+      this.dmgSmoke.spawn(_p, _v, 1.0 + Math.random() * 0.8, 0.35 + Math.random() * 0.25);
     }
   }
 
@@ -515,6 +578,7 @@ export class EffectsManager {
     this.trails.update(this.time);
     this.flames.update(dt, 0, 1.2, 0);
     this.smoke.update(dt, -1.2, 1.4, 2.4);
+    this.dmgSmoke.update(dt, -1.5, 1.2, 2.2);
     this.sparks.update(dt, 22, 0.6, 0);
     this.speedLines.update(dt, camera, playerSpeed, speedLineAmount);
   }
@@ -524,6 +588,9 @@ export class EffectsManager {
     this.trails.clear();
     this.flames.clear();
     this.smoke.clear();
+    this.dmgSmoke.clear();
     this.sparks.clear();
+    for (const d of this.damage) d?.reset();
+    this.prevSpeed.length = 0;
   }
 }
