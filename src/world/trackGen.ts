@@ -102,36 +102,100 @@ function fallbackPoints(rng: () => number): Pt[] {
   return pts;
 }
 
-function starPoints(rng: () => number): Pt[] {
-  const n = 22 + Math.floor(rng() * 8);
-  const harm: [number, number, number][] = [];
-  for (let k = 2; k <= 7; k++) harm.push([k, (rng() * 0.3) / (k * 0.6), rng() * Math.PI * 2]);
-  const sx = 0.8 + rng() * 0.5;
-  const sz = 1.1 - (sx - 0.8) * 0.5;
-  const pts: Pt[] = [];
+/**
+ * «Трасса из элементов»: 5–7 вершин вокруг центра (контур без самопересечений), углы скруглены дугами
+ * (1–2 шпильки радиусом ~35 м, остальные 60–130 м), на длинных ребрах — прямые 250+ м, на одной из них шикана.
+ * Возвращает null, если элементы не поместились (попытка отбрасывается).
+ */
+function circuitPoints(rng: () => number, target: number): Pt[] | null {
+  const V = 5 + Math.floor(rng() * 3);
   const phase = rng() * Math.PI * 2;
-  for (let i = 0; i < n; i++) {
-    const a = phase + ((i + (rng() - 0.5) * 0.35) / n) * Math.PI * 2;
-    let r = 1;
-    for (const [k, amp, ph] of harm) r += amp * Math.cos(k * a + ph);
-    r = Math.max(0.4, r) * (1 + (rng() - 0.5) * 0.04);
-    pts.push([Math.cos(a) * r * sx, 0, Math.sin(a) * r * sz]);
+  const sx = 0.85 + rng() * 0.4;
+  const sz = 1.15 - (sx - 0.85) * 0.5;
+  let vs: [number, number][] = [];
+  for (let i = 0; i < V; i++) {
+    const a = phase + ((i + (rng() - 0.5) * 0.5) / V) * Math.PI * 2;
+    const r = 0.55 + rng() * 0.75;
+    vs.push([Math.cos(a) * r * sx, Math.sin(a) * r * sz]);
   }
-  return pts;
+  let per = 0;
+  for (let i = 0; i < V; i++) per += Math.hypot(vs[(i + 1) % V][0] - vs[i][0], vs[(i + 1) % V][1] - vs[i][1]);
+  const k = (target * 1.07) / per;
+  vs = vs.map(([x, z]) => [x * k, z * k]);
+
+  // направления рёбер, углы поворота
+  const u: [number, number][] = [];
+  const len: number[] = [];
+  for (let i = 0; i < V; i++) {
+    const dx = vs[(i + 1) % V][0] - vs[i][0];
+    const dz = vs[(i + 1) % V][1] - vs[i][1];
+    const l = Math.hypot(dx, dz);
+    len.push(l);
+    u.push([dx / l, dz / l]);
+  }
+  const phi: number[] = [];
+  const sg: number[] = [];
+  for (let i = 0; i < V; i++) {
+    const a = u[(i + V - 1) % V];
+    const b = u[i];
+    phi.push(Math.acos(Math.min(1, Math.max(-1, a[0] * b[0] + a[1] * b[1]))));
+    sg.push(Math.sign(a[0] * b[1] - a[1] * b[0]) || 1);
+  }
+  // радиусы: самые резкие углы (>= ~95°) — шпильки R ≈ 35, остальные 60–130
+  const order = phi.map((_, i) => i).sort((x, y) => phi[y] - phi[x]);
+  const hairpins = new Set<number>();
+  for (const i of order.slice(0, 2)) if (phi[i] >= 1.65) hairpins.add(i);
+  if (hairpins.size === 0) return null;
+  const R = phi.map((_, i) => (hairpins.has(i) ? 34 + rng() * 5 : 60 + rng() * 70));
+  const d = phi.map((f, i) => R[i] * Math.tan(f / 2));
+  // прямые между скруглениями
+  const straight: number[] = [];
+  for (let i = 0; i < V; i++) straight.push(len[i] - d[i] - d[(i + 1) % V]);
+  if (Math.min(...straight) < 40) return null;
+  if (Math.max(...straight) < 250) return null;
+  // шикана — на одной из длинных прямых (≥ 330 м), случайной
+  const chic = straight.map((l, i) => (l >= 330 ? i : -1)).filter((i) => i >= 0);
+  const chicEdge = chic.length ? chic[Math.floor(rng() * chic.length)] : -1;
+  const A = (rng() < 0.5 ? -1 : 1) * (6 + rng() * 2);
+
+  const out: Pt[] = [];
+  for (let i = 0; i < V; i++) {
+    // дуга вершины i: от T1 = V - u1·d до T2 = V + u2·d
+    const u1 = u[(i + V - 1) % V];
+    const u2 = u[i];
+    const t1x = vs[i][0] - u1[0] * d[i];
+    const t1z = vs[i][1] - u1[1] * d[i];
+    // внутренняя нормаль: (−uz, ux) для левого поворота
+    const nx = -u1[1] * sg[i];
+    const nz = u1[0] * sg[i];
+    for (let q = 0; q <= 4; q++) {
+      const th = (phi[i] * q) / 4;
+      out.push([t1x + R[i] * Math.sin(th) * u1[0] + R[i] * (1 - Math.cos(th)) * nx, 0, t1z + R[i] * Math.sin(th) * u1[1] + R[i] * (1 - Math.cos(th)) * nz]);
+    }
+    // прямая от T2 до T1 следующей вершины: промежуточные точки (держат её прямой) и шикана
+    const sx0 = out[out.length - 1][0];
+    const sz0 = out[out.length - 1][2];
+    const Ls = straight[i];
+    const along: { t: number; lat: number }[] = [];
+    const fill = (from: number, to: number): void => {
+      const n = Math.floor((to - from) / 140);
+      for (let j = 1; j <= n; j++) along.push({ t: from + ((to - from) * j) / (n + 1), lat: 0 });
+    };
+    if (i === chicEdge) {
+      const c0 = Ls / 2 - 60;
+      fill(0, c0);
+      for (let j = 0; j <= 4; j++) along.push({ t: c0 + j * 30, lat: A * Math.sin((Math.PI * j) / 2) });
+      fill(c0 + 120, Ls);
+    } else {
+      fill(0, Ls);
+    }
+    for (const { t, lat } of along) out.push([sx0 + u2[0] * t - u2[1] * lat, 0, sz0 + u2[1] * t + u2[0] * lat]);
+  }
+  return out;
 }
 
 function scaled(pts: Pt[], k: number): Pt[] {
   return pts.map((p) => [p[0] * k, p[1], p[2] * k, p[3], p[4]] as Pt);
-}
-
-function perimeter(pts: Pt[]): number {
-  let s = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    s += Math.hypot(b[0] - a[0], b[2] - a[2]);
-  }
-  return s;
 }
 
 /** Знак поворота в точке i (>0 — вправо) и кривизна по трём точкам, 1/м */
@@ -250,10 +314,10 @@ export function generateTrack(seed: number): TrackDefinition {
   const id = `gen-${seed}`;
   for (let attempt = 0; attempt <= MAX_ATTEMPTS; attempt++) {
     const rng = mulberry32((seed * 2654435761 + attempt * 40503 + 12345) >>> 0);
-    const base = attempt < MAX_ATTEMPTS ? starPoints(rng) : fallbackPoints(rng);
     const target = 1960 + rng() * 480;
-    // длина растёт линейно с масштабом — одного пересчёта достаточно
-    let pts = scaled(base, target / perimeter(base));
+    const circuit = attempt < MAX_ATTEMPTS ? circuitPoints(rng, target) : fallbackPoints(rng);
+    if (!circuit) continue;
+    let pts = circuit;
     let pkPoly = 0;
     for (let i = 0; i < pts.length; i++) pkPoly = Math.max(pkPoly, turnAt(pts, i).k);
     // быстрый отсев по контрольному многоугольнику (без построения сплайна)
