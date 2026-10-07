@@ -36,6 +36,7 @@ import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from 
 import { getHandling } from '../vehicle/handling';
 import { GarageController } from './garageController';
 import { CampaignController } from './campaignController';
+import { DailyController } from './dailyController';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
 import { BotDriver } from '../ai/botDriver';
@@ -204,6 +205,11 @@ export class Game {
   private readonly garageCtl: GarageController;
   /** Кампания «Неоновая лига» (src/core/campaignController.ts) */
   private readonly campaignCtl: CampaignController;
+  /** Вызов дня (src/core/dailyController.ts) */
+  private readonly dailyCtl: DailyController;
+  /** Модификатор «нитро только с канистр»: допустимый запас нитро игрока */
+  private dailyNitro = 0;
+  private readonly trackLengths = new Map<string, number>();
   /** Статистика гонки игрока (для наград) */
   private stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
 
@@ -256,6 +262,45 @@ export class Game {
       },
       this.garageCtl,
     );
+    this.dailyCtl = new DailyController(
+      {
+        settings: () => this.settings,
+        // подмена без сохранения в localStorage; время суток применяем к миру сразу
+        applyTemp: (s) => {
+          this.settings = s;
+          this.world.setTimeOfDay(s.timeOfDay);
+        },
+        restoreSettings: (saved) =>
+          this.applySettings({ ...this.settings, raceMode: saved.raceMode, laps: saved.laps, difficulty: saved.difficulty, timeOfDay: saved.timeOfDay }, true),
+        setTrack: (id) => {
+          const i = TRACKS.findIndex((t) => t.id === id);
+          if (i >= 0) this.switchTrack(i);
+        },
+        carIndex: (id) => CAR_SPECS.findIndex((c) => c.id === id),
+        selectedCar: () => this.selectedCar,
+        startRace: (i) => {
+          this.cup = null;
+          this.startRace(i);
+        },
+        trackName: (id) => TRACKS.find((t) => t.id === id)?.name ?? id,
+        carName: (id) => CAR_SPECS.find((c) => c.id === id)?.name ?? id,
+        sound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
+      },
+      this.garageCtl,
+      {
+        trackIds: TRACKS.map((t) => t.id ?? t.name),
+        carIds: CAR_SPECS.filter((c) => c.id !== CUSTOM_CAR_ID).map((c) => c.id),
+        trackLength: (id) => {
+          let L = this.trackLengths.get(id);
+          if (L === undefined) {
+            const def = TRACKS.find((t) => t.id === id);
+            L = def ? new Track(def).length : 2000;
+            this.trackLengths.set(id, L);
+          }
+          return L;
+        },
+      },
+    );
     const uiRoot = document.getElementById('ui')!;
     this.ui = new UIManager(uiRoot, {
       cars: CAR_SPECS,
@@ -268,6 +313,7 @@ export class Game {
       trackIndex: this.trackIndex,
       garage: { api: this.garageCtl, cars: CAR_SPECS.map((c) => ({ id: c.id, name: c.name, custom: c.id === CUSTOM_CAR_ID })) },
       campaign: this.campaignCtl,
+      daily: this.dailyCtl,
       callbacks: {
         onCampaignMap: () => {
           this.enterMenu();
@@ -523,6 +569,7 @@ export class Game {
 
   enterMenu(): void {
     this.campaignCtl.end();
+    this.dailyCtl.end();
     this.cup = null;
     this.audio.setAmbience(null);
     this.clearRace();
@@ -604,8 +651,13 @@ export class Game {
   private handlePickup(kind: PickupKind, car: number): void {
     const c = this.cars[car];
     if (!c) return;
-    if (kind === 'pad') c.physics.applyBoost(PICKUP_TUNING.padBoostSeconds, PICKUP_TUNING.padBoostPower);
-    else if (c.isPlayer) this.audio.play('nitroStart');
+    if (kind === 'pad') {
+      const dbl = this.dailyCtl.modifier === 'doubleBoost';
+      c.physics.applyBoost(PICKUP_TUNING.padBoostSeconds * (dbl ? 2 : 1), Math.min(1, PICKUP_TUNING.padBoostPower * (dbl ? 1.5 : 1)));
+    } else if (c.isPlayer) {
+      this.dailyNitro = Math.min(1, this.dailyNitro + PICKUP_TUNING.canNitro);
+      this.audio.play('nitroStart');
+    }
   }
 
   startRace(carIndex: number): void {
@@ -678,6 +730,8 @@ export class Game {
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
     this.stunts.reset();
+    this.dailyNitro = 0;
+    if (this.dailyCtl.modifier === 'nitroCans') this.player.physics.state.nitro = 0;
     this.pickups = new PickupSystem(this.track, pickupLayoutFor(this.track.id));
     this.pickupMesh = new PickupMesh(this.track, this.pickups);
     for (const c of this.cars) c.bot?.setPads(this.pickups.padS, this.pickups.padLateral);
@@ -829,6 +883,12 @@ export class Game {
         controls = NO_CONTROLS;
       }
       c.physics.step(dt, controls);
+      // «нитро только с канистр»: запас растёт лишь от подбора (см. handlePickup), от заноса и слипстрима — нет
+      if (c.isPlayer && this.dailyCtl.modifier === 'nitroCans') {
+        const st = c.physics.state;
+        if (st.nitro > this.dailyNitro) st.nitro = this.dailyNitro;
+        else this.dailyNitro = st.nitro;
+      }
     }
     resolveCarCollisions(this.physicsList);
     updateSlipstream(this.states, dt);
@@ -1061,6 +1121,7 @@ export class Game {
       cupWon: result.cup?.finished === true && result.cup.rows.find((r) => r.isPlayer)?.position === 1,
     });
     this.campaignCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore });
+    this.dailyCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore, wallHits: this.stats.wallHits });
     this.ui.syncCredits();
     this.lastResult = result;
     this.uiMode = 'results';

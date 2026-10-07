@@ -624,6 +624,14 @@ export class ResultsScreen {
       for (const g of cg.goals) el('div', `rcampaign-goal${g.on ? ' on' : ''}`, g.text, box);
       if (cg.reward > 0) el('div', 'rcampaign-note', `НОВЫХ ЗВЁЗД: ${cg.newStars} · +${cg.reward} NC`, box);
     }
+    const dl = r.daily;
+    if (dl) {
+      const box = el('div', 'rdaily', undefined, body);
+      el('div', 'rdaily-title', dl.title, box);
+      el('div', 'rdaily-medal', dl.medal, box);
+      for (const t of dl.lines) el('div', 'rdaily-line', t, box);
+      if (dl.reward > 0) el('div', 'rcampaign-note', `+${dl.reward} NC`, box);
+    }
     this.nextBtn.hidden = !cg;
     this.btnRow.classList.toggle('four', !!cg);
 
