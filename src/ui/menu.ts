@@ -207,10 +207,16 @@ export class MainMenu {
     this.trackTagEl = el('span', 'track-tag', '', tmeta);
     this.trackLenEl = el('span', 'track-len', '', tmeta);
     // «НОВАЯ» — только на карточке «ГЕНЕРАТОР»
-    this.newSeedBtn = el('span', 'track-new', 'НОВАЯ', tmeta);
+    this.newSeedBtn = el('span', 'track-new', 'НОВАЯ (N)', tmeta);
     this.newSeedBtn.setAttribute('role', 'button');
     this.newSeedBtn.hidden = true;
     onTap(this.newSeedBtn, () => this.cb.onNewSeed?.());
+    // горячая клавиша N на карточке «ГЕНЕРАТОР»
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyN' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.newSeedBtn.hidden || this.el.getClientRects().length === 0) return;
+      this.cb.onNewSeed?.();
+    });
     nav.add({
       el: this.trackBox,
       noClick: true,

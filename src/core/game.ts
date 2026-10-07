@@ -484,18 +484,28 @@ export class Game {
 
   /** «НОВАЯ» на карточке «ГЕНЕРАТОР»: случайный seed, пересборка трассы, сохранение в настройках */
   private newTrackSeed(): void {
-    if (this.state !== 'menu') return;
-    this.settings.trackSeed = 1 + Math.floor(Math.random() * 999999);
-    saveSettings(this.settings);
-    setGeneratedSeed(this.settings.trackSeed);
-    this.ui.updateTrack(GEN_INDEX, this.trackInfo(TRACKS[GEN_INDEX]));
-    if (this.trackIndex === GEN_INDEX) {
-      this.track = new Track(TRACKS[GEN_INDEX]);
-      this.world.setTrack(this.track);
-      this.world.setQuality(this.settings.quality);
-      this.setPreviewCar(this.selectedCar);
-    }
+    if (this.state !== 'menu' || this.seedPending) return;
+    this.seedPending = true;
+    // сперва перерисовываем карточку («генерация…»), тяжёлую работу откладываем на следующий кадр
+    this.ui.updateTrack(GEN_INDEX, { id: 'gen-0', name: 'ГЕНЕРАТОР…', tagline: 'Генерация трассы…', lengthKm: 0 });
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        this.seedPending = false;
+        if (this.state !== 'menu') return;
+        this.settings.trackSeed = 1 + Math.floor(Math.random() * 999999);
+        saveSettings(this.settings);
+        setGeneratedSeed(this.settings.trackSeed);
+        this.ui.updateTrack(GEN_INDEX, this.trackInfo(TRACKS[GEN_INDEX]));
+        if (this.trackIndex === GEN_INDEX) {
+          this.track = new Track(TRACKS[GEN_INDEX]);
+          this.world.setTrack(this.track);
+          this.world.setQuality(this.settings.quality);
+          this.setPreviewCar(this.selectedCar);
+        }
+      }, 0),
+    );
   }
+  private seedPending = false;
 
   /** Смена трассы между гонками кубка (вне меню) */
   private switchTrack(i: number): void {

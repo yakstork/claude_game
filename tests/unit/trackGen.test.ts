@@ -26,6 +26,18 @@ describe('генератор трасс', () => {
       const crests = def.points.filter((p) => p[1] > 3).length;
       expect(crests >= 1 && crests <= 2, `seed ${seed}: гребней ${crests}`).toBe(true);
       expect(['city', 'canyon']).toContain(def.decor);
+      // разнообразие: длинная прямая, шпилька (радиус < 45 м)
+      const tr = new Track(def);
+      let run = 0;
+      let bestRun = 0;
+      for (let i = 0; i < tr.count * 2; i++) {
+        if (Math.abs(tr.curvatures[i % tr.count]) < 1 / 500) {
+          run += tr.step;
+          bestRun = Math.max(bestRun, run);
+        } else run = 0;
+      }
+      expect(bestRun, `seed ${seed}: прямая`).toBeGreaterThanOrEqual(200);
+      expect(c.minRadius, `seed ${seed}: шпилька`).toBeLessThanOrEqual(45);
       const lay = def.pickups;
       expect(lay && lay.pads.length >= 4 && lay.cans.length >= 1, `seed ${seed}: пикапы`).toBe(true);
       for (const s of [...lay!.pads, ...lay!.cans]) {
