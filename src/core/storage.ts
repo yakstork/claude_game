@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   difficulty: 'normal',
   laps: 3,
   cameraView: 'far',
+  timeOfDay: 'sunset',
 };
 
 export const DEFAULT_CUSTOM_BUILD: CustomBuild = {
@@ -74,6 +75,7 @@ export function loadSettings(): Settings {
     difficulty: s.difficulty === 'easy' || s.difficulty === 'hard' ? s.difficulty : 'normal',
     laps: (LAP_OPTIONS as readonly number[]).includes(s.laps as number) ? (s.laps as number) : DEFAULT_SETTINGS.laps,
     cameraView: s.cameraView === 'near' || s.cameraView === 'bumper' ? s.cameraView : 'far',
+    timeOfDay: s.timeOfDay === 'night' || s.timeOfDay === 'dawn' ? s.timeOfDay : 'sunset',
   };
 }
 

@@ -15,7 +15,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three/webgpu';
-import { attribute, color, float, length, oneMinus, sin, smoothstep, time, uniform, uv, vertexColor } from 'three/tsl';
+import { abs, attribute, color, float, length, max, oneMinus, pow, sin, smoothstep, time, uniform, uv, vertexColor } from 'three/tsl';
 import type { CarModelKind, VehicleState } from '../core/types';
 import { GeometryBuilder } from '../world/geometryBuilder';
 import { setGlow } from '../world/materials';
@@ -528,6 +528,12 @@ export class CarModel {
   private readonly shadow: Mesh;
   private readonly flameIntensity = uniform(0);
   private readonly glowPulse = uniform(1);
+  private readonly headBeam: Mesh;
+  private readonly tailGlow: Group;
+  private readonly tailPool: Mesh;
+  private readonly lamp = uniform(0);
+  private lampValue = 0;
+  private lampCones = true;
 
   constructor(readonly look: CarLook) {
     const mat = carMaterial();
@@ -562,9 +568,55 @@ export class CarModel {
     this.shadow.renderOrder = 1;
     this.group.add(this.shadow);
 
+    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : look.model === 'hatch' ? -2.05 : look.model === 'limo' ? -2.5 : -2.3;
+
+    // фары: два световых конуса на дороге (аддитивная плоскость с градиентом, без SpotLight)
+    const BEAM_W = 12;
+    const BEAM_L = 24;
+    const bu = uv();
+    const bx = bu.x.sub(0.5).mul(BEAM_W);
+    const bv = oneMinus(bu.y); // 0 у бампера → 1 вдали
+    const spread = bv.mul(1.7).add(0.6);
+    const lobe = (c: number) => smoothstep(spread, spread.mul(0.2), abs(bx.sub(c)));
+    const beam = max(lobe(-0.72), lobe(0.72)).mul(pow(oneMinus(bv), 1.7)).mul(smoothstep(0.0, 0.05, bv));
+    const hMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    hMat.colorNode = color(HEAD).mul(beam).mul(this.lamp).mul(0.42);
+    setGlow(hMat, color(HEAD).mul(beam).mul(this.lamp).mul(0.18));
+    this.headBeam = new Mesh(new PlaneGeometry(BEAM_W, BEAM_L), hMat);
+    this.headBeam.rotation.x = -Math.PI / 2;
+    this.headBeam.position.z = 2.2 + BEAM_L / 2;
+    this.headBeam.renderOrder = 2;
+    this.headBeam.visible = false;
+    this.group.add(this.headBeam);
+
+    // задние фонари: яркие пятна на кормовой стороне + красный отсвет на дороге
+    this.tailGlow = new Group();
+    const tMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    const td = length(uv().sub(0.5).mul(float(2.0)));
+    const tf = oneMinus(smoothstep(0.0, 1.0, td));
+    tMat.colorNode = color(TAIL).mul(tf).mul(this.lamp).mul(1.0);
+    setGlow(tMat, color(TAIL).mul(tf).mul(this.lamp).mul(0.9));
+    for (const side of [-0.62, 0.62]) {
+      const q = new Mesh(new PlaneGeometry(1.1, 0.6), tMat);
+      q.rotation.y = Math.PI;
+      q.position.set(side, 0.45, rearZ - 0.05);
+      q.renderOrder = 3;
+      this.tailGlow.add(q);
+    }
+    const pMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    pMat.colorNode = color(TAIL).mul(tf).mul(this.lamp).mul(0.3);
+    const pool = new Mesh(new PlaneGeometry(4.2, 6), pMat);
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(0, -0.2, rearZ - 2.2);
+    pool.scale.set(0.7, 1, 0.5);
+    pool.renderOrder = 2;
+    this.tailPool = pool;
+    this.tailGlow.add(pool);
+    this.tailGlow.visible = false;
+    this.group.add(this.tailGlow);
+
     // пламя нитро (два конуса из выхлопа)
     const fg = new GeometryBuilder();
-    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : look.model === 'hatch' ? -2.05 : look.model === 'limo' ? -2.5 : -2.3;
     for (const side of [-EXHAUST_X, EXHAUST_X]) {
       fg.cylinder(0.0, 0.16, 1.4, 6, PALETTE.cyan, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.95)));
       fg.cylinder(0.0, 0.09, 0.8, 6, PALETTE.white, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.62)));
@@ -616,6 +668,8 @@ export class CarModel {
     _m.makeTranslation(0, localGround + 0.06, 0);
     this.underglow.position.set(0, Math.max(-1.2, localGround) + 0.05, 0);
     this.shadow.position.set(0, Math.max(-1.2, localGround) + 0.03, 0);
+    this.headBeam.position.y = Math.max(-1.2, localGround) + 0.07;
+    this.tailPool.position.y = Math.max(-1.2, localGround) + 0.06;
     const air = Math.min(1, Math.max(0, -localGround - r) / 4);
     this.shadow.scale.setScalar(1 + air * 0.6);
     this.glowPulse.value = 0.85 + Math.sin(performance.now() * 0.004) * 0.15;
@@ -624,6 +678,19 @@ export class CarModel {
     this.flameIntensity.value += (target - this.flameIntensity.value) * Math.min(1, dt * 12);
     this.flame.visible = this.flameIntensity.value > 0.02;
     this.flame.scale.set(1, 1, 0.7 + this.flameIntensity.value * 0.5 + Math.random() * 0.15);
+  }
+
+  /**
+   * Фары и задние фонари: 0 — днём (как раньше), 1 — ночь/гроза.
+   * cones=false (низкое качество) — без световых конусов на дороге.
+   */
+  setHeadlights(intensity: number, cones = true): void {
+    if (intensity === this.lampValue && cones === this.lampCones) return;
+    this.lampValue = intensity;
+    this.lampCones = cones;
+    this.lamp.value = intensity;
+    this.headBeam.visible = intensity > 0.01 && cones;
+    this.tailGlow.visible = intensity > 0.01;
   }
 
   /** Полупрозрачный «призрак» лучшего круга: без тени и пламени, не пишет глубину */
@@ -635,6 +702,8 @@ export class CarModel {
     mat.needsUpdate = true;
     this.shadow.visible = false;
     this.flame.visible = false;
+    this.headBeam.visible = false;
+    this.tailGlow.visible = false;
     this.group.renderOrder = 2;
   }
 

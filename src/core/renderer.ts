@@ -17,6 +17,8 @@ export class RenderSystem {
   private quality: Quality = 'high';
   private scene: Scene | null = null;
   private camera: Camera | null = null;
+  private bloomNode: { strength: { value: number } } | null = null;
+  private neonBoost = 0;
 
   private constructor(renderer: WebGPURenderer) {
     this.renderer = renderer;
@@ -53,6 +55,13 @@ export class RenderSystem {
     this.rebuild();
   }
 
+  /** Ночью неон сильнее: усиление bloom 0..1 */
+  setNeonBoost(k: number): void {
+    this.neonBoost = k;
+    if (this.bloomNode) this.bloomNode.strength.value = 0.85 * (1 + 0.45 * k);
+    this.renderer.toneMappingExposure = 1 - 0.28 * k;
+  }
+
   getQuality(): Quality {
     return this.quality;
   }
@@ -64,6 +73,7 @@ export class RenderSystem {
     this.renderer.setPixelRatio(Math.min(dpr, cap));
     this.pipeline?.dispose();
     this.pipeline = null;
+    this.bloomNode = null;
     const bloomOn = this.quality !== 'low';
     setGlowEnabled(bloomOn);
     if (!this.scene || !this.camera || !bloomOn) return;
@@ -73,6 +83,8 @@ export class RenderSystem {
     const color = scenePass.getTextureNode('output');
     const glow = scenePass.getTextureNode('emissive');
     const bloomPass = bloom(glow, 0.85, 0.45, 0.0);
+    this.bloomNode = bloomPass;
+    this.setNeonBoost(this.neonBoost);
     const pipeline = new RenderPipeline(this.renderer);
     // лёгкая виньетка + хроматическая аберрация к краям кадра (только high)
     const off = screenUV.sub(vec2(0.5, 0.5));

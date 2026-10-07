@@ -42,6 +42,7 @@ import {
 import { PALETTE } from './palette';
 import { setGlow } from './materials';
 import { Blimps } from './blimps';
+import { skyUniforms, type TodPreset } from './timeOfDay';
 
 /** Направление на солнце (над восточным горизонтом — по стартовой прямой) */
 export const SUN_DIR = new Vector3(1, 0.075, 0.12).normalize();
@@ -56,6 +57,14 @@ export class Sky {
   readonly storm = uniform(0);
   /** Вспышка молнии 0..1 */
   readonly flash = uniform(0);
+  /** Направление на солнце (ночью — на луну) */
+  readonly sunDirU = uniform(SUN_DIR.clone());
+  private readonly sunVis = uniform(1);
+  private readonly night = uniform(0);
+  private readonly glowCol = uniform(new Color(PALETTE.orange));
+  private readonly sunTop = uniform(new Color(PALETTE.yellow));
+  private readonly sunBottom = uniform(new Color(PALETTE.magenta));
+  private mountains: Mesh;
   private readonly blimps = new Blimps();
   private lastT = 0;
 
@@ -64,8 +73,26 @@ export class Sky {
     this.dome.renderOrder = -10;
     this.dome.frustumCulled = false;
     this.group.add(this.dome);
-    this.group.add(createMountains());
+    this.mountains = createMountains();
+    this.group.add(this.mountains);
     this.group.add(this.blimps.group);
+  }
+
+  /** Применить пресет времени суток (цвета, солнце/луна, звёзды) */
+  setPreset(p: TodPreset): void {
+    skyUniforms.zenith.value.set(p.zenith);
+    skyUniforms.high.value.set(p.high);
+    skyUniforms.mid.value.set(p.mid);
+    skyUniforms.horizon.value.set(p.horizon);
+    this.sunDirU.value.copy(p.sunDir);
+    this.sunVis.value = p.sunVis;
+    this.night.value = p.night;
+    this.glowCol.value.set(p.glow);
+    this.sunTop.value.set(p.sunTop);
+    this.sunBottom.value.set(p.sunBottom);
+    // хребты «проседают» там, где солнце
+    const a0 = Math.atan2(SUN_DIR.z, SUN_DIR.x);
+    this.mountains.rotation.y = a0 - Math.atan2(p.sunDir.z, p.sunDir.x);
   }
 
   /** Небо и горы следуют за камерой по горизонтали */
@@ -78,7 +105,9 @@ export class Sky {
 
   private createSkyMaterial(): MeshBasicNodeMaterial {
     const mat = new MeshBasicNodeMaterial({ side: BackSide, depthWrite: false, fog: false });
-    const sunDir = vec3(SUN_DIR.x, SUN_DIR.y, SUN_DIR.z);
+    const sunDir = this.sunDirU;
+    const night = this.night;
+    const sunVis = this.sunVis;
     const sunIntensity = this.sunIntensity;
 
     const dir = normalize(positionLocal);
@@ -108,29 +137,34 @@ export class Sky {
     const meteors = vec3(1.0, 0.85, 1.0).mul(meteor(9.0, 0.0).add(meteor(14.0, 0.37)).mul(1.4));
 
     const skyColor = Fn(() => {
-      const zenith = color(PALETTE.skyZenith);
-      const high = color(PALETTE.skyHigh);
-      const mid = color(PALETTE.skyMid);
-      const horizon = color(PALETTE.skyHorizon);
+      const zenith = skyUniforms.zenith;
+      const high = skyUniforms.high;
+      const mid = skyUniforms.mid;
+      const horizon = skyUniforms.horizon;
       // градиент: горизонт → середина → высоко → зенит
       const c1 = mix(horizon, mid, smoothstep(0.0, 0.09, h));
       const c2 = mix(c1, high, smoothstep(0.07, 0.3, h));
       const c3 = mix(c2, zenith, smoothstep(0.28, 0.75, h));
       // ниже горизонта — тёмный фиолетовый (прячется за землёй и туманом)
-      const below = mix(color(PALETTE.skyMid).mul(0.5), color(PALETTE.void), smoothstep(0.0, -0.15, h));
+      const below = mix(skyUniforms.mid.mul(0.5), color(PALETTE.void), smoothstep(0.0, -0.15, h));
       const base = mix(below, c3, step(0.0, h));
 
       // свечение вокруг солнца, сильнее у горизонта
       const sd = dot(dir, sunDir);
       const glow = pow(max(sd, 0.0), 12.0).mul(0.55).add(pow(max(sd, 0.0), 90.0).mul(0.6));
       const horizonGlow = exp(abs(h).mul(-14.0)).mul(0.35);
-      const warm = color(PALETTE.orange).mul(glow.add(horizonGlow.mul(max(sd, 0.2))));
+      const warmDay = this.glowCol.mul(glow.add(horizonGlow.mul(max(sd, 0.2))));
+      // ночью — слабое свечение города у горизонта и ореол луны
+      const warmNight = this.glowCol.mul(horizonGlow.mul(0.7)).add(color(PALETTE.lilac).mul(pow(max(sd, 0.0), 40.0).mul(0.3)));
+      const warm = mix(warmDay, warmNight, night);
 
       // звёзды: разреженные точки в верхней полусфере
       const cell = floor(dir.mul(260.0));
       const rnd = hash(cell.x.add(cell.y.mul(157.0)).add(cell.z.mul(113.0)));
       const twinkle = fract(rnd.mul(17.0).add(time.mul(0.15))).mul(0.6).add(0.4);
-      const star = step(0.9965, rnd).mul(smoothstep(0.22, 0.55, h)).mul(twinkle);
+      const thr = mix(float(0.9965), float(0.984), night);
+      const lowH = mix(float(0.22), float(0.04), night);
+      const star = step(thr, rnd).mul(smoothstep(lowH, lowH.add(0.33), h)).mul(twinkle);
 
       return base.add(warm).add(vec3(star, star, star).mul(0.9)).add(meteors);
     })();
@@ -147,14 +181,34 @@ export class Sky {
       const d = u.mul(u).add(v.mul(v)).sqrt();
       const disc = float(1.0).sub(smoothstep(r.sub(0.004), r, d)).mul(facing);
       const t = clamp(v.div(r).mul(0.5).add(0.5), 0.0, 1.0); // 0 низ .. 1 верх
-      const sunCol = mix(color(PALETTE.magenta), color(PALETTE.yellow), smoothstep(0.1, 0.95, t));
+      const sunCol = mix(this.sunBottom, this.sunTop, smoothstep(0.1, 0.95, t));
       // прорези в нижней половине: шире книзу, медленно ползут вниз
       const bands = fract(t.mul(9.0).add(time.mul(0.12)));
       const gap = smoothstep(0.62, 0.0, t).mul(0.55);
       const slit = step(gap, bands);
       // солнце частично за горизонтом
       const aboveHorizon = smoothstep(-0.002, 0.004, h);
-      return sunCol.mul(disc.mul(slit).mul(aboveHorizon));
+      return sunCol.mul(disc.mul(slit).mul(aboveHorizon)).mul(sunVis);
+    })();
+
+    // луна-диск с неоновой сеткой (только ночью)
+    const moon = Fn(() => {
+      const up = vec3(0, 1, 0);
+      const right = normalize(sunDir.cross(up));
+      const mUp = normalize(right.cross(sunDir));
+      const r = float(0.085);
+      const u = dot(dir, right).div(r);
+      const v = dot(dir, mUp).div(r);
+      const d = u.mul(u).add(v.mul(v)).sqrt();
+      const facing = step(0.0, dot(dir, sunDir));
+      const disc = float(1.0).sub(smoothstep(0.96, 1.0, d)).mul(facing);
+      // сетка: меридианы и параллели, сжатые к краю диска
+      const gu = abs(fract(u.mul(1.5).add(0.5)).sub(0.5));
+      const gv = abs(fract(v.mul(1.5).add(0.5)).sub(0.5));
+      const line = max(smoothstep(0.07, 0.02, gu), smoothstep(0.07, 0.02, gv));
+      const face = mix(color(PALETTE.white), color(PALETTE.lilac), smoothstep(-0.8, 0.9, v.negate()).mul(0.55));
+      const col = mix(face, color(PALETTE.magenta), line.mul(0.85));
+      return col.mul(disc).mul(night);
     })();
 
     // грозовое небо: тёмные тучи, свечение города у горизонта, вспышки молний
@@ -173,13 +227,13 @@ export class Sky {
       const lit = body.add(cityGlow).add(color(PALETTE.lilac).add(float(0.3)).mul(flash.mul(cloud.mul(0.9).add(0.25))));
       return mix(below, lit, step(-0.02, h));
     })();
-    const clearSky = skyColor.add(sunDisc.mul(1.6));
+    const clearSky = skyColor.add(sunDisc.mul(1.6)).add(moon.mul(1.3));
     mat.colorNode = mix(clearSky, stormSky, storm);
     // emissive-канал: солнце и немного ореола → bloom
     const sd = dot(dir, sunDir);
     setGlow(
       mat,
-      sunDisc.mul(sunIntensity).add(meteors.mul(0.8)).add(color(PALETTE.pink).mul(pow(max(sd, 0.0), 220.0).mul(0.25))).mul(float(1.0).sub(storm)).add(color(PALETTE.lilac).mul(flash.mul(0.5))),
+      sunDisc.mul(sunIntensity).add(moon.mul(0.55)).add(meteors.mul(0.8)).add(color(PALETTE.pink).mul(pow(max(sd, 0.0), 220.0).mul(0.25))).mul(float(1.0).sub(storm)).add(color(PALETTE.lilac).mul(flash.mul(0.5))),
     );
     return mat;
   }
