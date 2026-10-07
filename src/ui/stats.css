@@ -1,0 +1,31 @@
+/* ── Статистика: неоновые плитки. Палитра из :root. ─────────────────────── */
+.stats { display: flex; align-items: center; justify-content: center; background: rgba(13, 2, 33, 0.72); pointer-events: auto; z-index: 3;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.sts-wrap { width: min(52em, 100%); max-height: 100%; display: flex; }
+.sts-panel { --c: 18px; width: 100%; min-height: 0; max-height: 100%; display: flex; flex-direction: column; gap: 0.7em; padding: 0.9em 1.5em 1em; overflow: auto; }
+.sts-title { margin: 0; font-size: 1.8em; color: var(--pink); }
+.sts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.55em; }
+.sts-tile { padding: 0.45em 0.7em; background: rgba(43, 15, 84, 0.6); border: 1px solid var(--lilac); border-left-width: 3px; display: grid; gap: 0.1em; align-content: center; min-width: 0; }
+.sts-tile.wide { grid-column: span 2; }
+.sts-tile.tone-cyan { border-color: var(--cyan); box-shadow: 0 0 0.7em rgba(5, 217, 232, 0.25); }
+.sts-tile.tone-pink { border-color: var(--pink); box-shadow: 0 0 0.7em rgba(255, 110, 199, 0.25); }
+.sts-tile.tone-orange { border-color: var(--orange); box-shadow: 0 0 0.7em rgba(255, 158, 61, 0.25); }
+.sts-tile.tone-yellow { border-color: var(--yellow); box-shadow: 0 0 0.7em rgba(255, 211, 25, 0.25); }
+.sts-label { font-size: 0.55em; letter-spacing: 0.14em; color: var(--lilac); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.sts-value { font-size: 1.15em; font-style: italic; letter-spacing: 0.04em; color: var(--white); text-shadow: 0 0 0.5em var(--magenta); overflow-wrap: anywhere; }
+.tone-cyan .sts-value { color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan); }
+.tone-pink .sts-value { color: var(--pink); }
+.tone-orange .sts-value { color: var(--orange); text-shadow: 0 0 0.5em var(--orange); }
+.tone-yellow .sts-value { color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
+.sts-actions { display: flex; gap: 0.7em; justify-content: flex-end; align-items: center; }
+.sts-actions .btn { min-width: 0; width: auto; padding: 0.35em 1.2em; font-size: 1em; }
+.sts-actions .btn.danger { border-color: var(--orange); color: var(--orange); box-shadow: 0 0 0.8em var(--orange); }
+
+@media (max-width: 720px), (max-height: 520px) {
+  .sts-panel { --c: 12px; gap: 0.35em; padding: 0.5em 1em 0.6em; }
+  .sts-title { font-size: 1.3em; }
+  .sts-grid { grid-template-columns: repeat(3, 1fr); gap: 0.3em; }
+  .sts-tile { padding: 0.25em 0.5em; }
+  .sts-value { font-size: 0.95em; }
+  .sts-actions .btn, .sts-actions .btn.big { padding: 0.2em 0.8em; font-size: 0.85em; }
+}

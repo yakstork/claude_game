@@ -617,8 +617,10 @@ export class ResultsScreen {
     }
 
     const cg = r.campaign;
+    // кампания, соперник и вызов дня — компактно, в одной строке/колонке (см. rival.css)
+    const extras = el('div', 'rextras', undefined, body);
     if (cg) {
-      const box = el('div', 'rcampaign', undefined, body);
+      const box = el('div', 'rcampaign', undefined, extras);
       const st = el('div', 'rcampaign-stars', undefined, box);
       for (let i = 0; i < 3; i++) el('i', i < cg.stars ? 'on' : '', '★', st);
       for (const g of cg.goals) el('div', `rcampaign-goal${g.on ? ' on' : ''}`, g.text, box);
@@ -626,18 +628,17 @@ export class ResultsScreen {
     }
     const rv = r.rival;
     if (rv) {
-      const box = el('div', 'rrival', undefined, body);
+      const box = el('div', 'rrival', undefined, extras);
       el('div', 'rrival-title', `СОПЕРНИК · ${rv.name}`, box);
       el('div', 'rrival-score', `${rv.you} : ${rv.bot}`, box);
-      el('div', 'rrival-line', rv.ahead ? 'В этой гонке ты впереди' : 'В этой гонке соперник впереди', box);
+      el('div', 'rrival-line', rv.ahead ? 'в гонке ты впереди' : 'в гонке он впереди', box);
     }
     const dl = r.daily;
     if (dl) {
-      const box = el('div', 'rdaily', undefined, body);
+      const box = el('div', 'rdaily', undefined, extras);
       el('div', 'rdaily-title', dl.title, box);
       el('div', 'rdaily-medal', dl.medal, box);
-      for (const t of dl.lines) el('div', 'rdaily-line', t, box);
-      if (dl.reward > 0) el('div', 'rcampaign-note', `+${dl.reward} NC`, box);
+      el('div', 'rdaily-line', dl.lines.join(' · ') + (dl.reward > 0 ? ` · +${dl.reward} NC` : ''), box);
     }
     this.nextBtn.hidden = !cg;
     this.btnRow.classList.toggle('four', !!cg);

@@ -38,6 +38,7 @@ import { getHandling } from '../vehicle/handling';
 import { GarageController } from './garageController';
 import { CampaignController } from './campaignController';
 import { DailyController } from './dailyController';
+import { StatsTracker, loadStats, summarize } from '../race/playerStats';
 import { RADIO_MS, chooseRival, headToHead, loadRivals, radioLine, recordRace, saveRivals } from '../race/rivals';
 import { RivalMarker } from '../world/rivalMarker';
 import { CarModel } from '../vehicle/carModel';
@@ -226,6 +227,8 @@ export class Game {
   private readonly garageCtl: GarageController;
   /** Кампания «Неоновая лига» (src/core/campaignController.ts) */
   private readonly campaignCtl: CampaignController;
+  /** Статистика игрока (src/race/playerStats.ts) */
+  private readonly pstats = new StatsTracker(loadStats());
   /** Соперник (src/race/rivals.ts): слот бота, маркер над ним и состояние «рации» */
   private readonly rivals = loadRivals();
   private rivalSlot = -1;
@@ -348,6 +351,11 @@ export class Game {
       garage: { api: this.garageCtl, cars: CAR_SPECS.map((c) => ({ id: c.id, name: c.name, custom: c.id === CUSTOM_CAR_ID })) },
       campaign: this.campaignCtl,
       daily: this.dailyCtl,
+      stats: {
+        tiles: () => summarize(this.pstats.data, { track: (id) => TRACKS.find((t) => t.id === id)?.name ?? id, car: (id) => CAR_SPECS.find((c) => c.id === id)?.name ?? id }),
+        reset: () => this.pstats.reset(),
+        sound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
+      },
       callbacks: {
         onRadio: () => this.cycleRadio(),
         onCampaignMap: () => {
@@ -1015,6 +1023,7 @@ export class Game {
         controls = NO_CONTROLS;
       }
       c.physics.step(dt, controls);
+      if (c.isPlayer && this.state === 'racing' && !this.split.active) this.pstats.addDistance(c.physics.state.speed, dt);
       // «нитро только с канистр»: запас растёт лишь от подбора (см. handlePickup), от заноса и слипстрима — нет
       if (c.isPlayer && this.dailyCtl.modifier === 'nitroCans') {
         const st = c.physics.state;
@@ -1045,7 +1054,10 @@ export class Game {
               this.chase.kick(ev.strength * 0.8);
             }
             this.hitWallThisStep = this.hitWallThisStep || ev.strength > 0.15;
-            if (ev.strength > 0.15 && this.state === 'racing') this.stats.wallHits += 1;
+            if (ev.strength > 0.15 && this.state === 'racing') {
+              this.stats.wallHits += 1;
+              this.pstats.addWall();
+            }
           }
         } else if (ev.type === 'car') {
           this.effects.hit(i, ev.strength);
@@ -1134,6 +1146,7 @@ export class Game {
       for (const ev of this.drift.update(dt, player.physics.state, this.hitWallThisStep)) {
         if (ev.type === 'comboEnd') {
           this.stats.bestCombo = Math.max(this.stats.bestCombo, ev.points);
+          this.pstats.noteCombo(ev.points);
           this.ui.popup(ev.label, `+${ev.points.toLocaleString('ru-RU')}${ev.multiplier > 1 ? `  x${ev.multiplier}` : ''}`, ev.points >= 4000 ? 'yellow' : ev.points >= 1500 ? 'pink' : 'cyan');
           this.audio.play('combo');
         } else if (ev.type === 'comboLost') {
@@ -1256,6 +1269,7 @@ export class Game {
       cupWon: result.cup?.finished === true && result.cup.rows.find((r) => r.isPlayer)?.position === 1,
     });
     this.campaignCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore });
+    if (!this.split.active) this.pstats.addRace({ trackId: this.track.id, carId, mode: this.mode, position: playerPos, racers: this.cars.length });
     this.dailyCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore, wallHits: this.stats.wallHits });
     if (!this.timedMode && this.rivalSlot >= 0) {
       const rr = rows.map((r) => ({ name: r.name, position: r.position, isPlayer: r.isPlayer }));
@@ -1313,6 +1327,7 @@ export class Game {
 
   private frame(dt: number, alpha: number): void {
     this.handleActions(this.input.consumeActions());
+    if (!this.paused) this.pstats.addTime(dt);
 
     if (this.replay.takesOver) {
       this.split.syncAspect(false);
@@ -1511,7 +1526,10 @@ export class Game {
     const gt = this.ghost && this.state === 'racing' ? this.ghost.timeAtDistance(this.lapDistance()) : null;
     h.delta = gt !== null && st.currentLapTime > 1 ? st.currentLapTime - gt : null;
     // буст: новый — когда boostTime вырос; доля = остаток / полная длительность текущего буста
-    if (ps.boostTime > this.boostPrev + 1e-4) this.audio.playBoost(ps.boostPower);
+    if (ps.boostTime > this.boostPrev + 1e-4) {
+      this.audio.playBoost(ps.boostPower);
+      if (this.state === 'racing') this.pstats.addBoost();
+    }
     this.boostPrev = ps.boostTime;
     const boostTotal = this.player.physics.boostDuration;
     h.boost = boostTotal > 0 ? Math.min(1, ps.boostTime / boostTotal) : 0;
