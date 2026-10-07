@@ -20,17 +20,53 @@ import { TRACKS } from '../../src/world/trackData';
 import { CAR_SPECS } from '../../src/vehicle/specs';
 
 describe('данные кампании', () => {
-  it('12 событий в 3 главах, id уникальны, трассы и машины существуют, пороги упорядочены', () => {
-    expect(EVENTS).toHaveLength(12);
-    expect(new Set(EVENTS.map((e) => e.id)).size).toBe(12);
+  it('16 событий в 4 главах, id уникальны, трассы и машины существуют, пороги упорядочены', () => {
+    expect(EVENTS).toHaveLength(16);
+    expect(new Set(EVENTS.map((e) => e.id)).size).toBe(16);
     for (const ch of CHAPTERS) expect(EVENTS.filter((e) => e.chapter === ch.id)).toHaveLength(4);
     for (const e of EVENTS) {
       expect(TRACKS.some((t) => t.id === e.trackId)).toBe(true);
       if (e.carId) expect(CAR_SPECS.some((c) => c.id === e.carId)).toBe(true);
+      expect(['sunset', 'night', 'dawn']).toContain(e.timeOfDay);
+      expect(['race', 'timeAttack', 'drift', 'elimination']).toContain(e.mode);
+      // цель соответствует режиму: дрифт-вызов — очки, время — круг
+      if (e.mode === 'drift') expect(e.goal.kind).toBe('drift');
+      if (e.mode === 'timeAttack') expect(e.goal.kind).toBe('lap');
+      if (e.mode === 'elimination') expect(e.goal.kind).toBe('position');
       const [a, b, c] = e.goal.stars;
       if (e.goal.kind === 'drift') expect(a < b && b < c).toBe(true);
       else expect(a > b && b > c).toBe(true);
     }
+  });
+});
+
+describe('глава 4 и разнообразие', () => {
+  it('глава 4 «Неоновая ночь»: 4 события ночью, нужна 24 звезда, есть дрифт-вызов, выбывание и новые машины', () => {
+    const ch = CHAPTERS.find((c) => c.id === 4)!;
+    expect(ch.need).toBe(24);
+    const ev = EVENTS.filter((e) => e.chapter === 4);
+    expect(ev).toHaveLength(4);
+    for (const e of ev) expect(e.timeOfDay).toBe('night');
+    expect(ev.some((e) => e.mode === 'drift')).toBe(true);
+    expect(ev.some((e) => e.mode === 'elimination')).toBe(true);
+    expect(ev.some((e) => e.carId === 'volt')).toBe(true);
+    expect(ev.some((e) => e.carId === 'nightshade')).toBe(true);
+  });
+  it('глава 4 открывается с 24 звёзд', () => {
+    const p = emptyProgress();
+    for (const e of EVENTS.slice(0, 7)) recordResult(p, e.id, 3);
+    expect(totalStars(p)).toBe(21);
+    expect(isChapterUnlocked(p, 4)).toBe(false);
+    recordResult(p, EVENTS[7].id, 3);
+    expect(isChapterUnlocked(p, 4)).toBe(true);
+    const c4 = EVENTS.find((e) => e.chapter === 4)!;
+    expect(isEventUnlocked(p, c4.id)).toBe(true);
+  });
+  it('в главах 1–3 есть дрифт-вызов или выбывание и разное время суток', () => {
+    const early = EVENTS.filter((e) => e.chapter < 4);
+    expect(early.some((e) => e.mode === 'drift')).toBe(true);
+    expect(early.some((e) => e.mode === 'elimination')).toBe(true);
+    expect(new Set(early.map((e) => e.timeOfDay)).size).toBeGreaterThanOrEqual(2);
   });
 });
 

@@ -236,11 +236,12 @@ export class Game {
     this.campaignCtl = new CampaignController(
       {
         settings: () => this.settings,
-        setTempSettings: (s) => {
-          this.settings = s;
-        },
+        setTempSettings: (s) => this.applySettings(s, false),
         restoreSettings: (saved) =>
-          this.applySettings({ ...this.settings, raceMode: saved.raceMode, laps: saved.laps, difficulty: saved.difficulty }, true),
+          this.applySettings(
+            { ...this.settings, raceMode: saved.raceMode, laps: saved.laps, difficulty: saved.difficulty, timeOfDay: saved.timeOfDay },
+            true,
+          ),
         setTrack: (id) => {
           const i = TRACKS.findIndex((t) => t.id === id);
           if (i >= 0) this.switchTrack(i);
@@ -498,7 +499,7 @@ export class Game {
   touchMode = false;
 
   applySettings(s: Settings, persist: boolean): void {
-    this.settings = { ...s };
+    this.settings = { ...this.campaignCtl.impose(s) };
     this.touchMode = resolveTouchMode(s.controlMode, isTouchDevice());
     this.ui.setTouchMode(this.touchMode);
     this.ui.setTouchLayout(s.touchSize, s.touchOpacity);
@@ -513,7 +514,8 @@ export class Game {
     this.camera.far = s.quality === 'high' ? 2000 : 1600;
     this.camera.updateProjectionMatrix();
     this.ui.setFps(s.showFps ? Math.round(this.loop?.fps ?? 60) : null);
-    if (persist) saveSettings(this.settings);
+    // пока идёт событие кампании, временные режим/круги/сложность/время суток не сохраняются
+    if (persist) saveSettings(this.campaignCtl.persistable(this.settings));
   }
 
   // ─── Меню ──────────────────────────────────────────────────────────────
