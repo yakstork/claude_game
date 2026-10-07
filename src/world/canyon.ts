@@ -24,6 +24,7 @@ const STRATA = [PALETTE.purple, PALETTE.skyHigh, PALETTE.deepViolet, PALETTE.pur
 const _m = new Matrix4();
 const _r = new Matrix4();
 const _c = new Color();
+const LIFT = new Color(PALETTE.lilac);
 
 /** Одна скала: 2–3 слоя-призмы (страты), верхний слой окрашен «закатом» */
 function addRock(gb: GeometryBuilder, x: number, y0: number, z: number, rot: number, w: number, d: number, h: number, rand: () => number): void {
@@ -35,7 +36,7 @@ function addRock(gb: GeometryBuilder, x: number, y0: number, z: number, rot: num
   for (let k = 0; k < layers; k++) {
     const hh = k === layers - 1 ? h - yb : (h - yb) * (0.4 + rand() * 0.2);
     const top = k === layers - 1;
-    const col = _c.set(STRATA[Math.floor(rand() * STRATA.length)]);
+    const col = _c.set(STRATA[Math.floor(rand() * STRATA.length)]).lerp(LIFT, 0.22);
     if (top) col.lerp(new Color(PALETTE.skyMid), 0.18 + rand() * 0.18);
     const j = () => (rand() - 0.5) * dd * 0.5;
     // профиль в (z, y), против часовой при взгляде с +X; верх — неровный
@@ -58,7 +59,7 @@ function canyonMaterial(): MeshStandardNodeMaterial {
   const mat = new MeshStandardNodeMaterial({ roughness: 0.9, metalness: 0.0, flatShading: true, side: DoubleSide });
   const g = attribute('glow', 'float');
   mat.colorNode = vertexColor();
-  mat.emissiveNode = mix(vertexColor().mul(0.0), vertexColor().mul(1.2), step(0.5, g));
+  mat.emissiveNode = mix(vertexColor().mul(0.32), vertexColor().mul(1.2), step(0.5, g));
   return mat;
 }
 

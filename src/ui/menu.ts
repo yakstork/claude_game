@@ -100,6 +100,8 @@ export class MainMenu {
     onGarage: (() => void) | null = null,
     /** «КАМПАНИЯ» (null — кнопки нет) */
     onCampaign: (() => void) | null = null,
+    /** «ВЫЗОВ ДНЯ» (null — кнопки нет) */
+    onDaily: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -242,6 +244,12 @@ export class MainMenu {
       campBtn.setAttribute('role', 'button');
       el('span', undefined, 'КАМПАНИЯ', campBtn);
     }
+    let dailyBtn: HTMLElement | null = null;
+    if (onDaily) {
+      dailyBtn = el('div', 'btn', undefined, btns);
+      dailyBtn.setAttribute('role', 'button');
+      el('span', undefined, 'ВЫЗОВ ДНЯ', dailyBtn);
+    }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
     const adjust = (dir: -1 | 1): boolean => {
@@ -274,6 +282,8 @@ export class MainMenu {
     // «ГАРАЖ» — самый последний пункт Nav (фокус по умолчанию остаётся на «ГОНКА»)
     if (garageBtn && onGarage) nav.add({ el: garageBtn, activate: onGarage, adjust });
     if (campBtn && onCampaign) nav.add({ el: campBtn, activate: onCampaign, adjust });
+    // «ВЫЗОВ ДНЯ» — после «КАМПАНИИ» (последним в Nav)
+    if (dailyBtn && onDaily) nav.add({ el: dailyBtn, activate: onDaily, adjust });
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);

@@ -351,6 +351,8 @@ export interface RaceResult {
   credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
   /** Кампания: итог события */
   campaign?: { title: string; stars: number; newStars: number; reward: number; goals: { text: string; on: boolean }[] };
+  /** Вызов дня: медаль, серия и подсказки */
+  daily?: { title: string; medal: string; medalIndex: number; reward: number; lines: string[] };
   /** Дрифт-вызов: медаль и рекорд */
   challenge?: ChallengeResult;
   /** Выбывание: в таблице время — момент выбывания */
