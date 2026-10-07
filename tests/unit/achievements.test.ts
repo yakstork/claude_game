@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACHIEVEMENTS,
   STORAGE_KEY,
+  TRACK_IDS,
   emptyProgress,
   evaluate,
   loadProgress,
@@ -66,9 +67,9 @@ describe('achievements', () => {
 
   it('победы на всех трассах', () => {
     let p = emptyProgress();
-    for (const t of ['sunset', 'heights', 'coast', 'storm']) p = evaluate(st({ position: 1, trackId: t }), p).progress;
+    for (const t of TRACK_IDS) p = evaluate(st({ position: 1, trackId: t }), p).progress;
     expect(p.unlocked).toContain('all_tracks');
-    expect(p.wonTracks.length).toBe(4);
+    expect(p.wonTracks.length).toBe(TRACK_IDS.length);
   });
 
   it('10 гонок, серия 3, подиумы 5; повторно не открываются', () => {
