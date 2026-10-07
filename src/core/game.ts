@@ -32,7 +32,7 @@ import { PALETTE, cssColor } from '../world/palette';
 import { InputManager, resolveTouchMode } from '../input/input';
 import { VehiclePhysics, createVehicleState } from '../vehicle/physics';
 import { resolveCarCollisions } from '../vehicle/collisions';
-import { updateSlipstream } from '../vehicle/slipstream';
+import { parkEliminated, updateSlipstream } from '../vehicle/slipstream';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from '../vehicle/specs';
 import { getHandling } from '../vehicle/handling';
 import { GarageController } from './garageController';
@@ -781,7 +781,7 @@ export class Game {
     this.radioCool -= dt;
     const rival = this.cars[this.rivalSlot];
     const me = this.player;
-    if (!rival || !me) return;
+    if (!rival || !me || this.elim?.isOut(this.rivalSlot)) return;
     const gap = this.race.progress(this.playerSlot) - this.race.progress(this.rivalSlot);
     const trait = BOT_PROFILES.find((b) => b.name === rival.name)?.trait;
     const say = (kind: 'botPassed' | 'playerPassed' | 'finalLap'): void => {
@@ -1643,6 +1643,7 @@ export class Game {
     for (let k = 0; k < 4; k++) this.effects.sparksAt(p, car.physics.state.velocity, 2);
     car.model.group.visible = false;
     car.physics.frozen = true;
+    parkEliminated(car.physics.state);
     const li = this.physicsList.indexOf(car.physics);
     if (li >= 0) this.physicsList.splice(li, 1);
     this.audio.play('comboLost');

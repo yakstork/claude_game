@@ -24,6 +24,18 @@ export function inSlipstreamCone(follower: VehicleState, leader: VehicleState): 
   return Math.abs(l) <= f * tan;
 }
 
+/**
+ * Выбывшая машина «паркуется»: уходит под трассу и обнуляется по скорости — её не видят слипстрим,
+ * обход соперников ботами и подбор пикапов (все смотрят на позицию и скорость).
+ */
+export function parkEliminated(st: VehicleState): void {
+  st.position.y = -500;
+  st.velocity.set(0, 0, 0);
+  st.speed = 0;
+  st.onGround = false;
+  st.slipstream = 0;
+}
+
 /** Раз в шаг: обновляет states[i].slipstream (нарастание ~riseTime, спад ~fallTime) */
 export function updateSlipstream(states: readonly VehicleState[], dt: number): void {
   const T = SLIPSTREAM_TUNING;
