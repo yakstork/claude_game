@@ -35,6 +35,7 @@ import { updateSlipstream } from '../vehicle/slipstream';
 import { CAR_GEOMETRY, BOT_PROFILES, CAR_SPECS, CUSTOM_PALETTE, specById } from '../vehicle/specs';
 import { getHandling } from '../vehicle/handling';
 import { GarageController } from './garageController';
+import { CampaignController } from './campaignController';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
 import { BotDriver } from '../ai/botDriver';
@@ -201,6 +202,8 @@ export class Game {
   private ghostBeaten = false;
   /** Карьера: кредиты, улучшения, цвета */
   private readonly garageCtl: GarageController;
+  /** Кампания «Неоновая лига» (src/core/campaignController.ts) */
+  private readonly campaignCtl: CampaignController;
   /** Статистика гонки игрока (для наград) */
   private stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
 
@@ -230,6 +233,28 @@ export class Game {
       },
       sound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
     });
+    this.campaignCtl = new CampaignController(
+      {
+        settings: () => this.settings,
+        setTempSettings: (s) => {
+          this.settings = s;
+        },
+        restoreSettings: (saved) =>
+          this.applySettings({ ...this.settings, raceMode: saved.raceMode, laps: saved.laps, difficulty: saved.difficulty }, true),
+        setTrack: (id) => {
+          const i = TRACKS.findIndex((t) => t.id === id);
+          if (i >= 0) this.switchTrack(i);
+        },
+        carIndex: (id) => CAR_SPECS.findIndex((c) => c.id === id),
+        selectedCar: () => this.selectedCar,
+        startRace: (i) => {
+          this.cup = null;
+          this.startRace(i);
+        },
+        sound: (k) => this.audio.play(k === 'move' ? 'uiMove' : k === 'select' ? 'uiSelect' : 'uiBack'),
+      },
+      this.garageCtl,
+    );
     const uiRoot = document.getElementById('ui')!;
     this.ui = new UIManager(uiRoot, {
       cars: CAR_SPECS,
@@ -241,7 +266,12 @@ export class Game {
       tracks: TRACKS.map((d) => this.trackInfo(d)),
       trackIndex: this.trackIndex,
       garage: { api: this.garageCtl, cars: CAR_SPECS.map((c) => ({ id: c.id, name: c.name, custom: c.id === CUSTOM_CAR_ID })) },
+      campaign: this.campaignCtl,
       callbacks: {
+        onCampaignMap: () => {
+          this.enterMenu();
+          this.ui.showCampaign();
+        },
         onPreviewCar: (i) => this.setPreviewCar(i),
         onStartRace: (i) => {
           this.cup = null;
@@ -489,6 +519,7 @@ export class Game {
   // ─── Меню ──────────────────────────────────────────────────────────────
 
   enterMenu(): void {
+    this.campaignCtl.end();
     this.cup = null;
     this.audio.setAmbience(null);
     this.clearRace();
@@ -1021,6 +1052,7 @@ export class Game {
       newBestDrift,
       cupWon: result.cup?.finished === true && result.cup.rows.find((r) => r.isPlayer)?.position === 1,
     });
+    this.campaignCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore });
     this.ui.syncCredits();
     this.lastResult = result;
     this.uiMode = 'results';

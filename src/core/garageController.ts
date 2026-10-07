@@ -99,6 +99,12 @@ export class GarageController implements GarageApi {
     if (hasUpgrades(lv)) physics.useHandling(applyUpgrades(getHandling(carId), lv));
   }
 
+  /** Добавить кредиты (награда кампании) и сохранить */
+  addCredits(n: number): void {
+    award(this.data, { total: n, lines: [] });
+    saveCareer(this.data);
+  }
+
   /** Начислить награду за гонку и сохранить; возвращает данные для экрана результатов */
   awardRace(input: RewardInput): NonNullable<RaceResult['credits']> {
     const reward: Reward = computeReward(input);

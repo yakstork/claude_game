@@ -349,6 +349,8 @@ export interface RaceResult {
   title?: string;
   /** Карьера: награда за гонку (NC) и баланс после неё */
   credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
+  /** Кампания: итог события */
+  campaign?: { title: string; stars: number; newStars: number; reward: number; goals: { text: string; on: boolean }[] };
   /** Дрифт-вызов: медаль и рекорд */
   challenge?: ChallengeResult;
   /** Выбывание: в таблице время — момент выбывания */
@@ -386,6 +388,8 @@ export interface UICallbacks {
   onReplay?(): void;
   /** Фоторежим (кнопка в паузе) */
   onPhoto?(): void;
+  /** Кампания: «ДАЛЕЕ» на результатах события — вернуться к карте */
+  onCampaignMap?(): void;
 }
 
 // ─── Звук ──────────────────────────────────────────────────────────────────
