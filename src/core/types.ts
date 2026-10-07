@@ -26,7 +26,7 @@ export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' |
 
 // ─── Машины ────────────────────────────────────────────────────────────────
 
-export type CarModelKind = 'wedge' | 'muscle' | 'hyper' | 'custom';
+export type CarModelKind = 'wedge' | 'muscle' | 'hyper' | 'custom' | 'hatch' | 'limo';
 
 /** «Своя сборка»: слайдеры 0..1 и цвета (hex) — переводятся в HandlingConfig в безопасных диапазонах */
 export interface CustomBuild {

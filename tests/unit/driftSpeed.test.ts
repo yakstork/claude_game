@@ -314,7 +314,7 @@ describe('круг: дрифт в каждом повороте на 30–40 м/
     razor: { 30: 113, 35: 27, 40: 0 },
     photon: { 30: 28, 35: 6, 40: 0 },
   };
-  for (const id of IDS) {
+  for (const id of IDS.filter((x) => x in OLD)) {
     it(`${id}: круг со скоростью 30/35/40 м/с — проезжается, касаний внутренней стены в S-поворотах не больше старой версии + 20%`, () => {
       for (const V of [30, 35, 40]) {
         const r = driftLap(id, V);
@@ -486,7 +486,7 @@ describe('занос зависит от скорости (ровная площ
 
   it('радиус дуги на 35 м/с: руль 1.0 / 0.45 — Grizzly ≈ 45–55 / ≥ 80, Razor ≈ 50–62 / ≥ 85, Photon ≈ 58–70 / ≥ 95 м', () => {
     const want: Record<string, [number, number, number]> = { grizzly: [44, 56, 80], razor: [49, 62, 85], photon: [58, 70, 95] };
-    for (const id of IDS) {
+    for (const id of IDS.filter((x) => x in want)) {
       const full = steadyRadius(id, 35, 1);
       const half = steadyRadius(id, 35, 0.45);
       const [lo, hi, minHalf] = want[id];
