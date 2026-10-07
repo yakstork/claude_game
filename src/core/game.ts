@@ -1426,6 +1426,7 @@ export class Game {
   debugSimulate(seconds: number): void {
     if (!this.race) return;
     if (!this.playerAutopilot) this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[0], name: 'AUTO', skill: 0.9 }, 7);
+    this.split.forceAuto = this.split.active;
     const dt = 1 / 120;
     for (let t = 0; t < seconds && !this.resultsShown; t += dt) this.step(dt);
     if (this.cars.length) this.chase.snap(this.chaseInput(this.player));

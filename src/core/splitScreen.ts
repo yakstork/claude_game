@@ -34,6 +34,8 @@ export class SplitScreen {
   private readonly hud: SplitHud;
   private readonly finished: [boolean, boolean] = [false, false];
   private readonly autos: [BotDriver | null, BotDriver | null] = [null, null];
+  /** Для QA/debugSimulate: оба игрока едут на автопилоте */
+  forceAuto = false;
   private lastAspect = 0;
   private snapPending = true;
 
@@ -54,6 +56,7 @@ export class SplitScreen {
   begin(on: boolean, p1: number, p2: number): void {
     this.active = on;
     this.snapPending = true;
+    this.forceAuto = false;
     this.slots = [p1, p2];
     this.finished[0] = this.finished[1] = false;
     this.autos[0] = this.autos[1] = null;
@@ -78,7 +81,7 @@ export class SplitScreen {
   /** Управление машиной игрока (человек или автопилот после финиша) */
   controls(slot: number, dt: number, state: VehicleState, spec: CarSpec, states: VehicleState[], track: Track): VehicleControls {
     const i = this.playerIndex(slot) as 0 | 1;
-    if (this.finished[i]) {
+    if (this.finished[i] || this.forceAuto) {
       const auto = (this.autos[i] ??= new BotDriver(track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5 + i));
       return auto.update(dt, state, spec, states);
     }
