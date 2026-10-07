@@ -390,7 +390,7 @@ function chooseStrategy(spec: CarSpec, cfg: HandlingConfig, know: DriftKnowledge
   return { plan, driftUse };
 }
 
-const customSpec: CarSpec = { ...CAR_SPECS[3], id: CUSTOM_CAR_ID };
+const customSpec: CarSpec = { ...(CAR_SPECS.find((c) => c.id === CUSTOM_CAR_ID) as CarSpec), id: CUSTOM_CAR_ID };
 
 function run(label: string, spec: CarSpec, cfg: HandlingConfig, withGrip: boolean): LapResult {
   const know = learnDrift(spec);
@@ -446,7 +446,7 @@ describe('баланс: умелый водитель на Sunset Loop', () => {
   const dev = (r: LapResult): number => Math.abs(r.lap / mean - 1);
 
   it('таблица времён круга: заводские машины, сборка по умолчанию, крайние сборки', () => {
-    for (const id of ['razor', 'grizzly', 'photon']) factory.set(id, runCar(id));
+    for (const id of ['razor', 'grizzly', 'photon', 'volt', 'nightshade']) factory.set(id, runCar(id));
     def = runBuild('custom 0.6/0.6/0.6', DEFAULT_BUILD, true);
     extremes = [
       runBuild('custom 1/1/0', mk(1, 1, 0)),
@@ -499,6 +499,34 @@ describe('баланс: умелый водитель на Sunset Loop', () => {
     for (const r of [razor, grizzly, photon]) expect(gain(r), r.label).toBeGreaterThan(0.03);
     expect(gain(grizzly)).toBeGreaterThan(gain(razor));
     expect(gain(razor)).toBeGreaterThan(gain(photon));
+  });
+
+  it('новые машины: Volt — лучший разгон/руль и быстрый заряд нитро с коротким мощным бустом, Nightshade — высочайшая максималка, самая тяжёлая и инертная; круг в пределах ±4% от среднего', () => {
+    const volt = factory.get('volt') as LapResult;
+    const night = factory.get('nightshade') as LapResult;
+    expect(dev(volt)).toBeLessThanOrEqual(0.04);
+    expect(dev(night)).toBeLessThanOrEqual(0.04);
+    const others = ['razor', 'grizzly', 'photon'].map((id) => getHandling(id));
+    const hv = getHandling('volt');
+    const hn = getHandling('nightshade');
+    for (const o of others) {
+      expect(hv.acceleration).toBeGreaterThan(o.acceleration);
+      expect(hv.steerRate).toBeGreaterThan(o.steerRate);
+      expect(hv.yawResponse).toBeGreaterThan(o.yawResponse);
+      expect(hv.driftChargeRate).toBeGreaterThanOrEqual(o.driftChargeRate);
+      expect(hv.mass).toBeLessThan(o.mass);
+      expect(hn.maxSpeed).toBeGreaterThan(o.maxSpeed);
+      expect(hn.acceleration).toBeLessThan(o.acceleration);
+      expect(hn.mass).toBeGreaterThan(o.mass);
+      expect(hn.steerRate).toBeLessThan(o.steerRate);
+      expect(hn.driftAngleRate).toBeLessThan(o.driftAngleRate);
+    }
+    // средняя максималка Volt; буст короче, чем у Razor и Grizzly, но мощнее, чем у Nightshade
+    expect(hv.maxSpeed).toBeGreaterThan(getHandling('razor').maxSpeed - 2);
+    expect(hv.maxSpeed).toBeLessThan(getHandling('grizzly').maxSpeed);
+    expect(hv.boostDuration).toBeLessThan(getHandling('razor').boostDuration);
+    expect(hv.boostPower).toBeGreaterThan(hn.boostPower);
+    expect(volt.maxSpeed).toBeLessThan(night.maxSpeed);
   });
 
   it('детерминизм: два одинаковых прогона дают одно и то же время круга', () => {

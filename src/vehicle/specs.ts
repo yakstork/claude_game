@@ -1,5 +1,5 @@
 /**
- * Три выдуманные машины и профили ботов (GAME_DESIGN.md §3.2, §3.4).
+ * Пять выдуманных заводских машин (+ «своя сборка») и профили ботов (GAME_DESIGN.md §3.2, §3.4).
  * Визуальные поля — ведущий. Физические числа машин — в handling.ts (HANDLING).
  */
 import type { BotProfile, CarSpec } from '../core/types';
@@ -38,6 +38,26 @@ export const CAR_SPECS: CarSpec[] = [
     stats: { speed: 0.95, handling: 0.7, drift: 0.4 },
   },
   {
+    id: 'volt',
+    name: 'Volt Rider',
+    tagline: 'Лёгкий раллийный хэтч. Рвёт с места и вертится на пятачке, нитро копится быстро, буст короткий и злой.',
+    model: 'hatch',
+    bodyColor: PALETTE.yellow,
+    neonColor: PALETTE.cyan,
+    accentColor: PALETTE.void,
+    stats: { speed: 0.6, handling: 0.95, drift: 0.8 },
+  },
+  {
+    id: 'nightshade',
+    name: 'Nightshade LX',
+    tagline: 'Длинный гран-туризмо люкс. Высочайшая максималка, тяжёлый, занос длинный и плавный.',
+    model: 'limo',
+    bodyColor: PALETTE.violet,
+    neonColor: PALETTE.pink,
+    accentColor: PALETTE.lilac,
+    stats: { speed: 0.98, handling: 0.4, drift: 0.6 },
+  },
+  {
     // «Своя сборка»: цвета и stats перезаписываются из CustomBuild (game.ts), физика — customHandling()
     id: CUSTOM_CAR_ID,
     name: 'Stardust ST',
@@ -60,8 +80,8 @@ export const BOT_PROFILES: BotProfile[] = [
   { name: 'NOVA', skill: 0.92, aggression: 0.6, lineBias: -0.2, bodyColor: PALETTE.cyan, neonColor: PALETTE.pink, carId: 'photon' },
   { name: 'BLAZE', skill: 0.85, aggression: 0.9, lineBias: 0.3, bodyColor: PALETTE.orange, neonColor: PALETTE.cyan, carId: 'grizzly' },
   { name: 'ECHO', skill: 0.8, aggression: 0.4, lineBias: 0.0, bodyColor: PALETTE.violet, neonColor: PALETTE.yellow, carId: 'razor' },
-  { name: 'RONIN', skill: 0.74, aggression: 0.7, lineBias: -0.4, bodyColor: PALETTE.yellow, neonColor: PALETTE.magenta, carId: 'grizzly' },
-  { name: 'KITE', skill: 0.66, aggression: 0.3, lineBias: 0.45, bodyColor: PALETTE.pink, neonColor: PALETTE.cyan, carId: 'razor' },
+  { name: 'RONIN', skill: 0.74, aggression: 0.7, lineBias: -0.4, bodyColor: PALETTE.violet, neonColor: PALETTE.pink, carId: 'nightshade' },
+  { name: 'KITE', skill: 0.66, aggression: 0.3, lineBias: 0.45, bodyColor: PALETTE.yellow, neonColor: PALETTE.cyan, carId: 'volt' },
 ];
 
 export function specById(id: string): CarSpec {

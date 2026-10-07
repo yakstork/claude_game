@@ -150,6 +150,132 @@ function buildBody(look: CarLook): GeometryBuilder {
       body,
     );
     gb.box(hw * 1.9, 0.12, 0.05, TAIL, 1, T(0, 0.5, -2.26));
+  } else if (look.model === 'hatch') {
+    // Volt Rider — короткий раллийный хэтч: высокая кабина, крыло, фары на крыше
+    gb.prism(
+      [
+        [-2.0, -0.12],
+        [2.05, -0.12],
+        [2.1, 0.12],
+        [1.5, 0.4],
+        [-1.95, 0.55],
+        [-2.05, 0.4],
+      ],
+      hw * 1.01,
+      body,
+      0,
+      undefined,
+      0.06,
+      bodyDark,
+    );
+    // высокая кабина с отвесной кормой
+    gb.prism(
+      [
+        [-1.85, 0.5],
+        [0.9, 0.44],
+        [0.2, 1.1],
+        [-1.8, 1.14],
+      ],
+      hw * 0.8,
+      GLASS,
+      0,
+      undefined,
+      0.1,
+    );
+    gb.box(hw * 1.5, 0.06, 1.9, body, 0, T(0, 1.14, -0.8));
+    // гоночная полоса по капоту и крыше
+    gb.box(0.4, 0.012, 1.7, accent, 0, T(0, 0.43, 1.0));
+    gb.box(0.4, 0.014, 1.9, accent, 0, T(0, 1.18, -0.8));
+    // воздухозаборник на капоте с неоном
+    gb.prism(
+      [
+        [0.5, 0.42],
+        [1.3, 0.38],
+        [1.3, 0.44],
+        [0.6, 0.58],
+      ],
+      0.3,
+      DARK,
+    );
+    gb.box(0.5, 0.03, 0.04, neon, 1, T(0, 0.52, 0.65));
+    // фары-прожекторы на крыше
+    for (let i = -1; i <= 1; i += 2) {
+      for (const k of [0.45, 1.0]) {
+        gb.cylinder(0.12, 0.12, 0.08, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(i * k * 0.5 - i * 0.0, 1.26, 0.18)));
+      }
+    }
+    gb.box(hw * 1.2, 0.06, 0.1, DARK, 0, T(0, 1.2, 0.1));
+    // большое заднее крыло на стойках
+    gb.box(hw * 2.0, 0.07, 0.5, accent.getHex() === PALETTE.void ? DARK : accent, 0, T(0, 1.34, -2.0));
+    for (const side of [-1, 1]) {
+      gb.box(0.08, 0.3, 0.3, DARK, 0, T(side * hw * 0.7, 1.2, -1.95));
+      gb.box(0.05, 0.2, 0.55, body, 0, T(side * hw * 1.0, 1.36, -2.0));
+    }
+    gb.box(hw * 2.0, 0.03, 0.05, neon, 1, T(0, 1.38, -2.27));
+    // расширители арок
+    for (const side of [-1, 1]) {
+      for (const z of [1.3, -1.3]) gb.box(0.1, 0.12, 1.0, bodyDark, 0, T(side * (hw * 1.01 + 0.04), 0.3, z));
+    }
+    // фары, стопы
+    gb.box(hw * 1.5, 0.06, 0.05, HEAD, 1, T(0, 0.26, 2.12));
+    gb.box(hw * 1.7, 0.1, 0.05, TAIL, 1, T(0, 0.34, -2.07));
+  } else if (look.model === 'limo') {
+    // Nightshade LX — длинный ретро-футуристичный GT-люкс: длинный капот, плавники, световая лента
+    gb.prism(
+      [
+        [-2.45, -0.12],
+        [2.5, -0.12],
+        [2.55, 0.08],
+        [1.7, 0.4],
+        [-2.3, 0.56],
+        [-2.5, 0.44],
+      ],
+      hw * 1.03,
+      body,
+      0,
+      undefined,
+      0.06,
+      bodyDark,
+    );
+    // длинная низкая кабина, смещённая назад
+    gb.prism(
+      [
+        [-1.9, 0.54],
+        [0.55, 0.48],
+        [-0.1, 0.98],
+        [-1.6, 1.0],
+      ],
+      hw * 0.78,
+      GLASS,
+      0,
+      undefined,
+      0.14,
+    );
+    gb.box(hw * 1.5, 0.05, 1.5, accent, 0, T(0, 1.0, -0.85));
+    // плавники на задних крыльях с неоновой кромкой
+    for (const side of [-1, 1]) {
+      gb.prism(
+        [
+          [-2.45, 0.5],
+          [-1.5, 0.54],
+          [-2.5, 0.88],
+        ],
+        0.05,
+        body,
+        0,
+        T(side * hw * 0.92, 0, 0),
+      );
+      gb.box(0.03, 0.03, 0.95, neon, 1, T(side * hw * 0.92, 0.52, -1.95));
+      // длинная неоновая линия по борту
+      gb.box(0.02, 0.03, 3.8, neon, 1, T(side * (hw * 1.03 + 0.01), 0.28, 0.05));
+      // хромированные боковые вставки
+      gb.box(0.02, 0.1, 1.2, DARK, 0, T(side * (hw * 1.03 + 0.005), 0.14, 1.2));
+    }
+    // световая лента на корме и фары-щели с капотным «стрелком»
+    gb.box(hw * 1.9, 0.06, 0.05, TAIL, 1, T(0, 0.46, -2.5));
+    gb.box(0.14, 0.02, 1.9, neon, 1, T(0, 0.46, 1.1));
+    for (const side of [-1, 1]) gb.box(0.55, 0.05, 0.05, HEAD, 1, T(side * hw * 0.58, 0.22, 2.56));
+    gb.box(hw * 1.4, 0.1, 0.04, DARK, 0, T(0, 0.14, 2.55));
   } else if (look.model === 'custom') {
     // «Своя сборка» — ретро-футуристичный шутинг-брейк: длинная крыша до кормы,
     // рубленая корма, крылья-обтекатели над колёсами и световая балка на крыше
@@ -271,7 +397,17 @@ function buildBody(look: CarLook): GeometryBuilder {
 
   // ── общие детали: зеркала, неон окон, фары, диффузор, выхлоп, сплиттер ──
   const [front, rear] =
-    look.model === 'wedge' ? [2.25, -2.2] : look.model === 'muscle' ? [2.3, -2.28] : look.model === 'custom' ? [2.28, -2.12] : [2.35, -2.3];
+    look.model === 'wedge'
+      ? [2.25, -2.2]
+      : look.model === 'muscle'
+        ? [2.3, -2.28]
+        : look.model === 'custom'
+          ? [2.28, -2.12]
+          : look.model === 'hatch'
+            ? [2.1, -2.05]
+            : look.model === 'limo'
+              ? [2.55, -2.5]
+              : [2.35, -2.3];
   const cab =
     look.model === 'wedge'
       ? { z0: -1.15, z1: 0.9, y: 0.5, zm: 0.55, ym: 0.62, w: hw * 0.74 }
@@ -279,7 +415,11 @@ function buildBody(look: CarLook): GeometryBuilder {
         ? { z0: -1.7, z1: 0.42, y: 0.63, zm: 0.2, ym: 0.78, w: hw * 0.8 }
         : look.model === 'custom'
           ? { z0: -1.95, z1: 0.85, y: 0.48, zm: 0.55, ym: 0.62, w: hw * 0.82 }
-          : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
+          : look.model === 'hatch'
+            ? { z0: -1.8, z1: 0.85, y: 0.46, zm: 0.6, ym: 0.62, w: hw * 0.8 }
+            : look.model === 'limo'
+              ? { z0: -1.7, z1: 0.5, y: 0.5, zm: 0.3, ym: 0.62, w: hw * 0.78 }
+              : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
   for (const side of [-1, 1]) {
     // зеркала на стойке
     gb.box(0.05, 0.05, 0.12, DARK, 0, T(side * (cab.w + 0.08), cab.ym - 0.04, cab.zm));
@@ -301,6 +441,14 @@ function buildBody(look: CarLook): GeometryBuilder {
       gb.cylinder(0.1, 0.1, 0.04, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * hw * 0.42, 0.33, 2.3)));
       for (const k of [0.62, 0.36]) gb.box(0.24, 0.12, 0.05, TAIL, 1, T(side * hw * k, 0.5, -2.29));
     }
+  } else if (look.model === 'hatch') {
+    // круглые противотуманки в бампере и мудфлапы
+    for (const side of [-1, 1]) {
+      gb.cylinder(0.11, 0.11, 0.04, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * hw * 0.62, 0.2, 2.12)));
+      gb.box(0.03, 0.2, 0.22, DARK, 0, T(side * (hw * 1.01 + 0.02), 0.0, -1.0));
+    }
+  } else if (look.model === 'limo') {
+    // детали уже в основном блоке
   } else if (look.model === 'custom') {
     // своя сборка: детали уже в основном блоке
   } else {
@@ -416,7 +564,7 @@ export class CarModel {
 
     // пламя нитро (два конуса из выхлопа)
     const fg = new GeometryBuilder();
-    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : -2.3;
+    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : look.model === 'hatch' ? -2.05 : look.model === 'limo' ? -2.5 : -2.3;
     for (const side of [-EXHAUST_X, EXHAUST_X]) {
       fg.cylinder(0.0, 0.16, 1.4, 6, PALETTE.cyan, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.95)));
       fg.cylinder(0.0, 0.09, 0.8, 6, PALETTE.white, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.62)));
