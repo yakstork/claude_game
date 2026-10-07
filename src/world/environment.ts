@@ -12,13 +12,14 @@ import {
   MeshStandardNodeMaterial,
   Vector3,
 } from 'three/webgpu';
-import { attribute, color, floor, fract, hash, mix, sin, smoothstep, step, time, vertexColor } from 'three/tsl';
+import { attribute, color, float, floor, fract, hash, mix, sin, smoothstep, step, time, vertexColor } from 'three/tsl';
 import type { Track } from './track';
 import { Sea, shoreX, BEACH_WIDTH } from './sea';
 import { PALETTE } from './palette';
 import { GeometryBuilder } from './geometryBuilder';
 import { uprightFrame } from './trackMesh';
 import { SUN_DIR } from './sky';
+import { nightBoost } from './timeOfDay';
 import { GROUND_Y } from './constants';
 import { SignBuilder } from './signs';
 
@@ -177,7 +178,7 @@ function buildingMaterial(): MeshStandardNodeMaterial {
   const win = step(0.2, fu).mul(step(fu, 0.8)).mul(step(0.3, fv)).mul(step(fv, 0.75));
   const id = floor(u.div(cw)).add(floor(y.div(ch)).mul(57.0)).add(seed.mul(131.0));
   const r = hash(id);
-  const lit = step(0.6, r);
+  const lit = step(mix(float(0.6), float(0.5), nightBoost), r);
   // редкое мерцание
   const flicker = step(0.985, hash(id.add(floor(time.mul(2.0))))).oneMinus();
   const winCol = mix(mix(color(PALETTE.orange), color(PALETTE.pink), hash(id.mul(1.7))), color(PALETTE.cyan), step(0.86, hash(id.mul(3.1))));
@@ -190,7 +191,7 @@ function buildingMaterial(): MeshStandardNodeMaterial {
   const edge = step(u, 0.35).add(step(width.sub(0.35), u)).mul(isRoof.oneMinus()).mul(step(0.5, hash(seed.mul(7.3))));
   const pulse = sin(time.mul(1.5).add(seed.mul(10.0))).mul(0.2).add(0.8);
 
-  const glow = winCol.mul(windows).mul(0.9).add(accent.mul(roofStripe.add(edge.mul(0.6))).mul(pulse));
+  const glow = winCol.mul(windows).mul(nightBoost.mul(0.3).add(0.9)).add(accent.mul(roofStripe.add(edge.mul(0.6))).mul(pulse).mul(nightBoost.mul(0.6).add(1.0)));
   const wall = mix(base, base.mul(0.55), darkWin);
   mat.colorNode = mix(wall, base.mul(0.7), isRoof).add(glow.mul(0.5));
   mat.emissiveNode = glow;

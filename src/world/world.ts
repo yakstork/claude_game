@@ -2,7 +2,7 @@
  * World — сборка мира: небо, земля, трасса, окружение, свет, туман.
  */
 import { Color, DirectionalLight, Fog, HemisphereLight, Mesh, type Scene, type Vector3 } from 'three/webgpu';
-import type { Quality } from '../core/types';
+import type { Quality, TimeOfDay } from '../core/types';
 import type { Track } from './track';
 import { Sky, SUN_DIR } from './sky';
 import { Ground } from './ground';
@@ -10,6 +10,7 @@ import { TrackMesh } from './trackMesh';
 import { Environment } from './environment';
 import { PALETTE } from './palette';
 import { Weather } from './weather';
+import { nightBoost, TOD_PRESETS } from './timeOfDay';
 
 export const FOG_COLOR = 0x4a1268;
 
@@ -25,6 +26,7 @@ export class World {
   private weather: Weather | null = null;
   private stormy = false;
   private quality: Quality = 'high';
+  private tod: TimeOfDay = 'sunset';
 
   constructor(
     readonly scene: Scene,
@@ -57,8 +59,7 @@ export class World {
     this.stormy = storm;
     this.sky.storm.value = storm ? 1 : 0;
     this.sky.flash.value = 0;
-    this.fog.color.set(storm ? 0x1c0838 : FOG_COLOR);
-    this.setLights(0);
+    this.applyTimeOfDay();
     if (storm && !this.weather) {
       this.weather = new Weather();
       this.weather.rain.setDensity(this.quality === 'high' ? 1 : 0.4);
@@ -68,10 +69,39 @@ export class World {
   }
 
   private setLights(flash: number): void {
+    const p = TOD_PRESETS[this.tod];
     const k = this.stormy ? 0.55 : 1;
-    this.hemi.intensity = 1.6 * k + flash * 3.2;
-    this.sun.intensity = (this.stormy ? 0.5 : 2.4) + flash * 2.0;
-    this.rim.intensity = (this.stormy ? 0.6 : 0.9) + flash * 1.0;
+    this.hemi.intensity = (this.stormy ? 1.6 : p.hemiIntensity) * k + flash * 3.2;
+    this.sun.intensity = (this.stormy ? 0.5 : p.sunLightIntensity) + flash * 2.0;
+    this.rim.intensity = (this.stormy ? 0.6 : p.rimIntensity) + flash * 1.0;
+  }
+
+  /** Время суток: на Storm Boulevard всегда ночная гроза (погода приоритетнее) */
+  setTimeOfDay(t: TimeOfDay): void {
+    this.tod = t;
+    this.applyTimeOfDay();
+  }
+
+  /** Фары включены: ночь или гроза (0..1) */
+  get headlights(): number {
+    return this.stormy || this.tod === 'night' ? 1 : 0;
+  }
+
+  /** Ночной вид (для усиления неона): ночь или гроза */
+  get isNight(): boolean {
+    return this.headlights > 0;
+  }
+
+  private applyTimeOfDay(): void {
+    const p = TOD_PRESETS[this.stormy ? 'sunset' : this.tod];
+    this.sky.setPreset(p);
+    nightBoost.value = this.headlights;
+    this.fog.color.set(this.stormy ? 0x1c0838 : p.fog);
+    this.hemi.color.set(p.hemiColor);
+    this.sun.color.set(p.sunLight);
+    this.sun.position.copy(p.sunDir).multiplyScalar(100);
+    this.rim.position.set(-p.sunDir.x * 100, 60, -p.sunDir.z * 100);
+    this.setLights(0);
   }
 
   /** Сменить трассу: старые дорога и окружение удаляются и освобождаются */

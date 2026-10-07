@@ -242,7 +242,11 @@ export interface Settings {
   laps: number;
   /** Вид камеры в гонке (переключается клавишей C) */
   cameraView: CameraView;
+  /** Время суток: закат / ночь / рассвет (на Storm Boulevard погода приоритетнее) */
+  timeOfDay: TimeOfDay;
 }
+
+export type TimeOfDay = 'sunset' | 'night' | 'dawn';
 
 export type RaceMode = 'race' | 'timeAttack' | 'cup';
 export type Difficulty = 'easy' | 'normal' | 'hard';
