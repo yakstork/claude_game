@@ -25,7 +25,7 @@ test('все режимы и кампания стартуют без ошибо
       g.startRace(0);
     }, mode);
     await page.waitForFunction(() => window.__neonRush!.info().state === 'countdown', null, { timeout: 20_000 });
-    await page.evaluate(() => window.__neonRush!.game.debugSimulate(5));
+    await page.evaluate(() => window.__neonRush!.game.debugSimulate(8));
     expect(await page.evaluate(() => window.__neonRush!.info().state), mode).toBe('racing');
     await page.evaluate(() => window.__neonRush!.game.pause());
     await page.waitForFunction(() => window.__neonRush!.info().paused, null, { timeout: 10_000 });
@@ -40,7 +40,7 @@ test('все режимы и кампания стартуют без ошибо
     g.campaignCtl.start('c1e1');
   });
   await page.waitForFunction(() => window.__neonRush!.info().state === 'countdown', null, { timeout: 20_000 });
-  await page.evaluate(() => window.__neonRush!.game.debugSimulate(5));
+  await page.evaluate(() => window.__neonRush!.game.debugSimulate(8));
   await page.evaluate(() => window.__neonRush!.game.enterMenu());
 
   expect(errors).toEqual([]);
