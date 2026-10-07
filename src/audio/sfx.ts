@@ -25,6 +25,7 @@ const BOOST_MIN_INTERVAL_MS = 250;
 export class SfxPlayer {
   private readonly last = new Map<SfxName, number>();
   private lastBoostMs = -1e9;
+  private lastFireworkMs = -1e9;
   /** Входной gain эффектов (общий подъём уровня относительно музыки). */
   private readonly dest: GainNode;
 
@@ -57,6 +58,25 @@ export class SfxPlayer {
     // бас-удар в начале
     playTone(ctx, d, { type: 'sine', freq: 140, freqEnd: 40, start: t, dur: 0.3, gain: 0.34 + 0.2 * p, attack: 0.002 });
     playNoise(ctx, d, { filter: 'lowpass', freq: 600, freqEnd: 140, q: 0.7, start: t, dur: 0.12, gain: 0.15 + 0.1 * p, attack: 0.002 });
+  }
+
+  /** Залп фейерверка: свист вверх, хлопок и россыпь «искр». Синтез, без аллокаций вне вызова. */
+  playFirework(): void {
+    const ctx = this.ctx;
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastFireworkMs < 120) return;
+    this.lastFireworkMs = nowMs;
+    const t = ctx.currentTime + 0.01;
+    const d = this.dest;
+    const rise = 0.28;
+    playNoise(ctx, d, { filter: 'bandpass', freq: 700, freqEnd: 2600, q: 5, start: t, dur: rise, gain: 0.07, attack: 0.05 });
+    playTone(ctx, d, { type: 'sine', freq: 500, freqEnd: 1700, start: t, dur: rise, gain: 0.05, attack: 0.05 });
+    const b = t + rise;
+    playNoise(ctx, d, { filter: 'lowpass', freq: 1800, freqEnd: 200, q: 0.7, start: b, dur: 0.35, gain: 0.34, attack: 0.002 });
+    playTone(ctx, d, { type: 'sine', freq: 120, freqEnd: 40, start: b, dur: 0.3, gain: 0.4, attack: 0.002 });
+    for (let i = 0; i < 6; i++) {
+      playNoise(ctx, d, { filter: 'highpass', freq: 4000 + Math.random() * 3000, q: 0.8, start: b + 0.08 + i * 0.07 + Math.random() * 0.05, dur: 0.05, gain: 0.07, attack: 0.001 });
+    }
   }
 
   play(name: SfxName): void {

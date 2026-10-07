@@ -64,6 +64,8 @@ import type { CameraView, RaceMode } from './types';
 import { GhostPlayer, GhostRecorder } from '../race/ghost';
 import { Cup } from '../race/cup';
 import { Elimination } from '../race/elimination';
+import { FINISH_ORBIT_DURATION, INTRO_DURATION, createPose, finishPose, introPose } from './cinematics';
+import { Fireworks } from '../world/fireworks';
 import { CHALLENGE_DURATION, DriftChallenge, medalFor, medalThresholds, nextGoal, submitChallengeScore } from '../race/driftChallenge';
 import { StuntScorer } from '../race/stunts';
 import { PICKUP_TUNING, PickupSystem, type PickupKind } from '../race/pickups';
@@ -188,6 +190,17 @@ export class Game {
   private get timedMode(): boolean {
     return this.mode === 'drift' || this.mode === 'elimination';
   }
+  // кинематографичные старт и финиш
+  private readonly fireworks = new Fireworks();
+  private readonly pose = createPose();
+  /** Остаток облёта перед стартом, с (0 — нет облёта) */
+  private introT = 0;
+  private introStartMs = 0;
+  /** Орбита камеры вокруг машины игрока после финиша */
+  private finishCam = false;
+  private fwX = 0;
+  private fwY = 0;
+  private fwZ = 0;
   /** Выбывание: каждые N секунд вылетает последний */
   private elim: Elimination | null = null;
   /** Время гонки (с), на котором выбыла машина; индекс — машина */
@@ -237,6 +250,12 @@ export class Game {
     this.track = new Track(TRACKS[this.trackIndex]);
     this.world = new World(this.scene, this.track);
     this.scene.add(this.effects.group);
+    this.scene.add(this.fireworks.group);
+    const skip = (e: Event) => {
+      if (!(e instanceof KeyboardEvent && e.repeat)) this.skipIntro();
+    };
+    window.addEventListener('keydown', skip);
+    window.addEventListener('pointerdown', skip);
 
     this.syncCustomSpec();
     // карьера: цвета заводских машин и улучшения (src/core/garageController.ts)
@@ -647,6 +666,9 @@ export class Game {
     }
     this.ghost = null;
     this.effects.clear();
+    this.fireworks.clear();
+    this.finishCam = false;
+    this.introT = 0;
     if (this.pickupMesh) {
       this.scene.remove(this.pickupMesh.group);
       this.pickupMesh.dispose();
@@ -804,6 +826,14 @@ export class Game {
     this.paused = false;
     this.uiMode = null;
     this.countdownT = COUNTDOWN;
+    this.fireworks.clear();
+    this.finishCam = false;
+    // облёт перед стартом: не при ?autostart=1 и ?intro=0, пропускается любой клавишей/тапом
+    // под автоматизацией (e2e, navigator.webdriver) облёта нет, если не задан ?intro=1
+    const introParam = new URLSearchParams(location.search).get('intro');
+    const noIntro = this.opts.autostart || introParam === '0' || (introParam !== '1' && navigator.webdriver === true);
+    this.introT = noIntro ? 0 : INTRO_DURATION;
+    this.introStartMs = performance.now();
     this.startJudge.reset();
     this.lastCount = 0;
     this.finishT = 0;
@@ -903,7 +933,10 @@ export class Game {
     const race = this.race;
 
     if (this.state === 'countdown') {
-      this.countdownT -= dt;
+      if (this.introT > 0) {
+        this.introT -= dt;
+        if (this.introT <= 0) this.endIntro();
+      } else this.countdownT -= dt;
       if (this.countdownT <= 0) {
         this.state = 'racing';
         for (const c of this.cars) c.physics.frozen = false;
@@ -929,6 +962,12 @@ export class Game {
             if (this.pickups) this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);
           }
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
+          // после финиша плавно тормозим у арки, чтобы салют оставался в кадре
+          if (this.finishCam && this.state === 'finished') {
+            controls.throttle = 0;
+            controls.brake = 0.5;
+            controls.nitro = false;
+          }
         } else {
           controls = this.input.controls(dt);
           this.judgeStart(c, controls);
@@ -1027,6 +1066,7 @@ export class Game {
       } else if (ev.type === 'finish') {
         this.state = 'finished';
         this.finishT = 0;
+        this.startFinishShow();
         for (const d of this.drift.flush()) {
           if (d.type === 'comboEnd') this.ui.popup(d.label, `+${d.points.toLocaleString('ru-RU')}`, 'pink');
         }
@@ -1073,6 +1113,7 @@ export class Game {
     if (chal && this.state === 'racing' && chal.update(dt)) {
       this.state = 'finished';
       this.finishT = 0;
+      this.startFinishShow();
       for (const d of this.drift.flush()) {
         if (d.type === 'comboEnd') this.ui.popup(d.label, `+${d.points.toLocaleString('ru-RU')}`, 'pink');
       }
@@ -1270,7 +1311,11 @@ export class Game {
       if (!this.paused) {
         const inp = this.chaseInput(p);
         inp.position = p.renderPos;
-        this.chase.update(dt, inp);
+        if (this.introT > 0) this.updateIntroCamera();
+        else if (this.finishCam && this.state === 'finished' && this.finishT < FINISH_ORBIT_DURATION) {
+          finishPose(this.finishT, p.renderPos.x, p.renderPos.y, p.renderPos.z, p.physics.state.heading, this.fwX, this.fwY, this.fwZ, this.pose);
+          this.chase.setPose(this.pose);
+        } else this.chase.update(dt, inp);
       }
       if (this.split.active && (!this.paused || this.state === 'countdown')) {
         const c2 = this.cars[this.split.slots[1]];
@@ -1278,6 +1323,7 @@ export class Game {
         inp2.position = c2.renderPos;
         this.split.updateCamera2(dt, inp2);
       }
+      if (this.fireworks.update(this.paused ? 0 : dt) > 0) this.audio.playFirework();
       if (this.replay.photo) this.replay.updatePhoto(dt);
       this.updateHud();
       this.updateCountdown();
@@ -1333,7 +1379,37 @@ export class Game {
     };
   }
 
+  /** Облёт: пролёт вдоль трассы к решётке, затем виток к камере за машиной */
+  private updateIntroCamera(): void {
+    const p = this.player;
+    const g = p.physics.state;
+    const s0 = g.trackS;
+    const a = this.track.sampleAt(this.track.wrapS(s0 + 170));
+    introPose(1 - this.introT / INTRO_DURATION, g.position.x, g.position.y, g.position.z, g.heading, a.position.x, a.position.y, a.position.z, this.pose);
+    this.chase.setPose(this.pose);
+  }
+
+  private endIntro(): void {
+    this.introT = 0;
+    if (this.cars.length) this.chase.snap(this.chaseInput(this.player));
+  }
+
+  private skipIntro(): void {
+    if (this.introT > 0 && performance.now() - this.introStartMs > 350) this.endIntro();
+  }
+
+  /** Финиш игрока: орбита камеры и салют над аркой */
+  private startFinishShow(): void {
+    this.finishCam = true;
+    const s = this.track.sampleAt(0);
+    this.fwX = s.position.x;
+    this.fwY = s.position.y + 16;
+    this.fwZ = s.position.z;
+    this.fireworks.start(this.fwX, this.fwY, this.fwZ, s.right.x, s.right.z);
+  }
+
   private updateCountdown(): void {
+    if (this.introT > 0) return;
     if (this.state !== 'countdown') {
       if (this.lastCount !== 0 && this.lastCount !== -1) {
         this.ui.setCountdown('GO');
@@ -1455,6 +1531,7 @@ export class Game {
       this.state = 'finished';
       this.finishT = 0;
       if (elim.playerWon) {
+        this.startFinishShow();
         this.audio.play('finish');
         this.ui.banner('ПОБЕДА!', 'yellow');
       }
@@ -1563,6 +1640,7 @@ export class Game {
    */
   debugSimulate(seconds: number): void {
     if (!this.race) return;
+    if (this.introT > 0) this.endIntro();
     if (!this.playerAutopilot) {
       this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[0], name: 'AUTO', skill: 0.9 }, 7);
       if (this.pickups) this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);

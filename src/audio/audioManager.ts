@@ -134,6 +134,12 @@ export class AudioManager {
     this.safe(() => this.sfx?.playBoost(power));
   }
 
+  /** Залп фейерверка на финише. */
+  playFirework(): void {
+    if (!this.sfx) return;
+    this.safe(() => this.sfx?.playFirework());
+  }
+
   /**
    * Сила ускорения 0..1 на время его действия (можно звать каждый кадр): тон мотора чуть выше
    * и мягкое шипение через нитро-слой. 0 — обычный звук. Без аллокаций.
