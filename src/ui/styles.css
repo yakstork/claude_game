@@ -784,6 +784,11 @@
   width: clamp(44px, calc(var(--u) * 56), 60px);
   height: clamp(44px, calc(var(--u) * 56), 60px);
 }
+.nr-tc-cam {
+  --c: var(--cyan);
+  --cr: 5, 217, 232;
+  top: calc(env(safe-area-inset-top, 0px) + 4px + clamp(44px, calc(var(--u) * 56), 60px) + 8px);
+}
 .nr-tc-pause .nr-tc-face { inset: 3px; }
 .nr-tc-pause .nr-tc-icon { width: 46%; height: 46%; }
 
@@ -946,15 +951,17 @@
   .car-tag { min-height: 2.4em; font-size: 0.78em; }
   .car-stats { margin: 0.35em 0 0.1em; gap: 0.32em; }
   .car-colors { display: none; }
-  .menu-rec-wrap { right: 0.8em; top: 0.5em; width: 16.5em; }
+  .menu-rec-wrap { display: none; }
   .menu-rec { padding: 0.5em 0.8em 0.6em; }
   .panel-title { margin-bottom: 0.3em; }
   .rec-grid { row-gap: 0.32em; column-gap: 0.4em; }
   .rec-val { font-size: 0.85em; letter-spacing: 0; }
   .rec-grid > :nth-child(odd) { font-size: 0.62em; letter-spacing: 0.1em; }
-  .menu-buttons { right: 1.3em; bottom: 0.8em; min-width: 0; width: 14.5em; gap: 0.55em; }
+  .menu-buttons { right: 1.3em; bottom: 0.4em; min-width: 0; width: 14.5em; gap: 0.3em; }
   .menu-buttons .btn { min-width: 0; padding-left: 0.4em; padding-right: 0.4em; }
   .btn.big { font-size: 1.4em; padding-top: 0.3em; padding-bottom: 0.3em; min-height: 52px; }
+  .menu-buttons .btn.big { font-size: 1.2em; min-height: 46px; }
+  .menu-buttons .btn:not(.big) { font-size: 0.9em; padding-top: 0.15em; padding-bottom: 0.15em; min-height: 40px; }
 
   /* выбор трассы: компактная панель в левом верхнем углу (лого начинается правее) */
   .menu-track-wrap { left: 0.6em; top: 0.4em; width: 16.2em; }
@@ -976,8 +983,9 @@
   .settings-panel { --c: 12px; padding: 0.3em 1.2em 0.7em; }
   .settings-panel .screen-title { min-height: 44px; display: grid; place-items: center; margin: 0; }
   .set-list { display: flex; flex-direction: column; }
-  .set-row { grid-template-columns: 8.6em 1fr 3.2em; gap: 0.6em; padding: 0.1em 0.6em; margin: 0; }
-  .set-row.wide { grid-template-columns: 1fr; row-gap: 0.15em; padding-top: 0.3em; padding-bottom: 0.4em; }
+  .set-row { grid-template-columns: 8.6em 1fr 3.2em; gap: 0.5em; padding: 0.05em 0.6em; margin: 0; }
+  .set-row.wide { grid-template-columns: 1fr; row-gap: 0; padding-top: 0.1em; padding-bottom: 0.2em; }
+  .set-row.wide .set-label { font-size: 0.64em; }
   .set-row.wide .segments { grid-column: 1 / -1; }
   .set-label { font-size: 0.74em; line-height: 1.15; }
   .s-full { display: none; }
