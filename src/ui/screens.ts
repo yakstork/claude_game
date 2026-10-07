@@ -1,5 +1,5 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
-import type { TimeOfDay, CameraView, CarSpec, ChallengeResult, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
+import type { Weather, TimeOfDay, CameraView, CarSpec, ChallengeResult, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
 import { isTouchDevice } from '../core/device';
 import { el, onTap } from './dom';
 import {
@@ -86,7 +86,7 @@ const CONTROL_MODES: { mode: ControlMode; full: string; short: string }[] = [
   { mode: 'touch', full: 'СЕНСОРНЫЕ КНОПКИ', short: 'КНОПКИ' },
 ];
 
-type ChoiceKey = 'raceMode' | 'difficulty' | 'laps' | 'cameraView' | 'timeOfDay';
+type ChoiceKey = 'raceMode' | 'difficulty' | 'laps' | 'cameraView' | 'timeOfDay' | 'weather';
 interface ChoiceDef<K extends ChoiceKey = ChoiceKey> {
   key: K;
   label: string;
@@ -141,6 +141,15 @@ export const RACE_CHOICES: ChoiceDef[] = [
       { value: 'sunset' as TimeOfDay, full: 'ЗАКАТ' },
       { value: 'night' as TimeOfDay, full: 'НОЧЬ' },
       { value: 'dawn' as TimeOfDay, full: 'РАССВЕТ', short: 'РАССВ.' },
+    ],
+  },
+  {
+    key: 'weather',
+    label: 'ПОГОДА',
+    options: [
+      { value: 'clear' as Weather, full: 'ЯСНО' },
+      { value: 'rain' as Weather, full: 'ДОЖДЬ' },
+      { value: 'fog' as Weather, full: 'ТУМАН' },
     ],
   },
 ];

@@ -46,7 +46,11 @@ const STEP = 2;
 export class TrackMesh {
   readonly group = new Group();
 
-  constructor(readonly track: Track) {
+  constructor(
+    readonly track: Track,
+    /** Мокрый асфальт на любой трассе (дождь); на Storm Boulevard всегда мокрый */
+    readonly wet = false,
+  ) {
     this.group.add(this.buildRoad());
     this.group.add(this.buildBarriers());
     this.group.add(this.buildStructures());
@@ -116,7 +120,7 @@ export class TrackMesh {
     let base = mix(asphalt, color(PALETTE.void), shoulder);
     base = mix(base, startCol, onStart.mul(step(edgeDist, hw).mul(step(0.4, edgeDist))));
     const glow = edgeCol.mul(edge).add(innerCol.mul(inner)).add(laneCol.mul(lane).mul(0.5));
-    if (this.track.id === 'storm') {
+    if (this.track.id === 'storm' || this.wet) {
       // мокрый асфальт: тёмный глянец, лужи и вытянутые блики неона (дёшево, без SSR)
       const px = positionWorld.x;
       const pz = positionWorld.z;

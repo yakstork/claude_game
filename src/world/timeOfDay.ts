@@ -97,5 +97,10 @@ export const skyUniforms = {
   horizon: uniform(new Color(PALETTE.skyHorizon)),
 };
 
+/** Направление на солнце (ночью — на луну) и цвета блика: общие uniform-ы неба и моря */
+export const sunDirUniform = uniform(new Vector3(1, 0.075, 0.12).normalize());
+export const sunGlintTop = uniform(new Color(PALETTE.yellow));
+export const sunGlintBottom = uniform(new Color(PALETTE.magenta));
+
 /** 0..1: ночью окна и неон города ярче */
 export const nightBoost = uniform(0);

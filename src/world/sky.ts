@@ -42,7 +42,7 @@ import {
 import { PALETTE } from './palette';
 import { setGlow } from './materials';
 import { Blimps } from './blimps';
-import { skyUniforms, type TodPreset } from './timeOfDay';
+import { skyUniforms, sunDirUniform, sunGlintBottom, sunGlintTop, type TodPreset } from './timeOfDay';
 
 /** Направление на солнце (над восточным горизонтом — по стартовой прямой) */
 export const SUN_DIR = new Vector3(1, 0.075, 0.12).normalize();
@@ -58,7 +58,7 @@ export class Sky {
   /** Вспышка молнии 0..1 */
   readonly flash = uniform(0);
   /** Направление на солнце (ночью — на луну) */
-  readonly sunDirU = uniform(SUN_DIR.clone());
+  readonly sunDirU = sunDirUniform;
   private readonly sunVis = uniform(1);
   private readonly night = uniform(0);
   private readonly glowCol = uniform(new Color(PALETTE.orange));
@@ -85,6 +85,8 @@ export class Sky {
     skyUniforms.mid.value.set(p.mid);
     skyUniforms.horizon.value.set(p.horizon);
     this.sunDirU.value.copy(p.sunDir);
+    sunGlintTop.value.set(p.sunTop);
+    sunGlintBottom.value.set(p.sunBottom);
     this.sunVis.value = p.sunVis;
     this.night.value = p.night;
     this.glowCol.value.set(p.glow);

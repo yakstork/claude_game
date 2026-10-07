@@ -30,7 +30,7 @@ import {
 import { PALETTE } from './palette';
 import { setGlow } from './materials';
 import { GROUND_Y } from './constants';
-import { SUN_DIR } from './sky';
+import { sunDirUniform, sunGlintBottom, sunGlintTop } from './timeOfDay';
 
 const SEA_Y = GROUND_Y + 0.2;
 const SEA_SPAN = 1700;
@@ -50,7 +50,7 @@ function seaMaterial(): MeshBasicNodeMaterial {
 
   const d = p.sub(cameraPosition.xz);
   const dist = length(d);
-  const s = normalize(vec2(SUN_DIR.x, SUN_DIR.z));
+  const s = normalize(vec2(sunDirUniform.x, sunDirUniform.z));
   const along = dot(d, s);
   const perp = d.x.mul(s.y).sub(d.y.mul(s.x));
   // дорожка отражения: узкая у камеры, расширяется с расстоянием
@@ -58,7 +58,7 @@ function seaMaterial(): MeshBasicNodeMaterial {
   const path = exp(ang.div(0.07).mul(ang.div(0.07)).negate()).mul(step(0.0, along));
   const chop = sin(p.x.mul(0.13).add(time.mul(1.4))).mul(sin(p.y.mul(0.11).sub(time.mul(1.0)))).mul(0.5).add(0.5);
   const slits = step(0.3, fract(along.mul(0.035).sub(time.mul(0.25)))).mul(0.55).add(0.45);
-  const pathCol = mix(color(PALETTE.magenta), color(PALETTE.yellow), smoothstep(0.0, 0.5, path).mul(path));
+  const pathCol = mix(sunGlintBottom, sunGlintTop, smoothstep(0.0, 0.5, path).mul(path));
   const reflect = pathCol.mul(path.mul(slits).mul(chop.mul(1.3).add(0.25)).mul(1.6));
 
   // базовый цвет воды и неоновые гребни
