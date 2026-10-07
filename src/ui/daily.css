@@ -1,0 +1,32 @@
+/* ── Вызов дня. Только палитра из :root. ───────────────────────────────── */
+.daily { display: flex; align-items: center; justify-content: center; background: rgba(13, 2, 33, 0.72); pointer-events: auto; z-index: 3;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.dly-wrap { width: min(44em, 100%); max-height: 100%; display: flex; }
+.dly-panel { --c: 18px; width: 100%; min-height: 0; max-height: 100%; display: flex; flex-direction: column; gap: 0.6em; padding: 0.9em 1.5em 1em; overflow: auto; }
+.dly-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1em; }
+.dly-title { margin: 0; font-size: 1.8em; color: var(--cyan); }
+.dly-date { font-size: 0.9em; letter-spacing: 0.12em; color: var(--lilac); }
+.dly-streak { font-size: 0.85em; font-style: italic; letter-spacing: 0.1em; color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
+.dly-body { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1em; }
+.dly-cond { display: grid; gap: 0.25em; align-content: start; }
+.dly-row { display: flex; justify-content: space-between; gap: 0.8em; padding: 0.15em 0.1em; border-bottom: 1px solid rgba(185, 103, 255, 0.25); }
+.dly-label { font-size: 0.62em; letter-spacing: 0.14em; color: var(--lilac); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.dly-value { font-size: 0.85em; font-style: italic; letter-spacing: 0.06em; color: var(--white); text-shadow: 0 0 0.4em var(--magenta); text-align: right; }
+.dly-moddesc { font-size: 0.66em; letter-spacing: 0.04em; color: var(--lilac); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.dly-side { display: grid; gap: 0.25em; align-content: start; padding: 0.5em 0.8em; background: rgba(43, 15, 84, 0.55); border-left: 3px solid var(--yellow); }
+.dly-goal { font-size: 0.75em; letter-spacing: 0.04em; color: var(--lilac); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.dly-goal.on { color: var(--yellow); }
+.dly-best { margin-top: 0.4em; font-size: 0.7em; letter-spacing: 0.06em; color: var(--cyan); }
+.dly-actions { display: flex; gap: 0.7em; justify-content: flex-end; }
+.dly-actions .btn { min-width: 0; width: auto; padding: 0.35em 1.2em; font-size: 1em; }
+.rdaily { display: grid; justify-items: center; gap: 0.2em; padding: 0.5em 0 0.1em; border-top: 1px solid rgba(185, 103, 255, 0.35); margin-top: 0.4em; }
+.rdaily-title { font-size: 0.8em; letter-spacing: 0.12em; color: var(--cyan); }
+.rdaily-medal { font-size: 1.4em; font-style: italic; letter-spacing: 0.1em; color: var(--yellow); text-shadow: 0 0 0.6em var(--yellow); }
+.rdaily-line { font-size: 0.7em; letter-spacing: 0.05em; color: var(--lilac); }
+
+@media (max-width: 640px), (max-height: 520px) {
+  .dly-panel { --c: 12px; gap: 0.3em; padding: 0.5em 1em 0.6em; }
+  .dly-title { font-size: 1.3em; }
+  .dly-body { grid-template-columns: 1fr; gap: 0.4em; }
+  .dly-actions .btn, .dly-actions .btn.big { padding: 0.2em 0.8em; font-size: 0.85em; }
+}

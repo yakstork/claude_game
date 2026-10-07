@@ -46,6 +46,28 @@ const PLAN_HORIZON = 230;
 /** Прямая для нитро: до следующего поворота (|k| > RUN_K) не меньше, м */
 const RUN_K = 0.005;
 const RUN_MAX = 330;
+/** Бустер-пластины: дальность прицеливания, м; макс. сдвиг линии, м; считаем «прямой» участок при |k| ниже порога */
+/** Поправки характеров (прибавляются к базовым параметрам; нейтральный бот — без поправок) */
+export const TRAIT_TUNING = {
+  /** агрессор: чаще перекрывает линию, раньше начинает обгон */
+  aggressorDefend: 1.5,
+  aggressorWindow: 8,
+  /** чистюля: реже ошибки, шире дуга обгона */
+  cleanMistake: 0.5,
+  cleanPassGap: 4.6,
+  /** дрифтер: чаще и охотнее входит в занос */
+  drifterChance: 0.15,
+  drifterUse: 0.025,
+  /** нитроман: чаще жжёт нитро и держит меньший запас */
+  nitroRate: 0.2,
+  nitroReserve: 0.4,
+  /** хитрец: на последнем круге агрессивнее и дальше замечает цель */
+  cunningAggr: 0.3,
+  cunningWindow: 14,
+} as const;
+export const PAD_AIM_RANGE = 40;
+export const PAD_MAX_SHIFT = 3.2;
+const PAD_STRAIGHT_K = 0.006;
 /** Полная шкала нитро не копится зря: на длинной прямой жмём независимо от «настроения» */
 const FULL_TANK = 0.85;
 /** «Толчея»: машина в пределах 5 м по ширине и ближе этого впереди/сзади по s — занос не начинаем, м */
@@ -73,6 +95,16 @@ const RUBBER_SLACK = 0.02;
 const PACK_CLAMP = 250;
 /** Занос целится внутрь поворота на эту долю полуширины: на выходе машину выносит наружу */
 const DRIFT_INNER = 0.55;
+
+/** Слипстрим: садимся в мешок на прямой не короче DRAFT_MIN_RUN м, на дистанции до DRAFT_RANGE, не дольше DRAFT_MAX_TIME */
+const DRAFT_MIN_RUN = 110;
+const DRAFT_MIN_SPEED = 28;
+const DRAFT_RANGE = 24;
+const DRAFT_FULL = 0.95;
+const DRAFT_MAX_TIME = 5;
+const DRAFT_COOLDOWN = 5;
+/** Если за это время мешок не начал заполняться (не попали в конус) — отказываемся, с */
+const DRAFT_GRACE = 0.5;
 
 const { clamp } = MathUtils;
 
@@ -105,12 +137,20 @@ const MIS_NONE = 0;
 const MIS_LATE = 1;
 const MIS_WIDE = 2;
 
+/** Бот с нитро ниже этой доли тянется к ближайшей доступной канистре на прямой */
+export const CAN_AIM_BELOW = 0.4;
+
 export class BotDriver {
   /** Текущий темп (доля возможностей машины; для отладки и тестов) */
   pace = 1;
   private readonly out: VehicleControls = { throttle: 0, brake: 0, steer: 0, handbrake: false, nitro: false };
   /** Время, прошедшее с последнего движения вперёд (>4 м/с), с. Для респауна ведущим. */
   stuckTime = 0;
+  /** Слипстрим-логика: сколько секунд подряд сидим в мешке / пауза до следующей попытки */
+  /** Выключатель слипстрим-логики (для тестов) */
+  draftEnabled = true;
+  private draftTime = 0;
+  private draftCool = 0;
   /** Включает заносы ради буста (по умолчанию — да; бот сам решает, в каких поворотах) */
   driftEnabled = true;
   /** Число кругов гонки (для нитро «на финиш» на последнем круге) */
@@ -130,16 +170,17 @@ export class BotDriver {
   /** Доля расчётной тормозной способности */
   private readonly brakeFrac: number;
   /** Доверие к измеренному боковому ускорению заноса (>1 — смелее) */
-  private readonly driftUse: number;
+  private driftUse: number;
   /** Шанс занести в подходящем повороте */
   private driftChance = 0.5;
   /** Вероятность ошибки на поворот */
-  private readonly mistakeP: number;
+  private mistakeP: number;
   /** Резерв нитро, ниже которого бот копит его на обгон / финиш, и доля прямых, где он жмёт нитро */
-  private readonly nitroReserve: number;
-  private readonly nitroRate: number;
+  private nitroReserve: number;
+  private nitroRate: number;
   /** Склонность прикрывать позицию (0..1) */
-  private readonly defendP: number;
+  private defendP: number;
+  private readonly trait: BotProfile['trait'];
   /** Амплитуда колебаний темпа («форма»), доля */
   private readonly formAmp: number;
   private readonly launchDelay: number;
@@ -155,6 +196,12 @@ export class BotDriver {
   private steerSmooth = 0;
   private avoidShift = 0;
   private overtakeSide = 0;
+  /** Положения бустер-пластин (s, lateral) — задаются игрой; null — цели нет */
+  private padS: ArrayLike<number> | null = null;
+  private padLat: ArrayLike<number> | null = null;
+  private canS: ArrayLike<number> | null = null;
+  private canLat: ArrayLike<number> | null = null;
+  private canTimer: ArrayLike<number> | null = null;
   private overtakeTimer = 0;
   private slowTime = 0;
   private reverseTimer = 0;
@@ -196,6 +243,8 @@ export class BotDriver {
     this.nitroReserve = 0.1 + 0.3 * rnd();
     this.nitroRate = 0.45 + 0.4 * this.aggr + 0.15 * rnd();
     this.defendP = 0.1 + 0.6 * this.aggr * (0.6 + 0.4 * rnd());
+    this.trait = calibrating ? undefined : profile.trait;
+    this.applyTrait();
     this.paceBase = calibrating ? 1 : 0.99 + 0.004 * this.skillN + (rnd() - 0.5) * 0.01;
     this.formAmp = calibrating ? 0 : 0.04 + 0.02 * rnd();
     // реакция на старте: 0.05–0.45 с (агрессивные чуть быстрее)
@@ -210,19 +259,88 @@ export class BotDriver {
     if (!calibrating) this.init(specById(profile.carId));
   }
 
+  /** Параметры характера (до init: driftChance дополняется там же) */
+  private applyTrait(): void {
+    const T = TRAIT_TUNING;
+    switch (this.trait) {
+      case 'aggressor':
+        this.defendP = Math.min(0.95, this.defendP * T.aggressorDefend);
+        break;
+      case 'clean':
+        this.mistakeP *= T.cleanMistake;
+        break;
+      case 'drifter':
+        this.driftUse += T.drifterUse;
+        break;
+      case 'nitro':
+        this.nitroRate = Math.min(1, this.nitroRate + T.nitroRate);
+        this.nitroReserve *= T.nitroReserve;
+        break;
+      default:
+        break;
+    }
+  }
+
   private init(spec: CarSpec): void {
     this.specId = spec.id;
     this.drift = driftKnowledge(spec);
     if (!this.calibrating) this.carPace = carPaceFactor(this.track, spec);
     // склонность к заносу: машина (Grizzly любит, Photon реже), скилл, характер
     const rnd = hash01(this.seed, 99, 1);
-    this.driftChance = clamp(0.3 + 0.6 * spec.stats.drift + 0.25 * (this.skillN - 0.5) + 0.2 * (this.aggr - 0.5) + 0.15 * (rnd - 0.5), 0.2, 0.95);
+    this.driftChance = clamp(0.3 + 0.6 * spec.stats.drift + 0.25 * (this.skillN - 0.5) + 0.2 * (this.aggr - 0.5) + 0.15 * (rnd - 0.5) + (this.trait === 'drifter' ? TRAIT_TUNING.drifterChance : 0), 0.2, 0.95);
   }
 
   /** «Форма» бота −1..1: медленно плавающий темп */
   private form(): number {
     const t = this.time;
     return 0.55 * Math.sin(t * this.freq[2] + this.phase[4]) + 0.3 * Math.sin(t * this.freq[3] + this.phase[5]) + 0.15 * Math.sin(t * 0.07 + this.phase[2]);
+  }
+
+  /** Сообщить боту, где лежат бустер-пластины (массивы s и смещений; не копируются) */
+  setPads(padS: ArrayLike<number> | null, padLateral: ArrayLike<number> | null): void {
+    this.padS = padS;
+    this.padLat = padLateral;
+  }
+
+  /**
+   * Сдвиг линии к ближайшей пластине впереди (≤ PAD_AIM_RANGE м за точкой прицеливания s + look), если она на прямой.
+   * Относительно целевой линии в точке пластины; 0 — цели нет.
+   */
+  private padShift(s: number, look: number): number {
+    return this.pickupShift(s, look, this.padS, this.padLat, null);
+  }
+
+  /** Сообщить боту, где лежат канистры нитро (массивы s, смещений и таймеров появления; не копируются) */
+  setCans(canS: ArrayLike<number> | null, canLateral: ArrayLike<number> | null, canTimer: ArrayLike<number> | null): void {
+    this.canS = canS;
+    this.canLat = canLateral;
+    this.canTimer = canTimer;
+  }
+
+  /** То же для канистры (только доступной: таймер 0), когда нитро бота ниже CAN_AIM_BELOW */
+  private canShift(s: number, look: number): number {
+    return this.pickupShift(s, look, this.canS, this.canLat, this.canTimer);
+  }
+
+  private pickupShift(s: number, look: number, padS: ArrayLike<number> | null, padLat: ArrayLike<number> | null, timer: ArrayLike<number> | null): number {
+    if (!padS || !padLat) return 0;
+    const track = this.track;
+    let best = -1;
+    let bestD = PAD_AIM_RANGE + look;
+    for (let i = 0; i < padS.length; i++) {
+      const d = track.deltaS(s, padS[i]);
+      if (d > 2 && d < bestD && (!timer || timer[i] <= 0)) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best < 0) return 0;
+    const ps = padS[best];
+    if (Math.abs(track.curvatureAt(ps)) > PAD_STRAIGHT_K) return 0;
+    const hw = track.sampleAt(ps, this.sampleB).halfWidth;
+    const want = padLat[best] - this.lineOffset(ps, hw, false);
+    if (Math.abs(want) > PAD_MAX_SHIFT * 2) return 0;
+    return clamp(want, -PAD_MAX_SHIFT, PAD_MAX_SHIFT);
   }
 
   /** Целевое смещение от осевой (+ вправо) в точке sp: линия без учёта соперников */
@@ -385,7 +503,9 @@ export class BotDriver {
     if (this.calibrating) rubber = 0;
     this.rubber += (rubber - this.rubber) * (1 - Math.exp(-dt * 0.8));
 
-    const aggrNow = this.aggr;
+    const finalLapNow = this.lap >= this.totalLaps;
+    const cunningNow = this.trait === 'cunning' && finalLapNow;
+    const aggrNow = Math.min(1, this.aggr + (cunningNow ? TRAIT_TUNING.cunningAggr : 0));
     // ближайший поворот и прямая до него
     let run = RUN_MAX;
     let runCorner = -1;
@@ -402,8 +522,32 @@ export class BotDriver {
     let shiftTarget = 0;
     if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
     if (this.defendTimer > 0) this.defendTimer -= dt;
-    const window = 12 + 20 * aggrNow + Math.max(0, vFwd - (ahead ? ahead.speed : vFwd)) * 0.7;
-    const overtaking = ahead !== null && aheadDs < window && aheadDs > 3.5 - 2 * aggrNow + 1;
+    const window =
+      12 + 20 * aggrNow + Math.max(0, vFwd - (ahead ? ahead.speed : vFwd)) * 0.7 +
+      (this.trait === 'aggressor' ? TRAIT_TUNING.aggressorWindow : 0) + (cunningNow ? TRAIT_TUNING.cunningWindow : 0);
+    // слипстрим: на прямой садимся в мешок к машине впереди, а когда он полный — выходим на обгон
+    if (this.draftCool > 0) this.draftCool -= dt;
+    let drafting = false;
+    if (
+      this.draftEnabled && ahead !== null && !this.calibrating && this.draftCool <= 0 &&
+      (self.slipstream > 0.05 || this.draftTime > 0) && run >= DRAFT_MIN_RUN && speed > DRAFT_MIN_SPEED && aheadDs > 6 && aheadDs < DRAFT_RANGE && self.slipstream < DRAFT_FULL
+    ) {
+      this.draftTime += dt;
+      if (this.draftTime > DRAFT_MAX_TIME || (this.draftTime > DRAFT_GRACE && self.slipstream < 0.1)) {
+        this.draftTime = 0;
+        this.draftCool = DRAFT_COOLDOWN;
+      } else drafting = true;
+    } else if (this.draftTime > 0 && !(ahead !== null && aheadDs < DRAFT_RANGE && self.slipstream < DRAFT_FULL)) {
+      // мешок полный (или лидер потерян): обгон, повторно садиться в мешок не сразу
+      if (ahead !== null && self.slipstream >= DRAFT_FULL) this.draftCool = DRAFT_COOLDOWN;
+      this.draftTime = 0;
+    }
+    const overtaking = !drafting && ahead !== null && aheadDs < window && aheadDs > 3.5 - 2 * aggrNow + 1;
+    if (drafting && ahead !== null) {
+      // идём ровно в хвост лидера; близко — не наезжаем
+      shiftTarget = clamp(ahead.lateral - self.lateral, -3, 3);
+      if (aheadDs < 9) followCap = ahead.speed + Math.max(0, aheadDs - 7) * 0.6;
+    }
     if (overtaking && ahead !== null) {
       if (this.overtakeTimer <= 0 || this.overtakeSide === 0) {
         const spaceRight = usable - ahead.lateral;
@@ -421,7 +565,7 @@ export class BotDriver {
           this.overtakeTimer = 1.6;
         }
       }
-      const goal = clamp(ahead.lateral + this.overtakeSide * 3.6, -usable, usable);
+      const goal = clamp(ahead.lateral + this.overtakeSide * (this.trait === 'clean' ? TRAIT_TUNING.cleanPassGap : 3.6), -usable, usable);
       shiftTarget = goal - self.lateral;
       if (Math.abs(goal - ahead.lateral) < 2.5) {
         followCap = ahead.speed + Math.max(0, aheadDs - 7) * 0.6;
@@ -439,8 +583,17 @@ export class BotDriver {
     if (this.defendTimer > 0 && behind !== null && !overtaking && shiftTarget === 0) {
       shiftTarget = clamp(behind.lateral - self.lateral, -2.4, 2.4) * 0.85;
     }
+    let padAim = false;
     if (sidePush > 0 && shiftTarget === 0) shiftTarget = -side * Math.min(3, 0.9 * sidePush);
-    this.avoidShift += (shiftTarget - this.avoidShift) * (1 - Math.exp(-dt * 2.5));
+    // пластина впереди: если не обгоняем, не сидим в мешке и не защищаемся — слегка смещаем линию к ней
+    if (shiftTarget === 0 && !overtaking && !drafting && sidePush <= 0 && this.defendTimer <= 0 && !this.inZone) {
+      const lookA = 10 + Math.abs(speed) * 0.6;
+      // мало нитро — сначала ищем доступную канистру, затем пластину
+      if (self.nitro < CAN_AIM_BELOW) shiftTarget = this.canShift(s, lookA);
+      if (shiftTarget === 0) shiftTarget = this.padShift(s, lookA);
+      padAim = shiftTarget !== 0;
+    }
+    this.avoidShift += (shiftTarget - this.avoidShift) * (1 - Math.exp(-dt * (padAim ? 7 : 2.5)));
 
     // ── целевая точка и руль (pure pursuit) ───────────────────────────────
     const look = 10 + Math.abs(speed) * 0.6;

@@ -38,7 +38,7 @@ for (const phone of phones) {
 
     test('меню касанием, старт, мультитач газ+руль+дрифт, пауза, поворот в портрет', async ({ page, context }) => {
       const errors = collectErrors(page);
-      await page.goto('/');
+      await page.goto('/?attract=0');
       await page.waitForFunction(() => window.__neonRush?.info().state === 'menu', null, { timeout: 90_000 });
 
       let i = await info(page);
@@ -95,7 +95,7 @@ for (const phone of phones) {
       expect(Object.values(released).some(Boolean)).toBe(false);
 
       // пауза кнопкой и продолжение
-      await page.locator('.nr-tc-pause').tap();
+      await page.locator('.nr-tc-pause:not(.nr-tc-cam)').tap();
       await page.waitForFunction(() => window.__neonRush!.info().paused, null, { timeout: 10_000 });
       await page.getByText('Продолжить', { exact: false }).first().tap();
       await page.waitForFunction(() => !window.__neonRush!.info().paused, null, { timeout: 10_000 });

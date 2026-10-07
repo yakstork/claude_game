@@ -24,6 +24,7 @@ import {
 import { PALETTE } from './palette';
 import { setGlow } from './materials';
 import { GROUND_Y } from './constants';
+import { skyUniforms } from './timeOfDay';
 
 export class Ground {
   readonly mesh: Mesh;
@@ -63,7 +64,7 @@ export class Ground {
 
       // пол: тёмный фиолетовый, у горизонта уходит в цвет дымки
       const floorCol = mix(color(PALETTE.void), color(PALETTE.deepViolet), smoothstep(0.0, fadeDistance, dist));
-      const haze = mix(floorCol, color(PALETTE.skyHigh).mul(0.55), smoothstep(fadeDistance.mul(0.6), fadeDistance.mul(1.6), dist));
+      const haze = mix(floorCol, skyUniforms.high.mul(0.55), smoothstep(fadeDistance.mul(0.6), fadeDistance.mul(1.6), dist));
       mat.colorNode = haze.add(lines);
       setGlow(mat, lines.mul(0.55));
     }

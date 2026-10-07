@@ -5,6 +5,7 @@
  */
 import {
   AdditiveBlending,
+  BufferGeometry,
   Color,
   Group,
   Matrix4,
@@ -15,11 +16,12 @@ import {
   Quaternion,
   Vector3,
 } from 'three/webgpu';
-import { attribute, color, float, length, oneMinus, sin, smoothstep, time, uniform, uv, vertexColor } from 'three/tsl';
-import type { CarModelKind, VehicleState } from '../core/types';
+import { abs, attribute, color, float, length, max, oneMinus, pow, sin, smoothstep, time, uniform, uv, vertexColor } from 'three/tsl';
+import type { CarLivery, CarModelKind, VehicleState } from '../core/types';
 import { GeometryBuilder } from '../world/geometryBuilder';
 import { setGlow } from '../world/materials';
 import { PALETTE } from '../world/palette';
+import { DAMAGE_HIGH, DAMAGE_MID, neonFlicker } from './damage';
 import { CAR_GEOMETRY } from './specs';
 
 export interface CarLook {
@@ -27,6 +29,8 @@ export interface CarLook {
   bodyColor: number;
   neonColor: number;
   accentColor: number;
+  /** Полоса/номер из гаража (необязательно) */
+  livery?: CarLivery;
 }
 
 const GLASS = 0x120726;
@@ -150,6 +154,132 @@ function buildBody(look: CarLook): GeometryBuilder {
       body,
     );
     gb.box(hw * 1.9, 0.12, 0.05, TAIL, 1, T(0, 0.5, -2.26));
+  } else if (look.model === 'hatch') {
+    // Volt Rider — короткий раллийный хэтч: высокая кабина, крыло, фары на крыше
+    gb.prism(
+      [
+        [-2.0, -0.12],
+        [2.05, -0.12],
+        [2.1, 0.12],
+        [1.5, 0.4],
+        [-1.95, 0.55],
+        [-2.05, 0.4],
+      ],
+      hw * 1.01,
+      body,
+      0,
+      undefined,
+      0.06,
+      bodyDark,
+    );
+    // высокая кабина с отвесной кормой
+    gb.prism(
+      [
+        [-1.85, 0.5],
+        [0.9, 0.44],
+        [0.2, 1.1],
+        [-1.8, 1.14],
+      ],
+      hw * 0.8,
+      GLASS,
+      0,
+      undefined,
+      0.1,
+    );
+    gb.box(hw * 1.5, 0.06, 1.9, body, 0, T(0, 1.14, -0.8));
+    // гоночная полоса по капоту и крыше
+    gb.box(0.4, 0.012, 1.7, accent, 0, T(0, 0.43, 1.0));
+    gb.box(0.4, 0.014, 1.9, accent, 0, T(0, 1.18, -0.8));
+    // воздухозаборник на капоте с неоном
+    gb.prism(
+      [
+        [0.5, 0.42],
+        [1.3, 0.38],
+        [1.3, 0.44],
+        [0.6, 0.58],
+      ],
+      0.3,
+      DARK,
+    );
+    gb.box(0.5, 0.03, 0.04, neon, 1, T(0, 0.52, 0.65));
+    // фары-прожекторы на крыше
+    for (let i = -1; i <= 1; i += 2) {
+      for (const k of [0.45, 1.0]) {
+        gb.cylinder(0.12, 0.12, 0.08, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(i * k * 0.5 - i * 0.0, 1.26, 0.18)));
+      }
+    }
+    gb.box(hw * 1.2, 0.06, 0.1, DARK, 0, T(0, 1.2, 0.1));
+    // большое заднее крыло на стойках
+    gb.box(hw * 2.0, 0.07, 0.5, accent.getHex() === PALETTE.void ? DARK : accent, 0, T(0, 1.34, -2.0));
+    for (const side of [-1, 1]) {
+      gb.box(0.08, 0.3, 0.3, DARK, 0, T(side * hw * 0.7, 1.2, -1.95));
+      gb.box(0.05, 0.2, 0.55, body, 0, T(side * hw * 1.0, 1.36, -2.0));
+    }
+    gb.box(hw * 2.0, 0.03, 0.05, neon, 1, T(0, 1.38, -2.27));
+    // расширители арок
+    for (const side of [-1, 1]) {
+      for (const z of [1.3, -1.3]) gb.box(0.1, 0.12, 1.0, bodyDark, 0, T(side * (hw * 1.01 + 0.04), 0.3, z));
+    }
+    // фары, стопы
+    gb.box(hw * 1.5, 0.06, 0.05, HEAD, 1, T(0, 0.26, 2.12));
+    gb.box(hw * 1.7, 0.1, 0.05, TAIL, 1, T(0, 0.34, -2.07));
+  } else if (look.model === 'limo') {
+    // Nightshade LX — длинный ретро-футуристичный GT-люкс: длинный капот, плавники, световая лента
+    gb.prism(
+      [
+        [-2.45, -0.12],
+        [2.5, -0.12],
+        [2.55, 0.08],
+        [1.7, 0.4],
+        [-2.3, 0.56],
+        [-2.5, 0.44],
+      ],
+      hw * 1.03,
+      body,
+      0,
+      undefined,
+      0.06,
+      bodyDark,
+    );
+    // длинная низкая кабина, смещённая назад
+    gb.prism(
+      [
+        [-1.9, 0.54],
+        [0.55, 0.48],
+        [-0.1, 0.98],
+        [-1.6, 1.0],
+      ],
+      hw * 0.78,
+      GLASS,
+      0,
+      undefined,
+      0.14,
+    );
+    gb.box(hw * 1.5, 0.05, 1.5, accent, 0, T(0, 1.0, -0.85));
+    // плавники на задних крыльях с неоновой кромкой
+    for (const side of [-1, 1]) {
+      gb.prism(
+        [
+          [-2.45, 0.5],
+          [-1.5, 0.54],
+          [-2.5, 0.88],
+        ],
+        0.05,
+        body,
+        0,
+        T(side * hw * 0.92, 0, 0),
+      );
+      gb.box(0.03, 0.03, 0.95, neon, 1, T(side * hw * 0.92, 0.52, -1.95));
+      // длинная неоновая линия по борту
+      gb.box(0.02, 0.03, 3.8, neon, 1, T(side * (hw * 1.03 + 0.01), 0.28, 0.05));
+      // хромированные боковые вставки
+      gb.box(0.02, 0.1, 1.2, DARK, 0, T(side * (hw * 1.03 + 0.005), 0.14, 1.2));
+    }
+    // световая лента на корме и фары-щели с капотным «стрелком»
+    gb.box(hw * 1.9, 0.06, 0.05, TAIL, 1, T(0, 0.46, -2.5));
+    gb.box(0.14, 0.02, 1.9, neon, 1, T(0, 0.46, 1.1));
+    for (const side of [-1, 1]) gb.box(0.55, 0.05, 0.05, HEAD, 1, T(side * hw * 0.58, 0.22, 2.56));
+    gb.box(hw * 1.4, 0.1, 0.04, DARK, 0, T(0, 0.14, 2.55));
   } else if (look.model === 'custom') {
     // «Своя сборка» — ретро-футуристичный шутинг-брейк: длинная крыша до кормы,
     // рубленая корма, крылья-обтекатели над колёсами и световая балка на крыше
@@ -271,7 +401,17 @@ function buildBody(look: CarLook): GeometryBuilder {
 
   // ── общие детали: зеркала, неон окон, фары, диффузор, выхлоп, сплиттер ──
   const [front, rear] =
-    look.model === 'wedge' ? [2.25, -2.2] : look.model === 'muscle' ? [2.3, -2.28] : look.model === 'custom' ? [2.28, -2.12] : [2.35, -2.3];
+    look.model === 'wedge'
+      ? [2.25, -2.2]
+      : look.model === 'muscle'
+        ? [2.3, -2.28]
+        : look.model === 'custom'
+          ? [2.28, -2.12]
+          : look.model === 'hatch'
+            ? [2.1, -2.05]
+            : look.model === 'limo'
+              ? [2.55, -2.5]
+              : [2.35, -2.3];
   const cab =
     look.model === 'wedge'
       ? { z0: -1.15, z1: 0.9, y: 0.5, zm: 0.55, ym: 0.62, w: hw * 0.74 }
@@ -279,7 +419,11 @@ function buildBody(look: CarLook): GeometryBuilder {
         ? { z0: -1.7, z1: 0.42, y: 0.63, zm: 0.2, ym: 0.78, w: hw * 0.8 }
         : look.model === 'custom'
           ? { z0: -1.95, z1: 0.85, y: 0.48, zm: 0.55, ym: 0.62, w: hw * 0.82 }
-          : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
+          : look.model === 'hatch'
+            ? { z0: -1.8, z1: 0.85, y: 0.46, zm: 0.6, ym: 0.62, w: hw * 0.8 }
+            : look.model === 'limo'
+              ? { z0: -1.7, z1: 0.5, y: 0.5, zm: 0.3, ym: 0.62, w: hw * 0.78 }
+              : { z0: -1.15, z1: 0.95, y: 0.44, zm: 0.55, ym: 0.56, w: hw * 0.6 };
   for (const side of [-1, 1]) {
     // зеркала на стойке
     gb.box(0.05, 0.05, 0.12, DARK, 0, T(side * (cab.w + 0.08), cab.ym - 0.04, cab.zm));
@@ -301,6 +445,14 @@ function buildBody(look: CarLook): GeometryBuilder {
       gb.cylinder(0.1, 0.1, 0.04, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * hw * 0.42, 0.33, 2.3)));
       for (const k of [0.62, 0.36]) gb.box(0.24, 0.12, 0.05, TAIL, 1, T(side * hw * k, 0.5, -2.29));
     }
+  } else if (look.model === 'hatch') {
+    // круглые противотуманки в бампере и мудфлапы
+    for (const side of [-1, 1]) {
+      gb.cylinder(0.11, 0.11, 0.04, 8, HEAD, 1, new Matrix4().makeRotationX(Math.PI / 2).premultiply(T(side * hw * 0.62, 0.2, 2.12)));
+      gb.box(0.03, 0.2, 0.22, DARK, 0, T(side * (hw * 1.01 + 0.02), 0.0, -1.0));
+    }
+  } else if (look.model === 'limo') {
+    // детали уже в основном блоке
   } else if (look.model === 'custom') {
     // своя сборка: детали уже в основном блоке
   } else {
@@ -354,13 +506,108 @@ function buildWheel(neon: number): GeometryBuilder {
   return gb;
 }
 
+
+// ─── Ливрея: полоса (перекраска вершин) и номер (семисегментные цифры из боксов) ───
+
+/** Сегменты a..g по цифрам 0..9 */
+const SEG: string[] = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+const DIGIT_W = 0.17;
+const DIGIT_H = 0.3;
+const SEG_T = 0.04;
+
+/** Номер на бортах: цифры читаются спереди-назад с обеих сторон */
+function addNumber(gb: GeometryBuilder, num: number, paint: number): void {
+  const text = String(Math.max(0, Math.min(99, Math.floor(num))));
+  const c = new Color(paint);
+  const light = c.r * 0.3 + c.g * 0.59 + c.b * 0.11 > 0.55;
+  const col = light ? PALETTE.void : PALETTE.white;
+  const hw = CAR_GEOMETRY.width / 2;
+  const step = DIGIT_W + 0.07;
+  const total = text.length * step - 0.07;
+  const z0 = 0.2 + total / 2; // читаем от переда (+Z) к корме
+  const y0 = 0.26;
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < text.length; k++) {
+      const u0 = k * step; // смещение слева направо по тексту
+      for (const seg of SEG[Number(text[k])]) {
+        // позиция сегмента в (u, v) внутри цифры
+        let u = DIGIT_W / 2;
+        let v = DIGIT_H / 2;
+        let su = DIGIT_W;
+        let sv = SEG_T;
+        if (seg === 'a') v = DIGIT_H - SEG_T / 2;
+        else if (seg === 'g') v = DIGIT_H / 2;
+        else if (seg === 'd') v = SEG_T / 2;
+        else {
+          su = SEG_T;
+          sv = DIGIT_H / 2 - SEG_T / 2;
+          u = seg === 'b' || seg === 'c' ? DIGIT_W - SEG_T / 2 : SEG_T / 2;
+          v = seg === 'b' || seg === 'f' ? DIGIT_H * 0.75 - SEG_T / 4 : DIGIT_H * 0.25 + SEG_T / 4;
+        }
+        const uu = u0 + u;
+        // +X (левый борт): взгляд на −X, вправо = −Z; −X: вправо = +Z
+        const z = side > 0 ? z0 - uu : z0 - total + uu;
+        gb.box(0.015, sv, su, col, 0.15, T(side * (hw * 1.045 + 0.01), y0 + v, z));
+      }
+    }
+  }
+}
+
+const _c1 = new Color();
+
+/** Перекраска верхних/боковых граней кузова под узор полосы (только грани цвета кузова) */
+function applyStripe(geo: BufferGeometry, look: CarLook): void {
+  const pattern = look.livery?.stripe ?? 0;
+  if (pattern <= 0) return;
+  const pos = geo.getAttribute('position');
+  const col = geo.getAttribute('color');
+  const glw = geo.getAttribute('glow');
+  const nor = geo.getAttribute('normal');
+  const body = new Color(look.bodyColor);
+  const dark = body.clone().multiplyScalar(0.62);
+  const stripe = new Color(look.neonColor);
+  const near = (r: number, g: number, b: number, c: Color): boolean => Math.abs(r - c.r) + Math.abs(g - c.g) + Math.abs(b - c.b) < 0.03;
+  for (let i = 0; i + 2 < pos.count; i += 3) {
+    const r = col.getX(i);
+    const g = col.getY(i);
+    const b = col.getZ(i);
+    if (glw.getX(i) > 0 || !(near(r, g, b, body) || near(r, g, b, dark))) continue;
+    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+    const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+    const nx = nor.getX(i);
+    const ny = nor.getY(i);
+    const ax = Math.abs(cx);
+    let hit = false;
+    if (pattern === 1) hit = ny > 0.5 && ax < 0.24;
+    else if (pattern === 2) hit = ny > 0.5 && ax > 0.1 && ax < 0.3;
+    else hit = Math.abs(nx) > 0.7 && cy > 0.0 && cy < 0.2;
+    if (!hit) continue;
+    _c1.copy(stripe);
+    for (let k = 0; k < 3; k++) {
+      col.setXYZ(i + k, _c1.r, _c1.g, _c1.b);
+      glw.setX(i + k, 0.3);
+    }
+  }
+}
+
+/** Геометрия кузова с ливреей */
+function makeBodyGeometry(look: CarLook): BufferGeometry {
+  const gb = buildBody(look);
+  const n = look.livery?.number;
+  if (n !== undefined && n !== null) addNumber(gb, n, look.bodyColor);
+  const geo = gb.build();
+  applyStripe(geo, look);
+  return geo;
+}
+
 /** Общий материал машины: vertex colors + свечение по атрибуту glow */
-function carMaterial(): MeshStandardNodeMaterial {
+const makeGain = () => uniform(1);
+function carMaterial(neonGain: ReturnType<typeof makeGain>): MeshStandardNodeMaterial {
   const mat = new MeshStandardNodeMaterial({ roughness: 0.38, metalness: 0.2, flatShading: true });
   const g = attribute('glow', 'float');
   mat.colorNode = vertexColor();
   // неон — по атрибуту glow; кузову — лёгкий собственный подсвет, чтобы цвет читался в закатном свете
-  mat.emissiveNode = vertexColor().mul(g.mul(2.2).add(float(1).sub(g).mul(0.12)));
+  mat.emissiveNode = vertexColor().mul(g.mul(2.2).mul(neonGain).add(float(1).sub(g).mul(0.12)));
   return mat;
 }
 
@@ -380,10 +627,28 @@ export class CarModel {
   private readonly shadow: Mesh;
   private readonly flameIntensity = uniform(0);
   private readonly glowPulse = uniform(1);
+  private readonly headBeam: Mesh;
+  private readonly tailGlow: Group;
+  private readonly tailPool: Mesh;
+  private readonly lamp = uniform(0);
+  private lampValue = 0;
+  private lampCones = true;
+  /** Множитель неона корпуса (мерцание от урона) */
+  private readonly neonGain = makeGain();
+  /** Визуальный урон 0..1 (ставит game каждый кадр из EffectsManager) */
+  damage = 0;
+  private readonly crack: Mesh;
+  private crackT = 0;
+
+  /** Текущий вид (после setLivery) */
+  private cur: CarLook;
+  private readonly neonUniform = uniform(new Color(0));
 
   constructor(readonly look: CarLook) {
-    const mat = carMaterial();
-    this.body = new Mesh(buildBody(look).build(), mat);
+    this.cur = look;
+    const mat = carMaterial(this.neonGain);
+    this.body = new Mesh(makeBodyGeometry(look), mat);
+    this.cur = look;
     this.group.add(this.body);
     const wheelGeo = buildWheel(look.neonColor).build();
     for (const [x, y, z] of CAR_GEOMETRY.wheelOffsets) {
@@ -393,11 +658,27 @@ export class CarModel {
       this.group.add(w);
     }
 
+    // трещина-глитч: рваная emissive-линия по бортам, видна при сильном уроне
+    const cg = new GeometryBuilder();
+    const cx = (CAR_GEOMETRY.width / 2) * 1.05 + 0.01;
+    const zig: [number, number, number][] = [[0.0, 0.42, 0.5], [0.12, 0.34, 0.5], [-0.1, 0.26, 0.4], [0.1, 0.18, 0.4], [-0.05, 0.1, 0.3]];
+    for (const side of [-1, 1]) {
+      for (const [dz, y, len] of zig) cg.box(0.02, 0.035, len, PALETTE.pink, 1, T(side * cx, y, 0.2 + dz));
+      cg.box(0.02, 0.2, 0.03, PALETTE.white, 1, T(side * cx, 0.3, 0.2));
+    }
+    const crackMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    crackMat.colorNode = vertexColor().mul(1.5);
+    setGlow(crackMat, vertexColor().mul(1.2));
+    this.crack = new Mesh(cg.build(), crackMat);
+    this.crack.visible = false;
+    this.group.add(this.crack);
+
     // неоновая подсветка днища: аддитивное пятно
     const ugMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
     const d = length(uv().sub(0.5).mul(float(2.0)));
     const fall = oneMinus(smoothstep(0.2, 1.0, d));
-    const neon = uniform(new Color(look.neonColor));
+    const neon = this.neonUniform;
+    neon.value.set(look.neonColor);
     ugMat.colorNode = neon.mul(fall).mul(this.glowPulse).mul(0.9);
     setGlow(ugMat, neon.mul(fall).mul(0.35));
     this.underglow = new Mesh(new PlaneGeometry(3.2, 5.6), ugMat);
@@ -414,9 +695,55 @@ export class CarModel {
     this.shadow.renderOrder = 1;
     this.group.add(this.shadow);
 
+    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : look.model === 'hatch' ? -2.05 : look.model === 'limo' ? -2.5 : -2.3;
+
+    // фары: два световых конуса на дороге (аддитивная плоскость с градиентом, без SpotLight)
+    const BEAM_W = 12;
+    const BEAM_L = 24;
+    const bu = uv();
+    const bx = bu.x.sub(0.5).mul(BEAM_W);
+    const bv = oneMinus(bu.y); // 0 у бампера → 1 вдали
+    const spread = bv.mul(1.7).add(0.6);
+    const lobe = (c: number) => smoothstep(spread, spread.mul(0.2), abs(bx.sub(c)));
+    const beam = max(lobe(-0.72), lobe(0.72)).mul(pow(oneMinus(bv), 1.7)).mul(smoothstep(0.0, 0.05, bv));
+    const hMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    hMat.colorNode = color(HEAD).mul(beam).mul(this.lamp).mul(0.6);
+    setGlow(hMat, color(HEAD).mul(beam).mul(this.lamp).mul(0.3));
+    this.headBeam = new Mesh(new PlaneGeometry(BEAM_W, BEAM_L), hMat);
+    this.headBeam.rotation.x = -Math.PI / 2;
+    this.headBeam.position.z = 2.2 + BEAM_L / 2;
+    this.headBeam.renderOrder = 2;
+    this.headBeam.visible = false;
+    this.group.add(this.headBeam);
+
+    // задние фонари: яркие пятна на кормовой стороне + красный отсвет на дороге
+    this.tailGlow = new Group();
+    const tMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    const td = length(uv().sub(0.5).mul(float(2.0)));
+    const tf = oneMinus(smoothstep(0.0, 1.0, td));
+    tMat.colorNode = color(TAIL).mul(tf).mul(this.lamp).mul(1.0);
+    setGlow(tMat, color(TAIL).mul(tf).mul(this.lamp).mul(0.9));
+    for (const side of [-0.62, 0.62]) {
+      const q = new Mesh(new PlaneGeometry(1.1, 0.6), tMat);
+      q.rotation.y = Math.PI;
+      q.position.set(side, 0.45, rearZ - 0.05);
+      q.renderOrder = 3;
+      this.tailGlow.add(q);
+    }
+    const pMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    pMat.colorNode = color(TAIL).mul(tf).mul(this.lamp).mul(0.3);
+    const pool = new Mesh(new PlaneGeometry(4.2, 6), pMat);
+    pool.rotation.x = -Math.PI / 2;
+    pool.position.set(0, -0.2, rearZ - 2.2);
+    pool.scale.set(0.7, 1, 0.5);
+    pool.renderOrder = 2;
+    this.tailPool = pool;
+    this.tailGlow.add(pool);
+    this.tailGlow.visible = false;
+    this.group.add(this.tailGlow);
+
     // пламя нитро (два конуса из выхлопа)
     const fg = new GeometryBuilder();
-    const rearZ = look.model === 'wedge' ? -2.2 : look.model === 'muscle' ? -2.28 : look.model === 'custom' ? -2.12 : -2.3;
     for (const side of [-EXHAUST_X, EXHAUST_X]) {
       fg.cylinder(0.0, 0.16, 1.4, 6, PALETTE.cyan, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.95)));
       fg.cylinder(0.0, 0.09, 0.8, 6, PALETTE.white, 1, new Matrix4().makeRotationX(-Math.PI / 2).premultiply(T(side, EXHAUST_Y, rearZ - 0.62)));
@@ -468,14 +795,78 @@ export class CarModel {
     _m.makeTranslation(0, localGround + 0.06, 0);
     this.underglow.position.set(0, Math.max(-1.2, localGround) + 0.05, 0);
     this.shadow.position.set(0, Math.max(-1.2, localGround) + 0.03, 0);
+    this.headBeam.position.y = Math.max(-1.2, localGround) + 0.07;
+    this.tailPool.position.y = Math.max(-1.2, localGround) + 0.06;
     const air = Math.min(1, Math.max(0, -localGround - r) / 4);
     this.shadow.scale.setScalar(1 + air * 0.6);
     this.glowPulse.value = 0.85 + Math.sin(performance.now() * 0.004) * 0.15;
+    // урон: мерцание неона корпуса и подсветки днища, трещина при сильном уроне
+    if (this.damage >= DAMAGE_MID) {
+      this.crackT += dt;
+      const f = neonFlicker(this.damage, performance.now() * 0.001);
+      this.neonGain.value = f;
+      this.glowPulse.value *= f;
+      this.crack.visible = this.damage >= DAMAGE_HIGH && (f > 0.5 || Math.sin(this.crackT * 53) > 0.2);
+    } else {
+      this.neonGain.value = 1;
+      this.crack.visible = false;
+    }
 
     const target = state.nitroActive ? 1 : 0;
     this.flameIntensity.value += (target - this.flameIntensity.value) * Math.min(1, dt * 12);
     this.flame.visible = this.flameIntensity.value > 0.02;
     this.flame.scale.set(1, 1, 0.7 + this.flameIntensity.value * 0.5 + Math.random() * 0.15);
+  }
+
+  /**
+   * Фары и задние фонари: 0 — днём (как раньше), 1 — ночь/гроза.
+   * cones=false (низкое качество) — без световых конусов на дороге.
+   */
+  setHeadlights(intensity: number, cones = true): void {
+    if (intensity === this.lampValue && cones === this.lampCones) return;
+    this.lampValue = intensity;
+    this.lampCones = cones;
+    this.lamp.value = intensity;
+    this.headBeam.visible = intensity > 0.01 && cones;
+    this.tailGlow.visible = intensity > 0.01;
+  }
+
+  /**
+   * Сменить ливрею (покраска, цвет неона, узор полосы, номер). Пересобирает геометрию кузова
+   * и колёс один раз за вызов (не каждый кадр); материалы, урон и фары не затрагиваются.
+   */
+  setLivery(l: { paint?: number; glow?: number; stripe?: number; number?: number | null }): void {
+    const prev = this.cur;
+    const next: CarLook = {
+      ...prev,
+      bodyColor: l.paint ?? prev.bodyColor,
+      neonColor: l.glow ?? prev.neonColor,
+      livery: { stripe: l.stripe ?? prev.livery?.stripe ?? 0, number: l.number === undefined ? (prev.livery?.number ?? null) : l.number },
+    };
+    this.cur = next;
+    this.body.geometry.dispose();
+    this.body.geometry = makeBodyGeometry(next);
+    if (next.neonColor !== prev.neonColor) {
+      const wheelGeo = buildWheel(next.neonColor).build();
+      const old = this.wheels[0]?.geometry;
+      for (const w of this.wheels) w.geometry = wheelGeo;
+      old?.dispose();
+      this.neonUniform.value.set(next.neonColor);
+    }
+  }
+
+  /** Полупрозрачный «призрак» лучшего круга: без тени и пламени, не пишет глубину */
+  setGhost(opacity: number): void {
+    const mat = this.body.material as MeshStandardNodeMaterial;
+    mat.transparent = true;
+    mat.opacity = opacity;
+    mat.depthWrite = false;
+    mat.needsUpdate = true;
+    this.shadow.visible = false;
+    this.flame.visible = false;
+    this.headBeam.visible = false;
+    this.tailGlow.visible = false;
+    this.group.renderOrder = 2;
   }
 
   dispose(): void {

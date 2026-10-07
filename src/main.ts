@@ -40,6 +40,7 @@ async function boot(): Promise<void> {
   const q = params.get('quality');
   const game = new Game(render, {
     autostart: params.get('autostart') === '1',
+    attract: params.get('attract') !== '0',
     carIndex: Number(params.get('car') ?? 0) || 0,
     quality: q === 'low' || q === 'high' ? (q as Quality) : null,
     showFps: params.get('fps') === '1',

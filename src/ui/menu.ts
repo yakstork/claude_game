@@ -1,5 +1,5 @@
 /** Главное меню: логотип, выбор машины, рекорды, кнопки. Центр экрана прозрачен (3D-превью). */
-import type { CarSpec, Records, TrackInfo, UICallbacks } from '../core/types';
+import type { CarSpec, RaceMode, Records, TrackInfo, UICallbacks } from '../core/types';
 import { CUSTOM_CAR_ID } from '../core/types';
 import { cssColor } from '../world/palette';
 import { arrowIcon, el, onTap, restartAnim } from './dom';
@@ -30,6 +30,17 @@ export function buildLogo(parent: HTMLElement, cls: string, subtitle?: string): 
   return { root: logo, sub };
 }
 
+/** Порядок режимов в кнопке «РЕЖИМ». */
+export const RACE_MODE_CYCLE: readonly RaceMode[] = ['race', 'cup', 'timeAttack', 'drift', 'elimination', 'versus'];
+
+export function nextRaceMode(mode: RaceMode): RaceMode {
+  return RACE_MODE_CYCLE[(RACE_MODE_CYCLE.indexOf(mode) + 1) % RACE_MODE_CYCLE.length];
+}
+
+export function modeLabel(mode: RaceMode): string {
+  return mode === 'versus' ? 'РЕЖИМ: 2 ИГРОКА' : mode === 'timeAttack' ? 'РЕЖИМ: НА ВРЕМЯ' : mode === 'cup' ? 'РЕЖИМ: КУБОК' : mode === 'drift' ? 'РЕЖИМ: ДРИФТ' : mode === 'elimination' ? 'РЕЖИМ: ВЫБЫВАНИЕ' : 'РЕЖИМ: БОТЫ';
+}
+
 export class MainMenu {
   readonly el: HTMLElement;
   readonly nav: Nav;
@@ -51,6 +62,8 @@ export class MainMenu {
   private readonly recRace: HTMLElement;
   private readonly recDrift: HTMLElement;
   private readonly recWins: HTMLElement;
+  private keysHintText = HINT_KEYS;
+  private touchHint = false;
   private readonly hint1: HTMLElement;
   private readonly hint2: HTMLElement;
   private readonly logoSub: HTMLElement;
@@ -61,6 +74,7 @@ export class MainMenu {
   private readonly trackTagEl: HTMLElement;
   private readonly trackLenEl: HTMLElement;
   private readonly trackCounterEl: HTMLElement;
+  private readonly newSeedBtn: HTMLElement;
   /** Индекс пункта «трасса» в Nav (всегда первый: визуально он над кнопкой «ГОНКА»). */
   static readonly TRACK_NAV = 0;
   /** Пункт Nav, на котором стоит фокус по умолчанию: кнопка «ГОНКА». */
@@ -68,6 +82,8 @@ export class MainMenu {
   private readonly tracks: TrackInfo[];
   private trackIdx = 0;
   private records: Records;
+  private modeEl: HTMLElement | null = null;
+  private creditsEl: HTMLElement | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -79,6 +95,18 @@ export class MainMenu {
     onCustomize: () => void = () => undefined,
     tracks: TrackInfo[] = [],
     trackIndex = 0,
+    /** Переключение режима «Гонка» / «Кубок» / «На время» (null — кнопки нет) */
+    onToggleMode: (() => void) | null = null,
+    onTips: () => void = () => undefined,
+    onAwards: (() => void) | null = null,
+    /** «ГАРАЖ» (null — кнопки нет) */
+    onGarage: (() => void) | null = null,
+    /** «КАМПАНИЯ» (null — кнопки нет) */
+    onCampaign: (() => void) | null = null,
+    /** «ВЫЗОВ ДНЯ» (null — кнопки нет) */
+    onDaily: (() => void) | null = null,
+    /** «СТАТИСТИКА» (null — кнопки нет) */
+    onStats: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -180,6 +208,17 @@ export class MainMenu {
     const tmeta = el('div', 'track-meta', undefined, tp);
     this.trackTagEl = el('span', 'track-tag', '', tmeta);
     this.trackLenEl = el('span', 'track-len', '', tmeta);
+    // «НОВАЯ» — только на карточке «ГЕНЕРАТОР»
+    this.newSeedBtn = el('span', 'track-new', 'НОВАЯ (N)', tmeta);
+    this.newSeedBtn.setAttribute('role', 'button');
+    this.newSeedBtn.hidden = true;
+    onTap(this.newSeedBtn, () => this.cb.onNewSeed?.());
+    // горячая клавиша N на карточке «ГЕНЕРАТОР»
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyN' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.newSeedBtn.hidden || this.el.getClientRects().length === 0) return;
+      this.cb.onNewSeed?.();
+    });
     nav.add({
       el: this.trackBox,
       noClick: true,
@@ -200,6 +239,39 @@ export class MainMenu {
     const btns = el('div', 'menu-buttons', undefined, root);
     const race = el('div', 'btn big', undefined, btns);
     el('span', undefined, 'ГОНКА', race);
+    // пункт режима — в Nav сразу после «ГОНКА» (фокус по умолчанию остаётся на «ГОНКА»)
+    let modeNav: Parameters<Nav['add']>[0] | null = null;
+    if (onToggleMode) {
+      const modeBtn = el('div', 'btn mode-btn', undefined, btns);
+      this.modeEl = el('span', undefined, modeLabel('race'), modeBtn);
+      modeBtn.setAttribute('aria-label', 'Режим: гонка с ботами или заезд на время');
+      modeNav = { el: modeBtn, activate: onToggleMode, adjust: () => (onToggleMode(), true) };
+    }
+    let garageBtn: HTMLElement | null = null;
+    if (onGarage) {
+      garageBtn = el('div', 'btn garage-btn', undefined, btns);
+      garageBtn.setAttribute('role', 'button');
+      const gl = el('span', undefined, 'ГАРАЖ', garageBtn);
+      this.creditsEl = el('span', 'credits', '', gl);
+    }
+    let campBtn: HTMLElement | null = null;
+    if (onCampaign) {
+      campBtn = el('div', 'btn', undefined, btns);
+      campBtn.setAttribute('role', 'button');
+      el('span', undefined, 'КАМПАНИЯ', campBtn);
+    }
+    let dailyBtn: HTMLElement | null = null;
+    if (onDaily) {
+      dailyBtn = el('div', 'btn', undefined, btns);
+      dailyBtn.setAttribute('role', 'button');
+      el('span', undefined, 'ВЫЗОВ ДНЯ', dailyBtn);
+    }
+    let statsBtn: HTMLElement | null = null;
+    if (onStats) {
+      statsBtn = el('div', 'btn', undefined, btns);
+      statsBtn.setAttribute('role', 'button');
+      el('span', undefined, 'СТАТИСТИКА', statsBtn);
+    }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
     const adjust = (dir: -1 | 1): boolean => {
@@ -207,10 +279,35 @@ export class MainMenu {
       return true;
     };
     nav.add({ el: race, activate: () => cb.onStartRace(this.index), adjust });
+    if (modeNav) nav.add(modeNav);
     nav.add({ el: this.customBtn, activate: onCustomize, adjust });
     nav.add({ el: sett, activate: onSettings, adjust });
     // «На весь экран» — только если Fullscreen API есть (на iPhone нет)
     addFullscreenButton(btns, nav);
+
+    // «?» — «Как играть» (последний пункт Nav, чтобы не сдвигать индексы остальных)
+    const help = el('div', 'help-btn', undefined, root);
+    help.setAttribute('role', 'button');
+    help.setAttribute('aria-label', 'Как играть');
+    el('span', undefined, '?', help);
+    nav.add({ el: help, activate: onTips });
+
+    // «★» — «Награды» (после «?»: индексы остальных пунктов не меняются)
+    if (onAwards) {
+      const awards = el('div', 'help-btn award-btn', undefined, root);
+      awards.setAttribute('role', 'button');
+      awards.setAttribute('aria-label', 'Награды');
+      el('span', undefined, '★', awards);
+      nav.add({ el: awards, activate: onAwards });
+    }
+
+    // «ГАРАЖ» — самый последний пункт Nav (фокус по умолчанию остаётся на «ГОНКА»)
+    if (garageBtn && onGarage) nav.add({ el: garageBtn, activate: onGarage, adjust });
+    if (campBtn && onCampaign) nav.add({ el: campBtn, activate: onCampaign, adjust });
+    // «ВЫЗОВ ДНЯ» — после «КАМПАНИИ» (последним в Nav)
+    if (dailyBtn && onDaily) nav.add({ el: dailyBtn, activate: onDaily, adjust });
+    // «СТАТИСТИКА» — самый последний пункт Nav
+    if (statsBtn && onStats) nav.add({ el: statsBtn, activate: onStats, adjust });
 
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);
@@ -221,12 +318,29 @@ export class MainMenu {
     this.renderTrack();
   }
 
+  /** Баланс неон-кредитов на кнопке «ГАРАЖ» */
+  setCredits(text: string): void {
+    if (this.creditsEl) setText(this.creditsEl, text);
+  }
+
+  /** Подпись кнопки режима */
+  setMode(mode: RaceMode): void {
+    if (this.modeEl) this.modeEl.textContent = modeLabel(mode);
+  }
+
   /** Подсказка управления: кнопки на экране (сенсорный режим) или клавиатура/геймпад. */
   setTouchHint(touch: boolean): void {
-    const a = touch ? HINT_TOUCH_1 : HINT_KEYS;
+    this.touchHint = touch;
+    const a = touch ? HINT_TOUCH_1 : this.keysHintText;
     const b = touch ? HINT_TOUCH_2 : HINT_PAD;
     if (this.hint1.textContent !== a) this.hint1.textContent = a;
     if (this.hint2.textContent !== b) this.hint2.textContent = b;
+  }
+
+  /** Подсказка клавиатуры по текущей раскладке */
+  setKeysHint(text: string): void {
+    this.keysHintText = text;
+    this.setTouchHint(this.touchHint);
   }
 
   /** Листание: wrap, звук 'move', onPreviewCar. */
@@ -317,6 +431,13 @@ export class MainMenu {
     }
   }
 
+  /** Заменить данные карточки (генератор: новый seed) */
+  updateTrack(i: number, info: TrackInfo): void {
+    if (i < 0 || i >= this.tracks.length) return;
+    this.tracks[i] = info;
+    if (i === this.trackIdx) this.renderTrack();
+  }
+
   private renderTrack(): void {
     const t = this.tracks[this.trackIdx];
     const choice = this.tracks.length > 1;
@@ -327,6 +448,7 @@ export class MainMenu {
     setText(this.trackNameEl, t.name);
     setText(this.trackTagEl, t.tagline);
     setText(this.trackLenEl, formatLength(t.lengthKm));
+    this.newSeedBtn.hidden = !t.id.startsWith('gen-');
     setText(this.trackCounterEl, `${this.trackIdx + 1} / ${this.tracks.length}`);
     setText(this.recTrack, choice ? t.name : '');
   }

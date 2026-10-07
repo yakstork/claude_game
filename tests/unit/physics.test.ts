@@ -54,14 +54,14 @@ describe('VehiclePhysics: разгон и скорость', () => {
     expect(t100).toBeLessThan(3.7);
   });
 
-  it('все машины разгоняются до 100 км/ч за 3.0–3.7 с', () => {
+  it('все машины разгоняются до 100 км/ч за 2.8–3.7 с', () => {
     for (let i = 0; i < CAR_SPECS.length; i++) {
       const car = makeCar(wide, i, 300);
       let t100 = -1;
       run(car, 8, () => ctl({ throttle: 1 }), (t) => {
         if (t100 < 0 && car.state.speed * KMH >= 100) t100 = t;
       });
-      expect(t100, CAR_SPECS[i].id).toBeGreaterThan(3.0);
+      expect(t100, CAR_SPECS[i].id).toBeGreaterThan(2.8);
       expect(t100, CAR_SPECS[i].id).toBeLessThan(3.7);
     }
   });

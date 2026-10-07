@@ -12,14 +12,17 @@ import {
   MeshStandardNodeMaterial,
   Vector3,
 } from 'three/webgpu';
-import { attribute, color, floor, fract, hash, mix, sin, smoothstep, step, time, vertexColor } from 'three/tsl';
+import { attribute, color, float, floor, fract, hash, mix, sin, smoothstep, step, time, vertexColor } from 'three/tsl';
 import type { Track } from './track';
+import { Sea, shoreX, BEACH_WIDTH } from './sea';
 import { PALETTE } from './palette';
 import { GeometryBuilder } from './geometryBuilder';
 import { uprightFrame } from './trackMesh';
 import { SUN_DIR } from './sky';
+import { nightBoost } from './timeOfDay';
 import { GROUND_Y } from './constants';
 import { SignBuilder } from './signs';
+import { buildCanyon } from './canyon';
 
 /** Детерминированный ГПСЧ (mulberry32) */
 export function rng(seed: number): () => number {
@@ -176,7 +179,7 @@ function buildingMaterial(): MeshStandardNodeMaterial {
   const win = step(0.2, fu).mul(step(fu, 0.8)).mul(step(0.3, fv)).mul(step(fv, 0.75));
   const id = floor(u.div(cw)).add(floor(y.div(ch)).mul(57.0)).add(seed.mul(131.0));
   const r = hash(id);
-  const lit = step(0.6, r);
+  const lit = step(mix(float(0.6), float(0.5), nightBoost), r);
   // редкое мерцание
   const flicker = step(0.985, hash(id.add(floor(time.mul(2.0))))).oneMinus();
   const winCol = mix(mix(color(PALETTE.orange), color(PALETTE.pink), hash(id.mul(1.7))), color(PALETTE.cyan), step(0.86, hash(id.mul(3.1))));
@@ -189,7 +192,7 @@ function buildingMaterial(): MeshStandardNodeMaterial {
   const edge = step(u, 0.35).add(step(width.sub(0.35), u)).mul(isRoof.oneMinus()).mul(step(0.5, hash(seed.mul(7.3))));
   const pulse = sin(time.mul(1.5).add(seed.mul(10.0))).mul(0.2).add(0.8);
 
-  const glow = winCol.mul(windows).mul(0.9).add(accent.mul(roofStripe.add(edge.mul(0.6))).mul(pulse));
+  const glow = winCol.mul(windows).mul(nightBoost.mul(0.3).add(0.9)).add(accent.mul(roofStripe.add(edge.mul(0.6))).mul(pulse).mul(nightBoost.mul(0.6).add(1.0)));
   const wall = mix(base, base.mul(0.55), darkWin);
   mat.colorNode = mix(wall, base.mul(0.7), isRoof).add(glow.mul(0.5));
   mat.emissiveNode = glow;
@@ -222,11 +225,23 @@ export class Environment {
   /** Участки трассы [s0, s1], занятые трибунами/парковками — там без пальм */
   private readonly reserved: [number, number][] = [];
 
+  /** Трасса-побережье: море с восточной (внешней) стороны, город — только с другой */
+  private readonly isCoast: boolean;
+  /** Каньон: скалы вместо небоскрёбов, без пальм */
+  private readonly isCanyon: boolean;
+
   constructor(readonly track: Track) {
+    this.isCoast = track.id === 'coast';
+    this.isCanyon = track.id === 'canyon' || track.def.decor === 'canyon';
     this.field = new TrackDistanceField(track);
     this.buildTrackside();
-    this.group.add(this.buildCity());
+    if (this.isCanyon) this.group.add(buildCanyon(track));
+    else this.group.add(this.buildCity());
     this.buildProps();
+    if (this.isCoast) {
+      this.buildBeach();
+      this.group.add(new Sea().group);
+    }
     this.group.add(new Mesh(this.props.build(), propsMaterial()));
     const signs = this.signs.build();
     if (signs) this.group.add(signs);
@@ -258,6 +273,7 @@ export class Environment {
       const w = 12 + rand() * (near ? 22 : 34);
       const d = 12 + rand() * (near ? 22 : 34);
       const r = Math.max(w, d) * 0.75;
+      if (this.isCoast && x + r > shoreX(z) - BEACH_WIDTH - 4) return;
       const dist = this.field.distance(x, z);
       if (dist < r + 16) return;
       const rot = rand() < 0.7 ? Math.round(rand() * 4) * (Math.PI / 2) + (rand() - 0.5) * 0.08 : rand() * Math.PI;
@@ -613,6 +629,28 @@ export class Environment {
 
   // ─── Пальмы и фонари ───────────────────────────────────────────────────
 
+  /** Пляж и набережная: пальмы и фонари вдоль берега */
+  private buildBeach(): void {
+    const gb = this.props;
+    const rand = rng(777);
+    const p = new Vector3();
+    const pole = new Color(0x2a1245);
+    for (let z = -520; z < 260; z += 16 + rand() * 14) {
+      p.set(shoreX(z) - 7 - rand() * (BEACH_WIDTH - 12), GROUND_Y + 0.3, z);
+      if (this.field.distance(p.x, p.z) < 6) continue;
+      addPalm(gb, p, rand);
+    }
+    // набережная: фонари вдоль кромки пляжа
+    for (let z = -520; z < 260; z += 34) {
+      const x = shoreX(z) - BEACH_WIDTH + 2;
+      if (this.field.distance(x, z) < 3) continue;
+      const lamp = (Math.round(z / 34) & 1) === 0 ? PALETTE.pink : PALETTE.cyan;
+      gb.cylinder(0.14, 0.2, 7.5, 6, pole, 0, new Matrix4().makeTranslation(x, GROUND_Y + 4.0, z));
+      gb.box(0.9, 0.18, 0.9, lamp, 1.2, new Matrix4().makeTranslation(x, GROUND_Y + 7.7, z));
+      gb.box(0.5, 0.12, 0.5, PALETTE.magenta, 0.8, new Matrix4().makeTranslation(x, GROUND_Y + 0.8, z));
+    }
+  }
+
   private buildProps(): void {
     const gb = this.props;
     const rand = rng(4242);
@@ -624,7 +662,7 @@ export class Environment {
     // Пальмы вдоль трассы
     for (let s = 5; s < t.length; s += 17 + rand() * 12) {
       t.sampleAt(s, sample);
-      if (sample.position.y > 1.0 || this.isReserved(s)) continue;
+      if (this.isCanyon || sample.position.y > 1.0 || this.isReserved(s)) continue;
       const side = rand() < 0.5 ? -1 : 1;
       const off = sample.halfWidth + 6 + rand() * 7;
       p.copy(sample.position).addScaledVector(sample.right, side * off);

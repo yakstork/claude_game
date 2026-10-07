@@ -1,7 +1,9 @@
 /** Синтвейв-секвенсор с lookahead-планированием (ноты создаются с точным start(time)). */
-import type { MusicTrack } from '../core/types';
+import type { MusicTrack, RadioStation } from '../core/types';
 import { createImpulseResponse, disconnectAll, playNoise, playTone } from './noise';
-import { getStepEvents, loopSteps, midiToFreq, stepDuration, TRACKS } from './theory';
+import { getStepEvents, getTrackConfig, loopSteps, midiToFreq, songInfo, stationSongCount, stationVariant, stepDuration } from './theory';
+import type { PlayableStation } from './theory';
+import type { SongStyle } from './theory';
 import type { ArpEvent, BassEvent, PadEvent } from './theory';
 
 /** Как далеко вперёд планируем ноты, с. */
@@ -10,11 +12,23 @@ export const LOOKAHEAD_S = 0.12;
 export const TICK_MS = 25;
 /** Постоянная времени кроссфейда (≈98% за 0.8 с). */
 const FADE_TC = 0.2;
+/** Срез общего фильтра мелодики: обычный / финальный круг, Гц. */
+const DULL_CUT = 11000;
+const BRIGHT_CUT = 16000;
+/** Переход к финальному кругу, с (≈98% за 1.6 с). */
+const INTENSITY_TC = 0.4;
 
 /** Один играющий трек: свой подграф (шина, delay, reverb) и позиция секвенсора. */
 class TrackPlayer {
   readonly out: GainNode;
   private readonly drums: GainNode;
+  /** Шина мелодических партий (бас/пэд/арпеджио/эхо) — сюда «приседание» сайдчейна на бочке. */
+  private readonly mel: GainNode;
+  private readonly melFilter: BiquadFilterNode;
+  private readonly baseDrums: number;
+  private intensity: 0 | 1 = 0;
+  private readonly style: SongStyle | undefined;
+  private readonly duckDepth: number;
   private readonly delaySend: GainNode;
   private readonly reverbSend: GainNode;
   private readonly persistent: AudioNode[] = [];
@@ -29,19 +43,33 @@ class TrackPlayer {
     private readonly ctx: BaseAudioContext,
     dest: AudioNode,
     readonly track: MusicTrack,
+    readonly variant = 0,
   ) {
-    const cfg = TRACKS[track];
+    const cfg = getTrackConfig(track, variant);
+    this.style = cfg.style;
+    this.duckDepth = cfg.style ? cfg.style.duck : track === 'race' ? 0.5 : 0.25;
     this.stepDur = stepDuration(cfg.bpm);
-    this.total = loopSteps(track);
+    this.total = loopSteps(track, variant);
     const race = track === 'race';
 
     this.out = ctx.createGain();
     this.out.gain.value = 0;
     this.out.connect(dest);
 
+    this.baseDrums = race ? 1 : 0.8;
     this.drums = ctx.createGain();
-    this.drums.gain.value = race ? 1 : 0.8;
+    this.drums.gain.value = this.baseDrums;
     this.drums.connect(this.out);
+
+    this.mel = ctx.createGain();
+    this.mel.gain.value = 1;
+    // общий lowpass мелодики: на финальном круге открывается (ярче)
+    this.melFilter = ctx.createBiquadFilter();
+    this.melFilter.type = 'lowpass';
+    this.melFilter.Q.value = 0.4;
+    this.melFilter.frequency.value = DULL_CUT;
+    this.mel.connect(this.melFilter);
+    this.melFilter.connect(this.out);
 
     // эхо арпеджио: точка с долей (3 шестнадцатых), обратная связь с lowpass
     const delay = ctx.createDelay(1);
@@ -60,7 +88,7 @@ class TrackPlayer {
     fbFilter.connect(fb);
     fb.connect(delay);
     delay.connect(delayWet);
-    delayWet.connect(this.out);
+    delayWet.connect(this.mel);
 
     // реверб: гейт-реверб для снэра в гонке, мягкий «зал» в меню (для пэда/арпеджио)
     const conv = ctx.createConvolver();
@@ -71,11 +99,19 @@ class TrackPlayer {
     this.reverbSend.gain.value = 1;
     this.reverbSend.connect(conv);
     conv.connect(reverbWet);
-    reverbWet.connect(this.out);
+    reverbWet.connect(this.mel);
 
     this.persistent.push(
-      this.out, this.drums, delay, fb, fbFilter, delayWet, this.delaySend, conv, reverbWet, this.reverbSend,
+      this.out, this.drums, this.mel, this.melFilter, delay, fb, fbFilter, delayWet, this.delaySend, conv, reverbWet, this.reverbSend,
     );
+  }
+
+  /** Финальный круг: фильтр открыт, барабаны громче, добавляются хэт 1/16 и октавный бас. Плавно. */
+  setIntensity(level: 0 | 1): void {
+    this.intensity = level;
+    const now = this.ctx.currentTime;
+    this.melFilter.frequency.setTargetAtTime(level ? BRIGHT_CUT : DULL_CUT, now, INTENSITY_TC);
+    this.drums.gain.setTargetAtTime(this.baseDrums * (level ? 1.18 : 1), now, INTENSITY_TC);
   }
 
   /** Запуск с плавным появлением. */
@@ -127,15 +163,29 @@ class TrackPlayer {
   // ---------------------------------------------------------------------------
 
   private scheduleStep(step: number, t: number): void {
-    const ev = getStepEvents(this.track, step);
+    const ev = getStepEvents(this.track, step, this.variant);
     if (ev.pad) this.pad(t, ev.pad);
-    if (ev.kick !== undefined) this.kick(t, ev.kick);
+    if (ev.kick !== undefined) {
+      this.kick(t, ev.kick);
+      this.duck(t, ev.kick);
+    }
     if (ev.snare !== undefined) this.snare(t, ev.snare);
     if (ev.clap !== undefined) this.clap(t, ev.clap);
     if (ev.hat) this.hat(t, ev.hat.vel, ev.hat.open);
+    else if (this.intensity && this.track === 'race') this.hat(t, 0.45, false); // хэт 1/16
     if (ev.crash !== undefined) this.crash(t, ev.crash);
-    if (ev.bass) this.bass(t, ev.bass);
+    if (ev.bass) {
+      this.bass(t, ev.bass);
+      if (this.intensity) this.octaveBass(t, ev.bass);
+    }
     if (ev.arp) this.arp(t, ev.arp);
+  }
+
+  /** Сайдчейн: мелодика «приседает» на ударе бочки и плавно возвращается. */
+  private duck(t: number, vel: number): void {
+    const g = this.mel.gain;
+    g.setValueAtTime(1 - this.duckDepth * Math.min(1, vel), t);
+    g.setTargetAtTime(1, t + 0.015, 0.075);
   }
 
   private kick(t: number, vel: number): void {
@@ -179,13 +229,13 @@ class TrackPlayer {
     const dur = e.steps * this.stepDur * 0.92;
     const f = midiToFreq(e.midi);
     const osc = ctx.createOscillator();
-    osc.type = race ? 'sawtooth' : 'square';
+    osc.type = this.style ? this.style.bassType : race ? 'sawtooth' : 'square';
     osc.frequency.value = f;
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = race ? 3 : 1.5;
-    lp.frequency.setValueAtTime(race ? 1300 : 700, t);
-    lp.frequency.setTargetAtTime(race ? 280 : 260, t, race ? 0.09 : 0.12);
+    lp.frequency.setValueAtTime(this.style ? this.style.bassCut : race ? 1300 : 700, t);
+    lp.frequency.setTargetAtTime(this.style ? this.style.bassCutEnd : race ? 280 : 260, t, race ? 0.09 : 0.12);
     const g = ctx.createGain();
     const level = (race ? 0.3 : 0.24) * e.vel;
     g.gain.setValueAtTime(0.0001, t);
@@ -194,7 +244,7 @@ class TrackPlayer {
     g.gain.setTargetAtTime(0, t + dur * 0.7, 0.03);
     osc.connect(lp);
     lp.connect(g);
-    g.connect(this.out);
+    g.connect(this.mel);
     // саб-синус для веса
     const sub = ctx.createOscillator();
     sub.type = 'sine';
@@ -205,7 +255,7 @@ class TrackPlayer {
     sg.gain.setValueAtTime(0.25 * e.vel, t + dur * 0.7);
     sg.gain.setTargetAtTime(0, t + dur * 0.7, 0.03);
     sub.connect(sg);
-    sg.connect(this.out);
+    sg.connect(this.mel);
     osc.start(t);
     sub.start(t);
     osc.stop(t + dur + 0.2);
@@ -213,11 +263,21 @@ class TrackPlayer {
     osc.onended = () => disconnectAll(osc, lp, g, sub, sg);
   }
 
+  /** Октавный бас поверх основного (финальный круг). */
+  private octaveBass(t: number, e: BassEvent): void {
+    playTone(this.ctx, this.mel, {
+      type: 'triangle', freq: midiToFreq(e.midi + 12), start: t, dur: e.steps * this.stepDur * 0.8,
+      gain: 0.11 * e.vel, attack: 0.006, cutoff: 1600,
+    });
+  }
+
   private arp(t: number, e: ArpEvent): void {
     const race = this.track === 'race';
-    const dur = e.steps * this.stepDur * (race ? 1.0 : 1.3);
-    const g = playTone(this.ctx, this.out, {
-      type: 'square', freq: midiToFreq(e.midi), start: t, dur, gain: (race ? 0.05 : 0.04) * e.vel, attack: 0.004, cutoff: race ? 3200 : 2300,
+    const dur = e.steps * this.stepDur * (race ? (this.style && this.style.arpSteps > 1 ? 0.9 : 1.0) : 1.3);
+    const g = playTone(this.ctx, this.mel, {
+      type: this.style ? this.style.arpType : 'square',
+      freq: midiToFreq(e.midi), start: t, dur, gain: (race ? 0.05 : 0.04) * e.vel, attack: 0.004,
+      cutoff: this.style ? this.style.arpCut : race ? 3200 : 2300,
     });
     // отправка в эхо (и в зал в меню)
     g.connect(this.delaySend);
@@ -232,7 +292,7 @@ class TrackPlayer {
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.Q.value = 0.8;
-    lp.frequency.value = race ? 1500 : 1200;
+    lp.frequency.value = this.style ? this.style.padCut : race ? 1500 : 1200;
     const g = ctx.createGain();
     const level = race ? 0.05 : 0.06;
     g.gain.setValueAtTime(0.0001, t);
@@ -240,7 +300,7 @@ class TrackPlayer {
     g.gain.setValueAtTime(level, t + dur - 0.1);
     g.gain.setTargetAtTime(0, t + dur - 0.1, 0.3);
     lp.connect(g);
-    g.connect(this.out);
+    g.connect(this.mel);
     if (!race) g.connect(this.reverbSend);
     const oscs: OscillatorNode[] = [];
     for (const n of e.notes) {
@@ -263,7 +323,17 @@ class TrackPlayer {
 /** Управляет текущим треком и кроссфейдом; планировщик тикает каждые TICK_MS. */
 export class MusicSequencer {
   private current: TrackPlayer | null = null;
+  private level: 0 | 1 = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
+  /** Следующая композиция станции: старт случайный, дальше по кругу. */
+  private readonly nextSong: Record<PlayableStation, number> = {
+    neon: Math.floor(Math.random() * stationSongCount('neon')),
+    dark: Math.floor(Math.random() * stationSongCount('dark')),
+    chrome: Math.floor(Math.random() * stationSongCount('chrome')),
+  };
+  private station: RadioStation = 'neon';
+  /** Какой трек нужен (при выключенном радио гоночный не играет, но запоминается) */
+  private wanted: MusicTrack | null = null;
 
   constructor(
     private readonly ctx: BaseAudioContext,
@@ -275,22 +345,72 @@ export class MusicSequencer {
     return this.current ? this.current.track : null;
   }
 
+  /** Номер играющей гоночной композиции (для отладки/тестов). */
+  get variant(): number {
+    return this.current ? this.current.variant : 0;
+  }
+
+  get radio(): RadioStation {
+    return this.station;
+  }
+
+  /** Станция и название играющей гоночной композиции (null — не играет). */
+  get song(): { station: PlayableStation; name: string } | null {
+    return this.current && this.current.track === 'race' ? songInfo(this.current.variant) : null;
+  }
+
+  /** Сменить станцию; если играет гоночный трек — сразу переключается (с кроссфейдом). */
+  setStation(station: RadioStation): void {
+    if (station === this.station) return;
+    this.station = station;
+    if (this.wanted === 'race') {
+      if (this.current) {
+        this.current.fadeOutAndDispose();
+        this.current = null;
+      }
+      this.startWanted();
+    }
+  }
+
   setTrack(track: MusicTrack | null): void {
-    if ((this.current?.track ?? null) === track) return;
+    if (track === this.wanted && (this.current?.track ?? null) === (this.shouldPlay(track) ? track : null)) return;
+    this.wanted = track;
     if (this.current) {
       this.current.fadeOutAndDispose();
       this.current = null;
     }
-    if (track !== null) {
-      const p = new TrackPlayer(this.ctx, this.dest, track);
-      const at = this.ctx.currentTime + 0.06;
-      p.start(at);
-      this.current = p;
-      p.pump(this.ctx.currentTime + LOOKAHEAD_S);
-      this.ensureTimer();
-    } else {
+    this.startWanted();
+  }
+
+  private shouldPlay(track: MusicTrack | null): boolean {
+    return track !== null && !(track === 'race' && this.station === 'off');
+  }
+
+  private startWanted(): void {
+    const track = this.wanted;
+    if (track === null || !this.shouldPlay(track)) {
       this.stopTimer();
+      return;
     }
+    let variant = 0;
+    if (track === 'race') {
+      const st = this.station as PlayableStation;
+      variant = stationVariant(st, this.nextSong[st]);
+      this.nextSong[st] = (this.nextSong[st] + 1) % stationSongCount(st);
+    }
+    const p = new TrackPlayer(this.ctx, this.dest, track, variant);
+    const at = this.ctx.currentTime + 0.06;
+    if (this.level) p.setIntensity(this.level);
+    p.start(at);
+    this.current = p;
+    p.pump(this.ctx.currentTime + LOOKAHEAD_S);
+    this.ensureTimer();
+  }
+
+  /** Финальный круг вкл/выкл; новый трек всегда стартует с 0. */
+  setIntensity(level: 0 | 1): void {
+    this.level = level;
+    this.current?.setIntensity(level);
   }
 
   /** Спланировать ноты до `until` (в тестах с OfflineAudioContext вызывается вручную). */

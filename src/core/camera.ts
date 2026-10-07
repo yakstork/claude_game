@@ -3,6 +3,8 @@
  * рысканию — занос хорошо виден) и облёт машины в меню.
  */
 import { MathUtils, Vector3, type PerspectiveCamera } from 'three/webgpu';
+import type { CamPose } from './cinematics';
+import type { CameraView } from './types';
 
 const BASE_FOV = 62;
 const MAX_FOV = 84;
@@ -27,15 +29,34 @@ export class ChaseCamera {
   private readonly pos = new Vector3();
   private readonly lookAt = new Vector3();
   private shake = 0;
+  /** Эффекты скорости включены (настройка для чувствительных к укачиванию) */
+  fxEnabled = true;
+  private punch = 0;
+  private punchTarget = 0;
+  private landShake = 0;
   private t = 0;
   private fov = BASE_FOV;
   private previewAngle = 0.6;
+  /** Вид: дальняя / ближняя chase-камера или камера на бампере */
+  view: CameraView = 'far';
+  /** Множитель вертикального FOV (split-screen: полуэкран очень широкий) */
+  fovScale = 1;
 
   constructor(readonly camera: PerspectiveCamera) {}
 
   /** Импульс тряски (удар, приземление), 0..1 */
   kick(amount: number): void {
     this.shake = Math.min(1.2, this.shake + amount);
+  }
+
+  /** Начало буста/нитро: плавный FOV-кик +6° */
+  boostKick(): void {
+    if (this.fxEnabled) this.punchTarget = 6;
+  }
+
+  /** Приземление после прыжка (трамплин): мягкая низкочастотная тряска, 0..1 */
+  landing(strength: number): void {
+    if (this.fxEnabled) this.landShake = Math.min(1, this.landShake + strength);
   }
 
   /** Мгновенно поставить камеру за машиной */
@@ -50,8 +71,18 @@ export class ChaseCamera {
 
   private computeDesired(inp: ChaseInput, outPos: Vector3, outLook: Vector3): void {
     const speedK = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
-    const dist = 7.6 + speedK * 1.8 + (inp.nitro ? 0.9 : 0);
-    const height = 2.9 + speedK * 0.3;
+    if (this.view === 'bumper') {
+      // перед капотом, низко: максимальное ощущение скорости
+      _fwd.set(Math.sin(inp.heading), 0, Math.cos(inp.heading));
+      outPos.copy(inp.position).addScaledVector(_fwd, 2.45);
+      outPos.y += 0.72;
+      outLook.copy(outPos).addScaledVector(_fwd, 20);
+      outLook.y -= 0.6;
+      return;
+    }
+    const near = this.view === 'near';
+    const dist = (near ? 5.4 : 7.6) + speedK * (near ? 1.2 : 1.8) + (inp.nitro ? 0.9 : 0);
+    const height = (near ? 2.1 : 2.9) + speedK * 0.3;
     _fwd.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     outPos.copy(inp.position).addScaledVector(_fwd, -dist);
     outPos.y += height;
@@ -61,6 +92,10 @@ export class ChaseCamera {
 
   update(dt: number, inp: ChaseInput): void {
     this.t += dt;
+    // FOV-кик: быстро нарастает к цели, цель затухает
+    this.punch += (this.punchTarget - this.punch) * Math.min(1, dt * 9);
+    this.punchTarget = Math.max(0, this.punchTarget - dt * 7);
+    this.landShake *= Math.exp(-dt * 3.2);
     // рыскание камеры догоняет курс — в заносе камера видит машину боком
     const yawRate = inp.drifting ? 3.2 : 5.5;
     let d = inp.heading - this.yaw;
@@ -68,6 +103,17 @@ export class ChaseCamera {
     this.yaw += d * Math.min(1, dt * yawRate);
 
     this.computeDesired(inp, _desired, _look);
+    if (this.view === 'bumper') {
+      // жёстко на машине: пружина дала бы «плавающий» вид изнутри кузова
+      this.pos.copy(_desired);
+      this.lookAt.copy(_look);
+      const sk = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
+      const tf = BASE_FOV + 8 + (MAX_FOV - BASE_FOV - 6) * sk * sk + (inp.nitro ? 6 : 0);
+      this.fov += (tf + this.punch - this.fov) * Math.min(1, dt * 3);
+      this.shake = Math.max(0, this.shake - dt * 2.2);
+      this.apply(this.shake * 0.2);
+      return;
+    }
     const k = 1 - Math.exp(-dt * 10);
     this.pos.x += (_desired.x - this.pos.x) * k;
     this.pos.z += (_desired.z - this.pos.z) * k;
@@ -80,7 +126,7 @@ export class ChaseCamera {
 
     const speedK = MathUtils.clamp(Math.abs(inp.speed) / Math.max(1, inp.maxSpeed), 0, 1.3);
     const targetFov = BASE_FOV + (MAX_FOV - BASE_FOV - 6) * speedK * speedK + (inp.nitro ? 6 : 0);
-    this.fov += (targetFov - this.fov) * Math.min(1, dt * 3);
+    this.fov += (targetFov + this.punch - this.fov) * Math.min(1, dt * 3);
 
     // тряска: лёгкая от скорости + импульсы
     const speedShake = Math.max(0, speedK - 0.55) * 0.06 + (inp.nitro ? 0.05 : 0);
@@ -96,11 +142,22 @@ export class ChaseCamera {
       c.position.x += (Math.sin(t * 47.3) + Math.sin(t * 91.1) * 0.5) * shake * 0.12;
       c.position.y += (Math.sin(t * 53.7) + Math.sin(t * 77.9) * 0.5) * shake * 0.1;
     }
+    if (this.landShake > 0.01) c.position.y += Math.sin(this.t * 19) * this.landShake * 0.22;
     c.lookAt(this.lookAt);
-    if (Math.abs(c.fov - this.fov) > 0.01) {
-      c.fov = this.fov;
+    const fov = this.fov * this.fovScale;
+    if (Math.abs(c.fov - fov) > 0.01) {
+      c.fov = fov;
       c.updateProjectionMatrix();
     }
+  }
+
+  /** Кинематографичная поза (облёт, финиш): камера ставится жёстко, пружина продолжит с неё */
+  setPose(p: CamPose): void {
+    this.t += 0.016;
+    this.pos.set(p.px, p.py, p.pz);
+    this.lookAt.set(p.lx, p.ly, p.lz);
+    this.fov = p.fov;
+    this.apply(0);
   }
 
   /** Облёт машины в меню */

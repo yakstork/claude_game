@@ -1,0 +1,29 @@
+/* ── Повтор и фоторежим ───────────────────────────────────────────────────── */
+.replay { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
+.replay-surface { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+.replay-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.replay-flash.go { animation: nr-replay-flash 0.35s ease-out; }
+@keyframes nr-replay-flash { from { opacity: 0.85; } to { opacity: 0; } }
+.replay-bar {
+  position: absolute; left: 0; right: 0; bottom: 0; pointer-events: none;
+  padding: 0 1.2em calc(0.6em + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, rgba(13, 2, 33, 0.78), rgba(13, 2, 33, 0));
+}
+.replay-track { height: 3px; background: rgba(185, 103, 255, 0.35); overflow: hidden; }
+.replay-fill { display: block; height: 100%; background: var(--cyan); box-shadow: 0 0 0.6em var(--cyan); transform-origin: 0 50%; transform: scaleX(0); }
+.replay-row { display: flex; align-items: center; gap: 1em; margin-top: 0.5em; flex-wrap: wrap; }
+.replay-time { color: var(--yellow); letter-spacing: 0.08em; text-shadow: 0 0 0.5em var(--yellow); }
+.replay-info { color: var(--cyan); font-style: italic; letter-spacing: 0.1em; font-size: 0.85em; text-shadow: 0 0 0.5em var(--cyan); }
+.replay-btns { margin-left: auto; display: flex; gap: 0.5em; pointer-events: auto; }
+.replay-btn {
+  font: inherit; font-size: 0.8em; letter-spacing: 0.12em; color: var(--white); cursor: pointer;
+  padding: 0.45em 0.9em; background: rgba(43, 15, 84, 0.8); border: 1px solid var(--lilac);
+}
+.replay-btn:hover { background: var(--violet); }
+.replay-btn.primary { background: var(--magenta); border-color: var(--pink); color: #fff; box-shadow: 0 0 0.8em var(--magenta); }
+.replay-hint { margin-top: 0.4em; font-size: 0.62em; letter-spacing: 0.1em; color: var(--lilac); opacity: 0.85; font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.replay-toast {
+  position: absolute; left: 50%; bottom: 5.5em; transform: translateX(-50%); padding: 0.5em 1.2em;
+  background: rgba(26, 11, 59, 0.85); border: 1px solid var(--cyan); color: var(--cyan); letter-spacing: 0.1em;
+}
+@media (pointer: coarse) { .replay-hint { display: none; } }

@@ -1,0 +1,178 @@
+/** Композиции радиостанций DARKWAVE 88 и CHROME BEAT (данные для секвенсора, формат как RACE_SONGS в theory.ts). */
+import type { TrackConfig } from './theory';
+
+const R = -1;
+
+export const DARK_SONGS: readonly TrackConfig[] = [
+  {
+    // «Black Mirror»: Dm – Bb – Gm – A, 88 bpm, полтайм, тяжёлый пилообразный бас
+    bpm: 88,
+    bars: 8,
+    bassRoots: [38, 34, 43, 33],
+    chords: [
+      [62, 65, 69],
+      [62, 65, 70],
+      [62, 67, 70],
+      [61, 64, 69],
+    ],
+    style: {
+      bass: [0, R, R, R, R, R, 0, R, 0, R, R, R, R, R, 7, R],
+      kick: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.8, 0, 0, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+      hat: [0.3, 0, 0, 0, 0.2, 0, -0.3, 0, 0.3, 0, 0, 0, 0.2, 0, 0, 0],
+      arpA: [0, R, 2, R, 1, R, 2, R, 0, R, 2, R, 1, R, 4, R],
+      arpB: [3, R, 5, R, 4, R, 5, R, 3, R, 2, R, 1, R, 2, R],
+      arpSteps: 3,
+      bassType: 'sawtooth',
+      bassCut: 700,
+      bassCutEnd: 150,
+      arpType: 'sawtooth',
+      arpCut: 1700,
+      padCut: 900,
+      duck: 0.5,
+    },
+  },
+  {
+    // «Cold Static»: Em – C – Am – B, 92 bpm, пульсирующие восьмые
+    bpm: 92,
+    bars: 8,
+    bassRoots: [40, 36, 33, 35],
+    chords: [
+      [59, 64, 67],
+      [60, 64, 67],
+      [57, 60, 64],
+      [59, 63, 66],
+    ],
+    style: {
+      bass: [0, R, 0, R, 12, R, 0, R, 0, R, 0, R, 12, R, 7, R],
+      kick: [1, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+      hat: [0.25, 0, 0.15, 0, 0.25, 0, 0.15, 0, 0.25, 0, 0.15, 0, 0.25, 0, -0.3, 0],
+      arpA: [0, 1, 2, 1, R, R, R, R, 0, 1, 2, 3, R, R, R, R],
+      arpB: [5, 4, 3, 4, R, R, R, R, 5, 4, 3, 2, R, R, R, R],
+      arpSteps: 2,
+      bassType: 'square',
+      bassCut: 800,
+      bassCutEnd: 180,
+      arpType: 'triangle',
+      arpCut: 2200,
+      padCut: 1000,
+      duck: 0.55,
+    },
+  },
+  {
+    // «Ghost Circuit»: Fm – Db – Bbm – C, 84 bpm, длинный плавный бас
+    bpm: 84,
+    bars: 8,
+    bassRoots: [29, 37, 34, 36],
+    chords: [
+      [56, 60, 65],
+      [56, 61, 65],
+      [58, 61, 65],
+      [55, 60, 64],
+    ],
+    style: {
+      bass: [0, R, R, R, R, R, R, R, 7, R, R, R, 0, R, R, R],
+      kick: [1, 0, 0, 0, 0, 0, 0.6, 0, 0.9, 0, 0, 0, 0, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0.3],
+      hat: [0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, -0.25],
+      arpA: [0, R, R, 1, R, R, 2, R, R, 1, R, R, 0, R, R, R],
+      arpB: [2, R, R, 3, R, R, 4, R, R, 3, R, R, 2, R, R, R],
+      arpSteps: 4,
+      bassType: 'sawtooth',
+      bassCut: 600,
+      bassCutEnd: 130,
+      arpType: 'sawtooth',
+      arpCut: 1500,
+      padCut: 800,
+      duck: 0.4,
+    },
+  },
+];
+
+export const CHROME_SONGS: readonly TrackConfig[] = [
+  {
+    // «Turbo Chrome»: Am – F – C – G, 142 bpm, четыре в корпус, рубленый бас
+    bpm: 142,
+    bars: 8,
+    bassRoots: [33, 29, 36, 31],
+    chords: [
+      [57, 60, 64],
+      [57, 60, 65],
+      [55, 60, 64],
+      [55, 59, 62],
+    ],
+    style: {
+      bass: [0, 0, 12, 0, 0, 0, 12, 0, 0, 0, 12, 0, 0, 7, 12, 0],
+      kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0],
+      hat: [0, 0, -0.5, 0, 0, 0, -0.5, 0, 0, 0, -0.5, 0, 0, 0, -0.5, 0.25],
+      arpA: [0, 1, 2, 3, 2, 1, 2, 3, 0, 1, 2, 3, 4, 3, 2, 1],
+      arpB: [5, 4, 3, 4, 5, 4, 3, 2, 5, 4, 3, 4, 5, 4, 3, 2],
+      arpSteps: 1,
+      bassType: 'square',
+      bassCut: 2200,
+      bassCutEnd: 420,
+      arpType: 'sawtooth',
+      arpCut: 4600,
+      padCut: 1800,
+      duck: 0.65,
+    },
+  },
+  {
+    // «Laser Highway»: Bm – G – D – A, 148 bpm, оффбит-бас, быстрое арпеджио
+    bpm: 148,
+    bars: 8,
+    bassRoots: [35, 31, 38, 33],
+    chords: [
+      [59, 62, 66],
+      [59, 62, 67],
+      [62, 66, 69],
+      [61, 64, 69],
+    ],
+    style: {
+      bass: [R, R, 0, R, R, R, 0, R, R, R, 0, R, R, R, 12, 0],
+      kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.5],
+      snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+      hat: [0.3, 0.2, -0.45, 0.2, 0.3, 0.2, -0.45, 0.2, 0.3, 0.2, -0.45, 0.2, 0.3, 0.2, -0.45, 0.25],
+      arpA: [0, 2, 1, 2, 3, 2, 1, 2, 0, 2, 4, 2, 3, 5, 4, 2],
+      arpB: [5, 3, 4, 3, 2, 3, 4, 3, 5, 3, 1, 3, 2, 0, 1, 3],
+      arpSteps: 1,
+      bassType: 'sawtooth',
+      bassCut: 1900,
+      bassCutEnd: 360,
+      arpType: 'square',
+      arpCut: 3800,
+      padCut: 1700,
+      duck: 0.6,
+    },
+  },
+  {
+    // «Grid Runner»: Gm – Eb – Bb – F, 144 bpm, бегущий 16-й бас
+    bpm: 144,
+    bars: 8,
+    bassRoots: [43, 39, 34, 41],
+    chords: [
+      [58, 62, 67],
+      [58, 63, 67],
+      [58, 62, 65],
+      [57, 60, 65],
+    ],
+    style: {
+      bass: [0, 0, 0, 12, 0, 0, 0, 12, 0, 0, 0, 12, 0, 0, 7, 12],
+      kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0],
+      snare: [0, 0, 0, 0, 0.9, 0, 0, 0.3, 0, 0, 0, 0, 0.9, 0, 0, 0.3],
+      hat: [0.4, 0.2, 0.3, 0.2, 0.4, 0.2, 0.3, 0.2, 0.4, 0.2, 0.3, 0.2, 0.4, 0.2, -0.4, 0.2],
+      arpA: [0, 3, 1, 3, 2, 3, 1, 3, 0, 3, 2, 3, 4, 3, 2, 3],
+      arpB: [5, 2, 4, 2, 3, 2, 4, 2, 5, 2, 3, 2, 1, 2, 3, 2],
+      arpSteps: 1,
+      bassType: 'sawtooth',
+      bassCut: 2000,
+      bassCutEnd: 380,
+      arpType: 'triangle',
+      arpCut: 4800,
+      padCut: 1900,
+      duck: 0.55,
+    },
+  },
+];

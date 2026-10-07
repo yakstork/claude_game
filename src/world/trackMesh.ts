@@ -18,6 +18,7 @@ import {
   attribute,
   clamp,
   color,
+  exp,
   float,
   floor,
   fract,
@@ -45,7 +46,11 @@ const STEP = 2;
 export class TrackMesh {
   readonly group = new Group();
 
-  constructor(readonly track: Track) {
+  constructor(
+    readonly track: Track,
+    /** Мокрый асфальт на любой трассе (дождь); на Storm Boulevard всегда мокрый */
+    readonly wet = false,
+  ) {
     this.group.add(this.buildRoad());
     this.group.add(this.buildBarriers());
     this.group.add(this.buildStructures());
@@ -115,9 +120,36 @@ export class TrackMesh {
     let base = mix(asphalt, color(PALETTE.void), shoulder);
     base = mix(base, startCol, onStart.mul(step(edgeDist, hw).mul(step(0.4, edgeDist))));
     const glow = edgeCol.mul(edge).add(innerCol.mul(inner)).add(laneCol.mul(lane).mul(0.5));
-    mat.colorNode = base.add(glow.mul(0.6));
-    mat.emissiveNode = glow.mul(1.1);
-    mat.roughnessNode = mix(float(0.5), float(0.25), onStart);
+    if (this.track.id === 'storm' || this.wet) {
+      // мокрый асфальт: тёмный глянец, лужи и вытянутые блики неона (дёшево, без SSR)
+      const px = positionWorld.x;
+      const pz = positionWorld.z;
+      const n = sin(px.mul(0.31).add(sin(pz.mul(0.17)).mul(2.0))).mul(sin(pz.mul(0.23).add(px.mul(0.11)))).add(sin(px.mul(0.07).sub(pz.mul(0.05))).mul(0.5));
+      const puddle = smoothstep(0.1, 0.45, n).mul(smoothstep(0.0, 0.5, edgeDist));
+      const wetness = puddle.mul(0.7).add(0.3);
+      // блики: ячейки вытянуты вдоль трассы, часть из них светится цветом неона
+      const cu = lat.div(1.6);
+      const cv = s.div(15.0);
+      const r = hash(floor(cu).add(floor(cv).mul(17.31)));
+      const r2 = hash(r.mul(91.7));
+      const along = smoothstep(0.5, 0.0, abs(fract(cv).sub(0.5))).mul(smoothstep(0.0, 0.4, fract(cv)));
+      const across = smoothstep(0.32, 0.0, abs(fract(cu).sub(0.5)));
+      const hue = mix(color(PALETTE.magenta), color(PALETTE.cyan), step(0.5, r2)).add(color(PALETTE.orange).mul(step(0.85, r2).mul(0.6)));
+      const flick = sin(time.mul(1.7).add(r.mul(40.0))).mul(0.25).add(0.75);
+      const streaks = hue.mul(step(0.72, r).mul(along).mul(across).mul(flick).mul(wetness));
+      // отражение неоновых краёв: размытое свечение внутрь полотна
+      const edgeRefl = color(PALETTE.cyan).mul(exp(edgeDist.mul(-0.55)).mul(0.5)).add(color(PALETTE.magenta).mul(exp(edgeDist.sub(1.0).abs().mul(-1.2)).mul(0.12)));
+      const refl = streaks.mul(1.3).add(edgeRefl.mul(wetness));
+      const dark = base.mul(0.55).add(color(PALETTE.skyHigh).mul(puddle.mul(0.08)));
+      mat.colorNode = dark.add(glow.mul(0.6)).add(refl.mul(0.55));
+      mat.emissiveNode = glow.mul(1.1).add(refl.mul(0.6));
+      mat.roughnessNode = mix(float(0.32), float(0.05), puddle);
+      mat.metalnessNode = float(0.55);
+    } else {
+      mat.colorNode = base.add(glow.mul(0.6));
+      mat.emissiveNode = glow.mul(1.1);
+      mat.roughnessNode = mix(float(0.5), float(0.25), onStart);
+    }
 
     const mesh = new Mesh(geo, mat);
     mesh.receiveShadow = false;

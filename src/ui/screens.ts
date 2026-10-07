@@ -1,5 +1,5 @@
 /** Экраны: загрузка, настройки, пауза, результаты. */
-import type { CarSpec, ControlMode, Quality, RaceResult, Settings, UICallbacks } from '../core/types';
+import type { Weather, TimeOfDay, CameraView, CarSpec, ChallengeResult, ControlMode, Difficulty, Quality, RaceMode, RaceResult, Settings, UICallbacks } from '../core/types';
 import { isTouchDevice } from '../core/device';
 import { el, onTap } from './dom';
 import {
@@ -12,8 +12,10 @@ import {
   valueFromFraction,
 } from './format';
 import { addFullscreenButton } from './fullscreen';
+import { formatCredits } from '../race/career';
 import { buildLogo } from './menu';
 import { Nav } from './nav';
+import { applyProgress, exportProgress, parseProgress } from '../core/progressTransfer';
 import { trackLabel } from './trackLogic';
 
 /** Кнопка со скосом: внутренний span выпрямляет текст. */
@@ -85,6 +87,74 @@ const CONTROL_MODES: { mode: ControlMode; full: string; short: string }[] = [
   { mode: 'touch', full: 'СЕНСОРНЫЕ КНОПКИ', short: 'КНОПКИ' },
 ];
 
+type ChoiceKey = 'raceMode' | 'difficulty' | 'laps' | 'cameraView' | 'timeOfDay' | 'weather';
+interface ChoiceDef<K extends ChoiceKey = ChoiceKey> {
+  key: K;
+  label: string;
+  options: { value: Settings[K]; full: string; short?: string }[];
+}
+
+/** Параметры гонки: режим, сложность, круги, камера */
+export const RACE_CHOICES: ChoiceDef[] = [
+  {
+    key: 'raceMode',
+    label: 'РЕЖИМ',
+    options: [
+      { value: 'race' as RaceMode, full: 'ГОНКА', short: 'ГОНКА' },
+      { value: 'cup' as RaceMode, full: 'КУБОК', short: 'КУБОК' },
+      { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ', short: 'ВРЕМЯ' },
+      { value: 'drift' as RaceMode, full: 'ДРИФТ', short: 'ДРИФТ' },
+      { value: 'elimination' as RaceMode, full: 'ВЫБЫВАНИЕ', short: 'ВЫБЫВ.' },
+      { value: 'versus' as RaceMode, full: '2 ИГРОКА', short: '2 ИГР.' },
+    ],
+  },
+  {
+    key: 'difficulty',
+    label: 'СЛОЖНОСТЬ',
+    options: [
+      { value: 'easy' as Difficulty, full: 'ЛЕГКО' },
+      { value: 'normal' as Difficulty, full: 'НОРМА' },
+      { value: 'hard' as Difficulty, full: 'ХАРД' },
+    ],
+  },
+  {
+    key: 'laps',
+    label: 'КРУГИ',
+    options: [
+      { value: 1, full: '1' },
+      { value: 3, full: '3' },
+      { value: 5, full: '5' },
+    ],
+  },
+  {
+    key: 'cameraView',
+    label: 'КАМЕРА (C)',
+    options: [
+      { value: 'far' as CameraView, full: 'ДАЛЬНЯЯ', short: 'ДАЛЬ' },
+      { value: 'near' as CameraView, full: 'БЛИЖНЯЯ', short: 'БЛИЖЕ' },
+      { value: 'bumper' as CameraView, full: 'БАМПЕР' },
+    ],
+  },
+  {
+    key: 'timeOfDay',
+    label: 'ВРЕМЯ СУТОК',
+    options: [
+      { value: 'sunset' as TimeOfDay, full: 'ЗАКАТ' },
+      { value: 'night' as TimeOfDay, full: 'НОЧЬ' },
+      { value: 'dawn' as TimeOfDay, full: 'РАССВЕТ', short: 'РАССВ.' },
+    ],
+  },
+  {
+    key: 'weather',
+    label: 'ПОГОДА',
+    options: [
+      { value: 'clear' as Weather, full: 'ЯСНО' },
+      { value: 'rain' as Weather, full: 'ДОЖДЬ' },
+      { value: 'fog' as Weather, full: 'ТУМАН' },
+    ],
+  },
+];
+
 export class SettingsScreen {
   readonly el: HTMLElement;
   readonly nav: Nav;
@@ -94,8 +164,11 @@ export class SettingsScreen {
   private readonly modeBtns: Record<ControlMode, HTMLElement>;
   private readonly fpsBtn: HTMLElement;
   private readonly fpsVal: HTMLElement;
+  private readonly fxBtn: HTMLElement;
+  private readonly fxVal: HTMLElement;
   private readonly list: HTMLElement;
   private readonly modeHint: HTMLElement;
+  private readonly choices: { def: ChoiceDef; btns: HTMLElement[] }[] = [];
 
   constructor(
     parent: HTMLElement,
@@ -105,6 +178,8 @@ export class SettingsScreen {
     onBack: () => void,
     /** Предпросмотр сенсорных кнопок, пока палец на слайдере размера/прозрачности */
     private readonly onPreview: (active: boolean) => void = () => undefined,
+    /** Экран «УПРАВЛЕНИЕ» (клавиши); null — кнопки нет */
+    onKeys: (() => void) | null = null,
   ) {
     this.nav = nav;
     this.settings = { ...settings };
@@ -122,6 +197,7 @@ export class SettingsScreen {
     const list = el('div', 'set-col', undefined, listBox);
     const list2 = el('div', 'set-col', undefined, listBox);
 
+    for (const def of RACE_CHOICES.slice(0, 3)) this.addChoice(list, def);
     for (const def of SLIDERS) this.addSlider(list, def);
 
     // качество
@@ -165,6 +241,27 @@ export class SettingsScreen {
       activate: toggleFps,
     });
 
+    // эффекты скорости
+    const xRow = el('div', 'set-row', undefined, list);
+    el('span', 'set-label', 'ЭФФЕКТЫ СКОРОСТИ', xRow);
+    this.fxBtn = el('div', 'toggle', undefined, xRow);
+    el('span', 'toggle-knob', undefined, this.fxBtn);
+    this.fxVal = el('span', 'slider-val', '', xRow);
+    const toggleFx = (): void => this.setSpeedFx(!this.settings.speedFx);
+    onTap(xRow, () => {
+      this.nav.focusAt(this.nav.items.findIndex((it) => it.el === xRow), false);
+      toggleFx();
+    });
+    nav.add({
+      el: xRow,
+      noClick: true,
+      adjust: () => {
+        toggleFx();
+        return true;
+      },
+      activate: toggleFx,
+    });
+
     // тип управления
     const mRow = el('div', 'set-row wide', undefined, list2);
     el('span', 'set-label', 'ТИП УПРАВЛЕНИЯ', mRow);
@@ -194,12 +291,73 @@ export class SettingsScreen {
       activate: () => cycleMode(1),
     });
 
+    this.addChoice(list2, RACE_CHOICES[3]);
+    this.addChoice(list2, RACE_CHOICES[4]);
     for (const def of TOUCH_SLIDERS) this.addSlider(list2, def);
 
-    const back = makeButton(el('div', 'set-actions', undefined, panel), 'НАЗАД');
+    this.addTransfer(list2);
+
+    const actions = el('div', 'set-actions', undefined, panel);
+    if (onKeys) {
+      const keys = makeButton(actions, 'УПРАВЛЕНИЕ');
+      nav.add({ el: keys, activate: onKeys });
+    }
+    const back = makeButton(actions, 'НАЗАД');
     nav.add({ el: back, activate: onBack });
 
     this.refresh();
+  }
+
+  /** Перенос прогресса: экспорт (base64 в буфер и поле) и импорт (вставить, проверить, подтвердить, перезагрузить) */
+  private addTransfer(parent: HTMLElement): void {
+    const row = el('div', 'set-row wide', undefined, parent);
+    el('span', 'set-label', 'ПЕРЕНОС ПРОГРЕССА', row);
+    const area = document.createElement('textarea');
+    area.className = 'transfer-area';
+    area.rows = 3;
+    area.spellcheck = false;
+    area.placeholder = 'Строка прогресса: «Экспорт» заполнит поле, для импорта вставьте её сюда';
+    area.addEventListener('keydown', (e) => e.stopPropagation());
+    area.addEventListener('keyup', (e) => e.stopPropagation());
+    row.appendChild(area);
+    const status = el('div', 'set-hint', '', row);
+    const btns = el('div', 'transfer-btns', undefined, row);
+    const exp = makeButton(btns, 'ЭКСПОРТ ПРОГРЕССА');
+    const imp = makeButton(btns, 'ИМПОРТ');
+    const doExport = async (): Promise<void> => {
+      try {
+        const text = await exportProgress(localStorage);
+        area.value = text;
+        area.select();
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch {
+          /* буфер недоступен — строка осталась в поле */
+        }
+        status.textContent = copied ? 'Скопировано в буфер и показано в поле' : 'Скопируйте строку из поля вручную';
+      } catch {
+        status.textContent = 'Не удалось собрать прогресс';
+      }
+    };
+    const doImport = async (): Promise<void> => {
+      const r = await parseProgress(area.value);
+      if (!r.ok) {
+        status.textContent = r.error;
+        return;
+      }
+      if (!window.confirm(`Заменить текущий прогресс импортированным (${r.count} записей) и перезагрузить игру?`)) return;
+      try {
+        applyProgress(localStorage, r.dump);
+        status.textContent = 'Готово, перезагрузка…';
+        location.reload();
+      } catch {
+        status.textContent = 'Не удалось записать данные';
+      }
+    };
+    this.nav.add({ el: exp, activate: () => void doExport() });
+    this.nav.add({ el: imp, activate: () => void doImport() });
   }
 
   /** Сброс прокрутки при открытии. */
@@ -218,6 +376,50 @@ export class SettingsScreen {
       el('span', 's-short', short, inner);
     }
     return seg;
+  }
+
+  get value(): Settings {
+    return { ...this.settings };
+  }
+
+  /** Обновить значения извне (например, камера переключена клавишей C в гонке) */
+  setSettings(s: Settings): void {
+    this.settings = { ...s };
+    this.refresh();
+  }
+
+  private addChoice(parent: HTMLElement, def: ChoiceDef): void {
+    // много вариантов (режимы) — строка на всю ширину: подпись сверху, кнопки ниже
+    const row = el('div', def.options.length > 4 ? 'set-row wide' : 'set-row', undefined, parent);
+    el('span', 'set-label', def.label, row);
+    const seg = el('div', 'segments', undefined, row);
+    const btns = def.options.map((o) => {
+      const b = this.addSeg(seg, o.full, o.short);
+      onTap(b, () => this.setChoice(def, o.value));
+      return b;
+    });
+    this.choices.push({ def, btns });
+    const cycle = (dir: -1 | 1): void => {
+      const n = def.options.length;
+      const i = def.options.findIndex((o) => o.value === this.settings[def.key]);
+      this.setChoice(def, def.options[(i + dir + n) % n].value);
+      this.cb.onUiSound('move');
+    };
+    this.nav.add({
+      el: row,
+      noClick: true,
+      adjust: (dir) => {
+        cycle(dir);
+        return true;
+      },
+      activate: () => cycle(1),
+    });
+  }
+
+  private setChoice(def: ChoiceDef, v: Settings[ChoiceKey]): void {
+    if (this.settings[def.key] === v) return;
+    this.settings = { ...this.settings, [def.key]: v };
+    this.emit();
   }
 
   private addSlider(parent: HTMLElement, def: SliderDef): void {
@@ -298,6 +500,11 @@ export class SettingsScreen {
     this.emit();
   }
 
+  private setSpeedFx(v: boolean): void {
+    this.settings = { ...this.settings, speedFx: v };
+    this.emit();
+  }
+
   private setFps(v: boolean): void {
     this.settings = { ...this.settings, showFps: v };
     this.emit();
@@ -315,6 +522,9 @@ export class SettingsScreen {
     this.modeHint.hidden = !(this.settings.controlMode === 'keyboard' && isTouchDevice());
     this.fpsBtn.classList.toggle('on', this.settings.showFps);
     this.fpsVal.textContent = this.settings.showFps ? 'ВКЛ' : 'ВЫКЛ';
+    this.fxBtn.classList.toggle('on', this.settings.speedFx);
+    this.fxVal.textContent = this.settings.speedFx ? 'ВКЛ' : 'ВЫКЛ';
+    for (const c of this.choices) c.def.options.forEach((o, i) => c.btns[i].classList.toggle('on', this.settings[c.def.key] === o.value));
   }
 }
 
@@ -342,6 +552,7 @@ export class PauseScreen {
       { text: 'ПРОДОЛЖИТЬ', run: () => cb.onResume() },
       { text: 'РЕСТАРТ', run: () => cb.onRestart() },
       { text: 'НАСТРОЙКИ', run: onSettings },
+      { text: 'ФОТО', run: () => cb.onPhoto?.() },
     ];
     for (const it of items) {
       nav.add({ el: makeButton(list, it.text), activate: it.run });
@@ -354,11 +565,16 @@ export class PauseScreen {
 
 // ─── Результаты ─────────────────────────────────────────────────────────────
 
+type CupInfo = NonNullable<RaceResult['cup']>;
+
 export class ResultsScreen {
   readonly el: HTMLElement;
   readonly nav: Nav;
   private readonly body: HTMLElement;
   private readonly btnRow: HTMLElement;
+  private fx: HTMLElement | null = null;
+  private readonly againLabel: HTMLElement;
+  private readonly nextBtn: HTMLElement;
 
   constructor(
     parent: HTMLElement,
@@ -376,19 +592,50 @@ export class ResultsScreen {
     this.body = el('div', 'results-body nr-scroll', undefined, panel);
     this.btnRow = el('div', 'results-actions', undefined, panel);
     const again = makeButton(this.btnRow, 'ЕЩЁ РАЗ', 'big');
+    this.againLabel = again.firstElementChild as HTMLElement;
+    const replay = makeButton(this.btnRow, 'ПОВТОР');
     const menu = makeButton(this.btnRow, 'В МЕНЮ');
     nav.add({ el: again, activate: () => cb.onRestart() });
+    nav.add({ el: replay, activate: () => cb.onReplay?.() });
     nav.add({ el: menu, activate: () => cb.onQuitToMenu() });
+    // «ДАЛЕЕ» к карте кампании — последний пункт Nav, виден только после события кампании
+    this.nextBtn = makeButton(this.btnRow, 'ДАЛЕЕ');
+    this.nextBtn.hidden = true;
+    nav.add({ el: this.nextBtn, activate: () => cb.onCampaignMap?.() });
   }
 
   /** trackName — имя трассы (мелко рядом с машиной); не задано — не показывается. */
-  show(r: RaceResult, trackName?: string): void {
+  show(r: RaceResult, trackName?: string, newAwards: readonly string[] = []): void {
     const body = this.body;
     body.replaceChildren();
     body.scrollTop = 0;
-    const win = r.playerPosition === 1;
+    const cup = r.cup;
+    const win = r.playerPosition === 1 && !r.solo;
+    // итог кубка: победа в кубке — праздник, иначе — место в зачёте
+    const cupPlace = cup?.rows.find((x) => x.isPlayer)?.position ?? r.playerPosition;
+    const cupDone = cup !== undefined && cup.finished;
+    const chal = r.challenge;
+    const celebrate = r.title !== undefined ? true : chal ? chal.medal !== 'none' || chal.isRecord : cupDone ? cupPlace === 1 : win || (r.solo === true && r.newBestLap);
+    const title = r.title ?? (chal
+      ? chal.isRecord
+        ? 'НОВЫЙ РЕКОРД!'
+        : 'ДРИФТ-ВЫЗОВ'
+      : cupDone
+      ? cupPlace === 1
+        ? 'КУБОК ВЫИГРАН!'
+        : `КУБОК · ${cupPlace}-Е МЕСТО`
+      : r.solo
+        ? r.newBestLap
+          ? 'НОВЫЙ РЕКОРД!'
+          : 'ЗАЕЗД НА ВРЕМЯ'
+        : r.elimination
+          ? r.playerPosition === 1
+            ? 'ПОБЕДА!'
+            : `ВЫБЫЛ · ${r.playerPosition}-Е МЕСТО`
+          : resultTitle(r.playerPosition));
+    this.againLabel.textContent = cup ? (cup.finished ? 'НОВЫЙ КУБОК' : 'СЛЕДУЮЩАЯ ГОНКА') : 'ЕЩЁ РАЗ';
     const head = el('div', 'results-head', undefined, body);
-    el('div', `results-title${win ? ' win' : ''}`, resultTitle(r.playerPosition), head);
+    el('div', `results-title${celebrate ? ' win' : ''}`, title, head);
     const car = this.cars.find((c) => c.id === r.carId);
     if (car || trackName) {
       const line = el('div', 'results-car', car ? car.name : '', head);
@@ -399,21 +646,29 @@ export class ResultsScreen {
     if (r.newBestLap) el('div', 'badge yellow', 'НОВЫЙ РЕКОРД КРУГА', badges);
     if (r.newBestRace) el('div', 'badge cyan', 'РЕКОРД ГОНКИ', badges);
     if (r.newBestDrift) el('div', 'badge pink', 'РЕКОРД ДРИФТА', badges);
+    for (const t of newAwards) el('div', 'badge award-new', `НОВАЯ НАГРАДА: ${t}`, badges);
     badges.hidden = badges.childElementCount === 0;
 
     // лучший круг среди всех — подсветим жёлтым
     let fastest = Infinity;
     for (const row of r.rows) if (row.bestLap !== null && row.bestLap < fastest) fastest = row.bestLap;
 
+    if (chal) {
+      this.challengeBlock(body, r, chal);
+      this.confetti(celebrate);
+      this.nav.reset(0);
+      return;
+    }
     const table = el('div', 'rtable', undefined, body);
     const hr = el('div', 'rrow rhead', undefined, table);
     el('span', undefined, '#', hr);
     el('span', undefined, 'ПИЛОТ', hr);
-    el('span', 'num', 'ВРЕМЯ', hr);
-    el('span', 'num', 'ЛУЧШИЙ КРУГ', hr);
-    for (const row of r.rows) {
+    el('span', 'num', r.elimination ? 'ВЫБЫЛ' : 'ВРЕМЯ', hr);
+    el('span', 'num', r.elimination ? '' : 'ЛУЧШИЙ КРУГ', hr);
+    r.rows.forEach((row, ri) => {
       const cls = `rrow${row.isPlayer ? ' me' : ''}${row.projected ? ' proj' : ''}`;
       const rr = el('div', cls, undefined, table);
+      rr.style.animationDelay = `${0.12 + ri * 0.07}s`;
       el('span', 'rpos', String(row.position), rr);
       const who = el('span', 'rname', undefined, rr);
       const dot = el('i', 'rdot', undefined, who);
@@ -422,15 +677,138 @@ export class ResultsScreen {
       el('span', undefined, row.name, who);
       el('span', 'num', `${row.projected ? '~' : ''}${formatTime(row.time)}`, rr);
       const fast = row.bestLap !== null && row.bestLap === fastest;
-      el('span', `num${fast ? ' fastest' : ''}`, formatTime(row.bestLap), rr);
+      el('span', `num${fast ? ' fastest' : ''}`, r.elimination ? '' : formatTime(row.bestLap), rr);
+    });
+
+    // времена кругов игрока (поле необязательное: пока гонка его не отдаёт — блок скрыт)
+    const laps = r.lapTimes;
+    if (laps && laps.length > 1 && !r.elimination) {
+      let best = Infinity;
+      for (const t of laps) if (t < best) best = t;
+      const box = el('div', 'laps', undefined, body);
+      el('span', 'hud-label', 'КРУГИ', box);
+      laps.forEach((t, i) => {
+        const chip = el('div', `lap${t === best ? ' best' : ''}`, undefined, box);
+        chip.style.animationDelay = `${0.35 + i * 0.08}s`;
+        el('span', 'lap-n', String(i + 1), chip);
+        el('span', 'lap-t', formatTime(t), chip);
+      });
     }
 
     const sum = el('div', 'rsummary', undefined, body);
     this.stat(sum, 'ВРЕМЯ ГОНКИ', formatTime(r.playerTime), '');
-    this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
+    if (r.elimination) this.stat(sum, 'МЕСТО', `${r.playerPosition}/${r.rows.length}`, 'yellow');
+    else this.stat(sum, 'ЛУЧШИЙ КРУГ', formatTime(r.playerBestLap), 'yellow');
     this.stat(sum, 'ОЧКИ ДРИФТА', formatScore(r.driftScore), 'pink');
 
-    this.nav.reset(0);
+    const cr = r.credits;
+    if (cr) {
+      const box = el('div', 'rcredits', undefined, body);
+      el('span', 'rcredits-total', `+${formatCredits(cr.total)}`, box);
+      for (const l of cr.lines) el('span', 'rcredits-line', `${l.label} +${l.value}`, box);
+      el('span', 'rcredits-bal', `БАЛАНС ${formatCredits(cr.balance)}`, box);
+    }
+
+    const cg = r.campaign;
+    // кампания, соперник и вызов дня — компактно, в одной строке/колонке (см. rival.css)
+    const extras = el('div', 'rextras', undefined, body);
+    if (cg) {
+      const box = el('div', 'rcampaign', undefined, extras);
+      const st = el('div', 'rcampaign-stars', undefined, box);
+      for (let i = 0; i < 3; i++) el('i', i < cg.stars ? 'on' : '', '★', st);
+      for (const g of cg.goals) el('div', `rcampaign-goal${g.on ? ' on' : ''}`, g.text, box);
+      if (cg.reward > 0) el('div', 'rcampaign-note', `НОВЫХ ЗВЁЗД: ${cg.newStars} · +${cg.reward} NC`, box);
+    }
+    const rv = r.rival;
+    if (rv) {
+      const box = el('div', 'rrival', undefined, extras);
+      el('div', 'rrival-title', `СОПЕРНИК · ${rv.name}`, box);
+      el('div', 'rrival-score', `${rv.you} : ${rv.bot}`, box);
+      el('div', 'rrival-line', rv.ahead ? 'в гонке ты впереди' : 'в гонке он впереди', box);
+    }
+    const dl = r.daily;
+    if (dl) {
+      const box = el('div', 'rdaily', undefined, extras);
+      el('div', 'rdaily-title', dl.title, box);
+      el('div', 'rdaily-medal', dl.medal, box);
+      el('div', 'rdaily-line', dl.lines.join(' · ') + (dl.reward > 0 ? ` · +${dl.reward} NC` : ''), box);
+    }
+    this.nextBtn.hidden = !cg;
+    this.btnRow.classList.toggle('four', !!cg);
+
+    if (cup) {
+      this.cupTable(body, cup);
+      // таблица кубка ниже результатов гонки: на невысоких экранах плавно докрутить до неё
+      window.setTimeout(() => {
+        if (body.isConnected && body.scrollHeight > body.clientHeight + 4) body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
+      }, 2400);
+    }
+    this.confetti(celebrate);
+    this.nav.reset(cg && cg.stars > 0 ? 3 : 0);
+  }
+
+  /** Дрифт-вызов: очки, медаль, цели и рекорд вместо таблицы гонки. */
+  private challengeBlock(parent: HTMLElement, r: RaceResult, c: ChallengeResult): void {
+    const medals = ['bronze', 'silver', 'gold'] as const;
+    const names = { bronze: 'БРОНЗА', silver: 'СЕРЕБРО', gold: 'ЗОЛОТО' };
+    const tones = { bronze: 'orange', silver: 'cyan', gold: 'yellow' };
+    const big = el('div', 'rsummary', undefined, parent);
+    this.stat(big, 'ОЧКИ', formatScore(r.driftScore), 'pink');
+    this.stat(big, 'МЕДАЛЬ', c.medal === 'none' ? '—' : names[c.medal], c.medal === 'none' ? '' : tones[c.medal]);
+    this.stat(big, 'РЕКОРД', formatScore(Math.max(c.previous, c.isRecord ? r.driftScore : 0)), 'yellow');
+    const goals = el('div', 'laps', undefined, parent);
+    el('span', 'hud-label', 'ЦЕЛИ', goals);
+    medals.forEach((m, i) => {
+      const got = r.driftScore >= c.thresholds[i];
+      const chip = el('div', `lap${got ? ' best' : ''}`, undefined, goals);
+      chip.style.animationDelay = `${0.2 + i * 0.1}s`;
+      el('span', 'lap-n', names[m], chip);
+      el('span', 'lap-t', formatScore(c.thresholds[i]), chip);
+    });
+  }
+
+  private cupTable(parent: HTMLElement, cup: CupInfo): void {
+    el('div', 'cup-title', `КУБОК · ГОНКА ${cup.round}/${cup.rounds}`, parent);
+    const table = el('div', 'rtable cup-table', undefined, parent);
+    const hr = el('div', 'rrow rhead', undefined, table);
+    el('span', undefined, '#', hr);
+    el('span', undefined, 'ПИЛОТ', hr);
+    el('span', 'num', 'ГОНКА', hr);
+    el('span', 'num', 'ОЧКИ', hr);
+    const rows = cup.rows.slice().sort((a, b) => a.position - b.position);
+    rows.forEach((row, i) => {
+      const rr = el('div', `rrow${row.isPlayer ? ' me' : ''}`, undefined, table);
+      rr.style.animationDelay = `${0.5 + i * 0.07}s`;
+      el('span', 'rpos', String(row.position), rr);
+      const who = el('span', 'rname', undefined, rr);
+      const dot = el('i', 'rdot', undefined, who);
+      dot.style.background = row.color;
+      dot.style.boxShadow = `0 0 .5em ${row.color}`;
+      el('span', undefined, row.name, who);
+      el('span', 'num', row.last > 0 ? `+${row.last}` : '—', rr);
+      el('span', 'num cup-pts', String(row.points), rr);
+    });
+  }
+
+  /** Неоновое конфетти на CSS (только при победе); детерминированный разброс. */
+  private confetti(win: boolean): void {
+    this.fx?.remove();
+    this.fx = null;
+    if (!win) return;
+    const tones = ['--magenta', '--cyan', '--yellow', '--pink', '--orange', '--lilac'];
+    const fx = el('div', 'confetti', undefined, this.el);
+    for (let i = 0; i < 36; i++) {
+      const c = el('i', undefined, undefined, fx);
+      const tone = tones[i % tones.length];
+      c.style.left = `${(i * 97) % 100}%`;
+      c.style.background = `var(${tone})`;
+      c.style.boxShadow = `0 0 0.6em var(${tone})`;
+      c.style.animationDelay = `${((i * 37) % 100) / 60}s`;
+      c.style.animationDuration = `${2.6 + ((i * 53) % 100) / 50}s`;
+      c.style.setProperty('--dx', `${((i * 29) % 21) - 10}em`);
+      c.style.setProperty('--rot', `${360 + ((i * 71) % 5) * 180}deg`);
+    }
+    this.fx = fx;
   }
 
   private stat(parent: HTMLElement, label: string, value: string, tone: string): void {

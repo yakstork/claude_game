@@ -25,6 +25,7 @@ const BOOST_MIN_INTERVAL_MS = 250;
 export class SfxPlayer {
   private readonly last = new Map<SfxName, number>();
   private lastBoostMs = -1e9;
+  private lastFireworkMs = -1e9;
   /** Входной gain эффектов (общий подъём уровня относительно музыки). */
   private readonly dest: GainNode;
 
@@ -35,6 +36,16 @@ export class SfxPlayer {
     this.dest = ctx.createGain();
     this.dest.gain.value = 1.8;
     this.dest.connect(out);
+  }
+
+  /** Радио: шум-свип переключения станции (полоса вверх-вниз + короткий «щелчок настройки») */
+  playRadioSweep(): void {
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.01;
+    const d = this.dest;
+    playNoise(ctx, d, { filter: 'bandpass', freq: 400, freqEnd: 4200, q: 3, start: t, dur: 0.18, gain: 0.22, attack: 0.02 });
+    playNoise(ctx, d, { filter: 'bandpass', freq: 4200, freqEnd: 700, q: 3, start: t + 0.17, dur: 0.2, gain: 0.2, attack: 0.02 });
+    playTone(ctx, d, { type: 'sine', freq: 900, freqEnd: 1400, start: t + 0.34, dur: 0.06, gain: 0.05, attack: 0.005 });
   }
 
   /**
@@ -57,6 +68,25 @@ export class SfxPlayer {
     // бас-удар в начале
     playTone(ctx, d, { type: 'sine', freq: 140, freqEnd: 40, start: t, dur: 0.3, gain: 0.34 + 0.2 * p, attack: 0.002 });
     playNoise(ctx, d, { filter: 'lowpass', freq: 600, freqEnd: 140, q: 0.7, start: t, dur: 0.12, gain: 0.15 + 0.1 * p, attack: 0.002 });
+  }
+
+  /** Залп фейерверка: свист вверх, хлопок и россыпь «искр». Синтез, без аллокаций вне вызова. */
+  playFirework(): void {
+    const ctx = this.ctx;
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (nowMs - this.lastFireworkMs < 120) return;
+    this.lastFireworkMs = nowMs;
+    const t = ctx.currentTime + 0.01;
+    const d = this.dest;
+    const rise = 0.28;
+    playNoise(ctx, d, { filter: 'bandpass', freq: 700, freqEnd: 2600, q: 5, start: t, dur: rise, gain: 0.07, attack: 0.05 });
+    playTone(ctx, d, { type: 'sine', freq: 500, freqEnd: 1700, start: t, dur: rise, gain: 0.05, attack: 0.05 });
+    const b = t + rise;
+    playNoise(ctx, d, { filter: 'lowpass', freq: 1800, freqEnd: 200, q: 0.7, start: b, dur: 0.35, gain: 0.34, attack: 0.002 });
+    playTone(ctx, d, { type: 'sine', freq: 120, freqEnd: 40, start: b, dur: 0.3, gain: 0.4, attack: 0.002 });
+    for (let i = 0; i < 6; i++) {
+      playNoise(ctx, d, { filter: 'highpass', freq: 4000 + Math.random() * 3000, q: 0.8, start: b + 0.08 + i * 0.07 + Math.random() * 0.05, dur: 0.05, gain: 0.07, attack: 0.001 });
+    }
   }
 
   play(name: SfxName): void {
@@ -83,6 +113,7 @@ export class SfxPlayer {
         }
         playTone(ctx, d, { type: 'square', freq: 1320, start: t, dur: 0.55, gain: 0.16, attack: 0.004, cutoff: 5000 });
         playTone(ctx, d, { type: 'sine', freq: 660, start: t, dur: 0.6, gain: 0.16, attack: 0.004 });
+        playTone(ctx, d, { type: 'sine', freq: midiToFreq(40), start: t, dur: 0.6, gain: 0.2, attack: 0.01 });
         break;
       }
 
@@ -116,8 +147,12 @@ export class SfxPlayer {
       }
 
       case 'hit':
-        playNoise(ctx, d, { filter: 'lowpass', freq: 1400, freqEnd: 180, q: 0.8, start: t, dur: 0.25, gain: 0.6, attack: 0.002 });
-        playTone(ctx, d, { type: 'sine', freq: 130, freqEnd: 45, start: t, dur: 0.25, gain: 0.55, attack: 0.002 });
+        // глухой корпус + хруст металла + короткий расстроенный «звон»
+        playNoise(ctx, d, { filter: 'lowpass', freq: 1400, freqEnd: 180, q: 0.8, start: t, dur: 0.25, gain: 0.5, attack: 0.002 });
+        playNoise(ctx, d, { filter: 'bandpass', freq: 2600, freqEnd: 900, q: 1.4, start: t, dur: 0.12, gain: 0.28, attack: 0.001 });
+        playTone(ctx, d, { type: 'sine', freq: 130, freqEnd: 45, start: t, dur: 0.28, gain: 0.5, attack: 0.002 });
+        playTone(ctx, d, { type: 'square', freq: 310, freqEnd: 190, start: t, dur: 0.1, gain: 0.07, attack: 0.001, cutoff: 1800 });
+        playTone(ctx, d, { type: 'square', freq: 337, freqEnd: 205, start: t, dur: 0.1, gain: 0.06, attack: 0.001, cutoff: 1800 });
         break;
 
       case 'combo':
@@ -134,14 +169,19 @@ export class SfxPlayer {
 
       case 'nitroStart': {
         // «вжух»: шум с bandpass-свипом вверх + нарастающий низкий гул
-        playNoise(ctx, d, { filter: 'bandpass', freq: 400, freqEnd: 4500, q: 2.5, start: t, dur: 0.55, gain: 0.5, attack: 0.15 });
+        playNoise(ctx, d, { filter: 'bandpass', freq: 400, freqEnd: 4500, q: 2.5, start: t, dur: 0.55, gain: 0.45, attack: 0.15 });
+        playNoise(ctx, d, { filter: 'highpass', freq: 3000, q: 0.6, start: t + 0.1, dur: 0.4, gain: 0.12, attack: 0.1 });
         playTone(ctx, d, { type: 'sawtooth', freq: 70, freqEnd: 260, start: t, dur: 0.5, gain: 0.12, attack: 0.1, cutoff: 900 });
+        playTone(ctx, d, { type: 'sine', freq: 90, freqEnd: 38, start: t + 0.05, dur: 0.4, gain: 0.3, attack: 0.01 });
         break;
       }
 
       case 'land':
         playTone(ctx, d, { type: 'sine', freq: 95, freqEnd: 38, start: t, dur: 0.28, gain: 0.6, attack: 0.002 });
-        playNoise(ctx, d, { filter: 'lowpass', freq: 380, freqEnd: 120, q: 0.7, start: t, dur: 0.16, gain: 0.35, attack: 0.002 });
+        playNoise(ctx, d, { filter: 'lowpass', freq: 380, freqEnd: 120, q: 0.7, start: t, dur: 0.16, gain: 0.3, attack: 0.002 });
+        // скрежет подвески и пыль
+        playNoise(ctx, d, { filter: 'bandpass', freq: 1800, freqEnd: 700, q: 1.2, start: t, dur: 0.14, gain: 0.1, attack: 0.002 });
+        playTone(ctx, d, { type: 'triangle', freq: 220, freqEnd: 150, start: t, dur: 0.09, gain: 0.06, attack: 0.002 });
         break;
 
       case 'uiMove':

@@ -4,11 +4,12 @@
  * у готовых элементов — и только при изменении значения.
  */
 import type { HudData, PopupTone } from '../core/types';
-import { el, restartAnim, svgEl } from './dom';
+import { el, onTap, restartAnim, svgEl } from './dom';
 import {
   comboScale,
   formatScore,
   formatSpeed,
+  formatDelta,
   formatTime,
   SPEEDO_MAX_KMH,
   speedFraction,
@@ -18,6 +19,8 @@ import { quantize01 } from './trackLogic';
 
 const MAX_POPUPS = 3;
 const POPUP_MS = 1700;
+/** Реплика соперника по «рации», мс */
+const RADIO_MS = 2000;
 const BANNER_MS = 2100;
 
 // Геометрия дуги спидометра: 240°, от 150° до 390° по часовой (координаты SVG).
@@ -38,6 +41,13 @@ export class Hud {
 
   // элементы
   private readonly posNum: HTMLElement;
+  private readonly posPanel: HTMLElement;
+  private readonly deltaEl: HTMLElement;
+  private readonly lapPanel: HTMLElement;
+  private cChallenge = '';
+  private cDelta = '';
+  private readonly slipEl: HTMLElement;
+  private cSlip = -1;
   private readonly posTotal: HTMLElement;
   private readonly driftTotalEl: HTMLElement;
   private readonly lapLabel: HTMLElement;
@@ -84,10 +94,14 @@ export class Hud {
   private cWrong = false;
 
   private bannerTimer = 0;
+  private chatterEl: HTMLElement | null = null;
+  private radioTimer = 0;
   private readonly popupTimers = new Map<HTMLElement, number>();
   private countdownKey = '';
 
-  constructor(parent: HTMLElement) {
+  private readonly radioEl: HTMLElement;
+
+  constructor(parent: HTMLElement, onRadio: () => void = () => undefined) {
     const root = el('div', 'screen hud', undefined, parent);
     root.hidden = true;
     this.el = root;
@@ -101,11 +115,22 @@ export class Hud {
     const dRow = el('div', 'hud-drift-row', undefined, pos);
     el('span', 'hud-label', 'ДРИФТ', dRow);
     this.driftTotalEl = el('span', 'hud-drift-total', '0', dRow);
+    // станция радио: тап переключает
+    this.radioEl = el('div', 'hud-radio', '', pos);
+    this.radioEl.setAttribute('role', 'button');
+    this.radioEl.setAttribute('aria-label', 'Сменить радиостанцию');
+    onTap(this.radioEl, onRadio);
 
     // ── круг и таймеры (справа сверху)
     const lap = el('div', 'panel cyan hud-lap', undefined, root);
+    this.lapPanel = lap;
     this.lapLabel = el('div', 'hud-lap-title', 'КРУГ 1/3', lap);
     this.lapCur = el('div', 'hud-lap-cur', formatTime(null), lap);
+    // разница с лучшим кругом (призраком) в той же точке трассы
+    this.deltaEl = el('div', 'hud-delta', '', lap);
+    this.deltaEl.hidden = true;
+    this.posPanel = pos;
+    this.slipEl = el('div', 'hud-slip', 'СЛИПСТРИМ', root);
     const rows = el('div', 'hud-lap-rows', undefined, lap);
     el('span', 'hud-label', 'ЛУЧШИЙ', rows);
     this.lapBest = el('span', 'hud-time best', formatTime(null), rows);
@@ -124,6 +149,8 @@ export class Hud {
     this.comboPts = el('span', 'hud-combo-pts', '+0', this.combo);
     this.comboMult = el('span', 'hud-combo-mult', 'x1', this.combo);
     this.popups = el('div', 'hud-popups', undefined, centerCol);
+    this.chatterEl = el('div', 'hud-chatter', undefined, root);
+    this.chatterEl.hidden = true;
 
     // ── плашка «не туда», отсчёт
     this.wrongWay = el('div', 'hud-wrong', 'НЕ ТУДА!', root);
@@ -183,7 +210,7 @@ export class Hud {
   /** Сброс состояния при показе HUD (новая гонка). */
   reset(outline: { x: number; z: number }[]): void {
     this.cPos = this.cTotal = this.cDriftTotal = this.cLap = this.cLaps = -1;
-    this.cLapTime = this.cBest = this.cLast = this.cRace = this.cSpeed = '';
+    this.cLapTime = this.cBest = this.cLast = this.cRace = this.cSpeed = this.cChallenge = '';
     this.cArc = this.cNitro = this.cNitroState = this.cComboPts = this.cComboMult = -1;
     this.cBoost = this.cBoostPower = -1;
     this.cBoostOn = false;
@@ -204,7 +231,23 @@ export class Hud {
     this.popupTimers.clear();
     window.clearTimeout(this.bannerTimer);
     this.bannerSlot.replaceChildren();
+    window.clearTimeout(this.radioTimer);
+    if (this.chatterEl) this.chatterEl.hidden = true;
     this.setCountdown(null);
+  }
+
+  /** Реплика-«рация» соперника на 2 с: «ИМЯ: текст» */
+  radio(who: string, text: string): void {
+    const r = this.chatterEl;
+    if (!r) return;
+    window.clearTimeout(this.radioTimer);
+    r.replaceChildren();
+    el('span', 'hud-chatter-who', who, r);
+    el('span', 'hud-chatter-text', text, r);
+    r.hidden = false;
+    this.radioTimer = window.setTimeout(() => {
+      r.hidden = true;
+    }, RADIO_MS);
   }
 
   /** Вызывается после показа корня: пересчитать разрешение мини-карты. */
@@ -215,6 +258,20 @@ export class Hud {
   // ── каждый кадр ──────────────────────────────────────────────────────────
 
   update(d: HudData): void {
+    const dl = d.delta === null ? '' : formatDelta(d.delta);
+    if (dl !== this.cDelta) {
+      this.cDelta = dl;
+      this.deltaEl.hidden = dl === '';
+      this.deltaEl.textContent = dl;
+      this.deltaEl.classList.toggle('ahead', d.delta !== null && d.delta < 0);
+    }
+    this.posPanel.classList.toggle('solo', d.totalRacers <= 1);
+    const slip = Math.round(d.slipstream * 10) / 10;
+    if (slip !== this.cSlip) {
+      this.cSlip = slip;
+      this.slipEl.classList.toggle('on', slip >= 0.3);
+      this.slipEl.style.opacity = slip >= 0.3 ? String(0.4 + slip * 0.6) : '';
+    }
     if (d.position !== this.cPos) {
       this.cPos = d.position;
       this.posNum.textContent = String(d.position);
@@ -228,13 +285,35 @@ export class Hud {
       this.cDriftTotal = dt;
       this.driftTotalEl.textContent = formatScore(dt);
     }
-    if (d.lap !== this.cLap || d.totalLaps !== this.cLaps) {
+    const ch = d.challengeTime !== undefined;
+    if (ch !== this.lapPanel.classList.contains('challenge')) this.lapPanel.classList.toggle('challenge', ch);
+    if (ch) {
+      const t = Math.ceil(d.challengeTime ?? 0);
+      const txt = `${d.challengeLabel ?? ''}|${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}|${d.challengeGoal ?? ''}`;
+      if (txt !== this.cChallenge) {
+        this.cChallenge = txt;
+        const [a, b, c] = txt.split('|');
+        this.lapLabel.textContent = a;
+        this.lapCur.textContent = b;
+        this.deltaEl.hidden = c === '';
+        this.deltaEl.textContent = c;
+        this.deltaEl.classList.remove('ahead');
+      }
+    } else if (this.cChallenge !== '') {
+      this.cChallenge = '';
+      this.cLap = this.cLaps = -1;
+      this.cLapTime = '';
+      this.cDelta = '\u0000';
+    }
+    if (ch) {
+      /* таймер режима вместо кругов */
+    } else if (d.lap !== this.cLap || d.totalLaps !== this.cLaps) {
       this.cLap = d.lap;
       this.cLaps = d.totalLaps;
       this.lapLabel.textContent = `КРУГ ${d.lap}/${d.totalLaps}`;
     }
     const cur = formatTime(d.lapTime);
-    if (cur !== this.cLapTime) {
+    if (!ch && cur !== this.cLapTime) {
       this.cLapTime = cur;
       this.lapCur.textContent = cur;
     }
@@ -324,7 +403,7 @@ export class Hud {
       this.wrongWay.classList.toggle('on', d.wrongWay);
     }
 
-    this.minimap.draw(d.minimap);
+    this.minimap.draw(d.minimap, d.minimapMarks ?? null);
   }
 
   // ── события (не каждый кадр) ─────────────────────────────────────────────
@@ -347,6 +426,10 @@ export class Hud {
     if (t !== undefined) window.clearTimeout(t);
     this.popupTimers.delete(p);
     p.remove();
+  }
+
+  setRadio(label: string): void {
+    if (this.radioEl.textContent !== label) this.radioEl.textContent = label;
   }
 
   banner(text: string, tone: PopupTone = 'pink'): void {

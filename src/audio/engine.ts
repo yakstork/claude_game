@@ -27,6 +27,12 @@ export class EngineSynth {
   private skidBand: BiquadFilterNode | null = null;
   private skidGain: GainNode | null = null;
   private skidLfo: OscillatorNode | null = null;
+  private oscGrowl: OscillatorNode | null = null;
+  private growlGain: GainNode | null = null;
+  private windBand: BiquadFilterNode | null = null;
+  private windGain: GainNode | null = null;
+  private noiseWind: AudioBufferSourceNode | null = null;
+  private burbleLfo: OscillatorNode | null = null;
   private noiseNitro: AudioBufferSourceNode | null = null;
   private noiseSkid: AudioBufferSourceNode | null = null;
   private nodes: AudioNode[] = [];
@@ -35,6 +41,14 @@ export class EngineSynth {
     private readonly ctx: BaseAudioContext,
     private readonly dest: AudioNode,
   ) {}
+
+  /** Тембр машины: множитель высоты и громкости «рыка» */
+  private pitch = 1;
+  private growl = 1;
+  setProfile(pitch: number, growl: number): void {
+    this.pitch = Number.isFinite(pitch) ? Math.min(1.6, Math.max(0.5, pitch)) : 1;
+    this.growl = Number.isFinite(growl) ? Math.min(2.5, Math.max(0, growl)) : 1;
+  }
 
   setBoost(level: number): void {
     this.boost = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0;
@@ -63,11 +77,18 @@ export class EngineSynth {
 
     const t = computeEngineTargets(p, this.targets);
     if (this.boost > 0) applyBoost(t, this.boost);
+    t.freq *= this.pitch;
+    t.growlGain *= this.growl;
     // при старте после тишины — быстрое включение, дальше сглаживание
     const tc = wasSilent ? 0.03 : TC;
     this.oscA?.frequency.setTargetAtTime(t.freq, now, tc);
     this.oscB?.frequency.setTargetAtTime(t.freq * 2, now, tc);
     this.oscSub?.frequency.setTargetAtTime(t.freq * 0.5, now, tc);
+    this.oscGrowl?.frequency.setTargetAtTime(t.freq * 1.5, now, tc);
+    this.growlGain?.gain.setTargetAtTime(t.growlGain, now, tc);
+    this.burbleLfo?.frequency.setTargetAtTime(t.freq * 0.25, now, tc);
+    this.windGain?.gain.setTargetAtTime(t.windGain, now, 0.15);
+    this.windBand?.frequency.setTargetAtTime(t.windFreq, now, 0.2);
     this.lowpass?.frequency.setTargetAtTime(t.cutoff, now, tc);
     this.engineGain?.gain.setTargetAtTime(t.gain, now, wasSilent ? 0.12 : tc);
     this.nitroGain?.gain.setTargetAtTime(t.nitroGain, now, p.nitro ? 0.05 : 0.15);
@@ -86,6 +107,7 @@ export class EngineSynth {
       this.engineGain?.gain.setTargetAtTime(0, now, 0.06);
       this.nitroGain?.gain.setTargetAtTime(0, now, 0.05);
       this.skidGain?.gain.setTargetAtTime(0, now, 0.05);
+      this.windGain?.gain.setTargetAtTime(0, now, 0.1);
     }
     if (this.teardownTimer === null) {
       this.teardownTimer = setTimeout(() => {
@@ -128,6 +150,15 @@ export class EngineSynth {
     const oscA = mk('sawtooth', 110, 0.5);
     const oscB = mk('sawtooth', 220, 0.28, 9);
     const oscSub = mk('sine', 55, 0.55);
+    // «рык»: квадрат на квинте — густота на газу, уровень задаёт growlGain
+    const oscGrowl = ctx.createOscillator();
+    oscGrowl.type = 'square';
+    oscGrowl.frequency.value = 165;
+    oscGrowl.detune.value = -6;
+    const growlGain = ctx.createGain();
+    growlGain.gain.value = 0.1;
+    oscGrowl.connect(growlGain);
+    growlGain.connect(mix);
 
     const shaper = ctx.createWaveShaper();
     shaper.curve = makeSoftClipCurve(2.2);
@@ -138,6 +169,14 @@ export class EngineSynth {
     lowpass.frequency.value = 400;
     const engineGain = ctx.createGain();
     engineGain.gain.value = 0;
+    // «бурчание» выхлопа: лёгкая амплитудная модуляция на частоте цилиндров
+    const burbleLfo = ctx.createOscillator();
+    burbleLfo.type = 'sine';
+    burbleLfo.frequency.value = 14;
+    const burbleDepth = ctx.createGain();
+    burbleDepth.gain.value = 0.07;
+    burbleLfo.connect(burbleDepth);
+    burbleDepth.connect(engineGain.gain);
     mix.connect(shaper);
     shaper.connect(lowpass);
     lowpass.connect(engineGain);
@@ -174,7 +213,22 @@ export class EngineSynth {
     skidBand.connect(skidGain);
     skidGain.connect(out);
 
+    // --- ветер: шум, растёт со скоростью
+    const noiseWind = createNoiseSource(ctx);
+    const windBand = ctx.createBiquadFilter();
+    windBand.type = 'bandpass';
+    windBand.Q.value = 0.6;
+    windBand.frequency.value = 450;
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0;
+    noiseWind.connect(windBand);
+    windBand.connect(windGain);
+    windGain.connect(out);
+
     const t0 = ctx.currentTime;
+    oscGrowl.start(t0);
+    burbleLfo.start(t0);
+    noiseWind.start(t0, 2.3);
     // разные смещения фазы шума, чтобы слои не коррелировали
     oscA.start(t0);
     oscB.start(t0);
@@ -186,6 +240,12 @@ export class EngineSynth {
     this.oscA = oscA;
     this.oscB = oscB;
     this.oscSub = oscSub;
+    this.oscGrowl = oscGrowl;
+    this.growlGain = growlGain;
+    this.burbleLfo = burbleLfo;
+    this.windBand = windBand;
+    this.windGain = windGain;
+    this.noiseWind = noiseWind;
     this.lowpass = lowpass;
     this.engineGain = engineGain;
     this.nitroBand = nitroBand;
@@ -195,7 +255,7 @@ export class EngineSynth {
     this.skidLfo = skidLfo;
     this.noiseNitro = noiseNitro;
     this.noiseSkid = noiseSkid;
-    this.nodes.push(out, mix, shaper, lowpass, engineGain, nitroBand, nitroGain, skidBand, skidGain, lfoDepth);
+    this.nodes.push(growlGain, burbleDepth, windBand, windGain, out, mix, shaper, lowpass, engineGain, nitroBand, nitroGain, skidBand, skidGain, lfoDepth);
     this.built = true;
     this.silenced = true;
   }
@@ -209,6 +269,9 @@ export class EngineSynth {
       this.skidLfo,
       this.noiseNitro,
       this.noiseSkid,
+      this.oscGrowl,
+      this.burbleLfo,
+      this.noiseWind,
     ];
     for (const s of sources) {
       try {
@@ -223,6 +286,9 @@ export class EngineSynth {
     this.lowpass = this.nitroBand = this.skidBand = null;
     this.engineGain = this.nitroGain = this.skidGain = null;
     this.noiseNitro = this.noiseSkid = null;
+    this.oscGrowl = this.burbleLfo = this.noiseWind = null;
+    this.growlGain = this.windGain = null;
+    this.windBand = null;
     this.built = false;
     this.silenced = true;
   }

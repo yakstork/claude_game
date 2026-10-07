@@ -6,8 +6,8 @@ import { VehiclePhysics } from '../../src/vehicle/physics';
 import { CAR_SPECS as ALL_SPECS } from '../../src/vehicle/specs';
 import { getHandling } from '../../src/vehicle/handling';
 
-/** Только три заводские машины (у «своей сборки» — свой тест customBuild) */
-const CAR_SPECS = ALL_SPECS.filter((c) => c.id !== 'custom');
+/** Только три исходные заводские машины, под которые откалиброваны диапазоны (новые Volt/Nightshade — в balance и driftSpeed; «своя сборка» — customBuild) */
+const CAR_SPECS = ALL_SPECS.filter((c) => ['razor', 'grizzly', 'photon'].includes(c.id));
 import type { VehicleControls } from '../../src/core/types';
 
 /**

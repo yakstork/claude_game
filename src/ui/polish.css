@@ -1,0 +1,84 @@
+/* Neon Rush — UI polish: результаты (круги, конфетти) и оверлей «Как играть». Только палитра из :root. */
+
+/* ── Результаты ───────────────────────────────────────────────────────────── */
+.rrow { animation: nr-rowin 0.38s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+@keyframes nr-rowin { from { opacity: 0; transform: translateX(-1.4em); } to { opacity: 1; transform: none; } }
+.laps { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.5em; margin: 0.5em 0 0.1em; }
+.laps .hud-label { margin-right: 0.3em; }
+.lap {
+  display: flex; align-items: baseline; gap: 0.5em; padding: 0.22em 0.8em; font-size: 0.78em; font-style: italic;
+  background: rgba(43, 15, 84, 0.7); border: 1px solid rgba(185, 103, 255, 0.5); transform: skewX(-12deg);
+  animation: nr-rowin 0.38s ease-out both;
+}
+.lap-n { color: var(--lilac); }
+.lap-t { color: var(--white); letter-spacing: 0.05em; }
+.lap.best { border-color: var(--yellow); background: rgba(255, 211, 25, 0.16); box-shadow: 0 0 0.9em rgba(255, 211, 25, 0.55); }
+.lap.best .lap-t { color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
+.confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.confetti i {
+  position: absolute; top: -1.5em; width: 0.55em; height: 1.1em; opacity: 0;
+  animation: nr-confetti 3.4s linear infinite;
+}
+@keyframes nr-confetti {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  8% { opacity: 1; }
+  100% { opacity: 0.9; transform: translate(var(--dx, 0), 105vh) rotate(var(--rot, 540deg)); }
+}
+.results-title.win { animation: nr-winpulse 1.6s ease-in-out infinite alternate; }
+@keyframes nr-winpulse { from { filter: drop-shadow(0 0 0.15em var(--orange)); } to { filter: drop-shadow(0 0 0.55em var(--magenta)); } }
+@media (prefers-reduced-motion: reduce) {
+  .confetti { display: none; }
+  .results-title.win, .rrow, .lap, .tip { animation: none; }
+}
+
+/* ── Как играть ───────────────────────────────────────────────────────────── */
+.tips { display: flex; align-items: center; justify-content: center; padding: 8px; background: rgba(13, 2, 33, 0.78); pointer-events: auto; z-index: 5; }
+.tips > .glow { width: min(40em, 100%); max-height: 100%; display: flex; }
+.tips-panel { --c: 18px; display: flex; flex-direction: column; width: 100%; min-height: 0; padding: 1.2em 1.8em 1em; }
+.tips-title {
+  text-align: center; font-size: 2.2em; font-style: italic; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--white); text-shadow: 0 0 0.5em var(--cyan), 0 0 0.12em var(--cyan);
+}
+.tips-list { flex: 1 1 auto; min-height: 0; display: grid; gap: 0.7em; margin-top: 0.8em; }
+.tip {
+  --t: var(--pink); display: flex; gap: 0.9em; align-items: flex-start; padding: 0.55em 0.8em;
+  background: rgba(43, 15, 84, 0.55); border-left: 3px solid var(--t); animation: nr-rowin 0.4s ease-out both;
+}
+.tip.cyan { --t: var(--cyan); }
+.tip.orange { --t: var(--orange); }
+.tip.yellow { --t: var(--yellow); }
+.tip-num {
+  flex: none; width: 1.9em; height: 1.9em; display: grid; place-items: center; font-style: italic; color: var(--void);
+  background: var(--t); box-shadow: 0 0 0.9em var(--t); transform: skewX(-12deg);
+}
+.tip-head { font-style: italic; letter-spacing: 0.14em; color: var(--t); text-shadow: 0 0 0.5em var(--t); }
+.tip-text { margin-top: 0.2em; font-size: 0.82em; line-height: 1.35; color: var(--white); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.tips-close { margin-top: 0.9em; text-align: center; font-size: 0.75em; letter-spacing: 0.18em; color: var(--lilac); text-transform: uppercase; animation: nr-badge 1.1s ease-in-out infinite alternate; }
+.help-btn {
+  position: absolute; left: calc(50% - 2.45em); top: 7.6em; width: 2.3em; height: 2.3em; display: grid; place-items: center;
+  pointer-events: auto; cursor: pointer; font-size: 1.15em; font-style: italic; color: var(--cyan);
+  background: rgba(26, 11, 59, 0.72); border: 2px solid var(--cyan); box-shadow: 0 0 0.9em rgba(5, 217, 232, 0.5);
+  transform: skewX(-12deg); transition: background-color 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.help-btn > span { transform: skewX(12deg); }
+.help-btn.award-btn { left: calc(50% + 0.15em); color: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 0.9em rgba(255, 211, 25, 0.5); }
+.help-btn.award-btn.is-focus { background: var(--yellow); color: var(--void); box-shadow: 0 0 1.3em var(--yellow); }
+@media (hover: hover) { .help-btn.award-btn:hover { background: var(--yellow); color: var(--void); } }
+.help-btn.is-focus { background: var(--cyan); color: var(--void); box-shadow: 0 0 1.3em var(--cyan); }
+@media (hover: hover) { .help-btn:hover { background: var(--cyan); color: var(--void); } }
+@media (max-height: 520px) {
+  .help-btn { left: calc(50% + 11em); top: 0.5em; }
+  .help-btn.award-btn { left: calc(50% + 14em); }
+  .tips-panel { --c: 12px; padding: 0.5em 1.2em 0.5em; }
+  .tips-title { font-size: 1.5em; }
+  .tips-list { grid-template-columns: 1fr 1fr; gap: 0.45em; margin-top: 0.4em; }
+  .tip { padding: 0.35em 0.6em; gap: 0.6em; }
+  .tip-text { font-size: 0.72em; }
+  .tips-close { margin-top: 0.4em; }
+  .tips > .glow { width: min(52em, 100%); }
+  .lap { padding: 0.1em 0.6em; }
+  .laps { margin: 0.25em 0 0; gap: 0.35em; }
+}
+.cup-title { margin: 0.7em 0 0.3em; text-align: center; font-style: italic; letter-spacing: 0.16em; color: var(--cyan); text-shadow: 0 0 0.6em var(--cyan); }
+.cup-pts { color: var(--yellow); }
+@media (max-height: 520px) { .cup-title { margin: 0.3em 0 0.15em; font-size: 0.85em; } }

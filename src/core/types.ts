@@ -7,6 +7,7 @@
  * right = forward × up = (-cos h, 0, sin h).
  */
 import type { Quaternion, Vector3 } from 'three';
+import type { CupSummary } from '../race/cup';
 
 // ─── Управление ────────────────────────────────────────────────────────────
 
@@ -21,11 +22,11 @@ export interface VehicleControls {
   nitro: boolean;
 }
 
-export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'pause' | 'reset';
+export type MenuAction = 'up' | 'down' | 'left' | 'right' | 'confirm' | 'back' | 'pause' | 'reset' | 'camera' | 'radio';
 
 // ─── Машины ────────────────────────────────────────────────────────────────
 
-export type CarModelKind = 'wedge' | 'muscle' | 'hyper' | 'custom';
+export type CarModelKind = 'wedge' | 'muscle' | 'hyper' | 'custom' | 'hatch' | 'limo';
 
 /** «Своя сборка»: слайдеры 0..1 и цвета (hex) — переводятся в HandlingConfig в безопасных диапазонах */
 export interface CustomBuild {
@@ -38,6 +39,12 @@ export interface CustomBuild {
 
 /** id машины «своя сборка» */
 export const CUSTOM_CAR_ID = 'custom';
+
+/** Ливрея заводской машины из гаража: узор полосы (0 — нет, 1..3) и номер на борту */
+export interface CarLivery {
+  stripe: number;
+  number: number | null;
+}
 
 export interface CarSpec {
   id: string;
@@ -53,6 +60,8 @@ export interface CarSpec {
   // src/vehicle/handling.ts (HandlingConfig), единый источник истины.
   /** Полоски характеристик в меню, 0..1 */
   stats: { speed: number; handling: number; drift: number };
+  /** Ливрея игрока (ставит гараж; у ботов не задаётся) */
+  livery?: CarLivery;
 }
 
 export interface WheelState {
@@ -108,6 +117,8 @@ export interface VehicleState {
   boostTime: number;
   /** Сила текущего ускорения 0..1 (0 — нет) */
   boostPower: number;
+  /** Слипстрим (аэродинамический мешок за другой машиной) 0..1; пишет updateSlipstream */
+  slipstream: number;
 }
 
 export type VehicleEventType = 'wall' | 'car' | 'land';
@@ -156,8 +167,13 @@ export interface Pose {
 
 // ─── ИИ ────────────────────────────────────────────────────────────────────
 
+/** Характер бота: агрессор, чистюля, дрифтер, нитроман, хитрец */
+export type BotTrait = 'aggressor' | 'clean' | 'drifter' | 'nitro' | 'cunning';
+
 export interface BotProfile {
   name: string;
+  /** Характер (параметры в src/ai/botDriver.ts); нет — нейтральный */
+  trait?: BotTrait;
   /** 0..1 — качество траектории и торможения */
   skill: number;
   /** 0..1 — готовность обгонять/толкаться */
@@ -231,7 +247,37 @@ export interface Settings {
   touchSize: number;
   /** Непрозрачность сенсорных кнопок 0.2..1 */
   touchOpacity: number;
+  /** Режим: гонка с ботами или заезд на время с призраком лучшего круга */
+  raceMode: RaceMode;
+  /** Сложность ботов */
+  difficulty: Difficulty;
+  /** Число кругов */
+  laps: number;
+  /** Вид камеры в гонке (переключается клавишей C) */
+  cameraView: CameraView;
+  /** Время суток: закат / ночь / рассвет (на Storm Boulevard погода приоритетнее) */
+  timeOfDay: TimeOfDay;
+  /** Погода на любой трассе: ясно / дождь / туман (Storm Boulevard всегда с дождём) */
+  weather: Weather;
+  /** Радиостанция в гонке */
+  radio: RadioStation;
+  /** Эффекты скорости (аберрация, радиальный блюр, FOV-кик, тряска) — выкл для укачивания */
+  speedFx: boolean;
+  /** Seed карточки «ГЕНЕРАТОР» (случайная трасса; рекорды по ключу gen-<seed>) */
+  trackSeed: number;
 }
+
+export type Weather = 'clear' | 'rain' | 'fog';
+
+export type TimeOfDay = 'sunset' | 'night' | 'dawn';
+
+/** Радио: NEON FM, DARKWAVE 88, CHROME BEAT или выкл. */
+export type RadioStation = 'neon' | 'dark' | 'chrome' | 'off';
+export const RADIO_ORDER: readonly RadioStation[] = ['neon', 'dark', 'chrome', 'off'];
+export type RaceMode = 'race' | 'timeAttack' | 'cup' | 'drift' | 'elimination' | 'versus';
+export type Difficulty = 'easy' | 'normal' | 'hard';
+export type CameraView = 'far' | 'near' | 'bumper';
+export const LAP_OPTIONS = [1, 3, 5] as const;
 
 export type ControlMode = 'auto' | 'keyboard' | 'touch';
 
@@ -263,6 +309,20 @@ export interface MinimapDot {
   /** CSS-цвет */
   color: string;
   isPlayer: boolean;
+  /** Соперник игрока: розовое кольцо */
+  rival?: boolean;
+}
+
+/** Бустер-пластины и канистры на мини-карте (мировые XZ; заполняется один раз за гонку) */
+export interface MinimapMarks {
+  padX: Float32Array;
+  padZ: Float32Array;
+  /** Курс пластины (направление шеврона), рад */
+  padHeading: Float32Array;
+  canX: Float32Array;
+  canZ: Float32Array;
+  /** Живой массив таймеров: > 0 — канистра подобрана, не рисуем */
+  canTimer: Float32Array;
 }
 
 export interface HudData {
@@ -286,6 +346,17 @@ export interface HudData {
   /** Временное ускорение: оставшаяся доля 0..1 (0 — нет) и сила 0..1 */
   boost: number;
   boostPower: number;
+  /** Разница с лучшим кругом (призраком) в той же точке трассы, с; null — нет данных */
+  delta: number | null;
+  /** Аэродинамический мешок за соперником 0..1 */
+  slipstream: number;
+  /** Режимы с таймером: оставшиеся секунды (undefined — обычная гонка) */
+  challengeTime?: number;
+  /** Подпись таймера и строка цели под ним */
+  challengeLabel?: string;
+  challengeGoal?: string;
+  /** Метки пикапов для мини-карты (null — нет) */
+  minimapMarks?: MinimapMarks | null;
 }
 
 export interface ResultRow {
@@ -310,6 +381,35 @@ export interface RaceResult {
   newBestLap: boolean;
   newBestRace: boolean;
   newBestDrift: boolean;
+  /** Заезд на время (без соперников) */
+  solo?: boolean;
+  /** Времена кругов игрока, с */
+  lapTimes?: number[];
+  /** Кубок: таблица после этой гонки */
+  cup?: CupSummary;
+  /** Свой заголовок (режим «2 игрока») */
+  title?: string;
+  /** Карьера: награда за гонку (NC) и баланс после неё */
+  credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
+  /** Кампания: итог события */
+  campaign?: { title: string; stars: number; newStars: number; reward: number; goals: { text: string; on: boolean }[] };
+  /** Соперник: счёт личных встреч (you — сколько раз игрок финишировал выше) */
+  rival?: { name: string; you: number; bot: number; ahead: boolean };
+  /** Вызов дня: медаль, серия и подсказки */
+  daily?: { title: string; medal: string; medalIndex: number; reward: number; lines: string[] };
+  /** Дрифт-вызов: медаль и рекорд */
+  challenge?: ChallengeResult;
+  /** Выбывание: в таблице время — момент выбывания */
+  elimination?: boolean;
+}
+
+export interface ChallengeResult {
+  medal: 'none' | 'bronze' | 'silver' | 'gold';
+  /** Пороги очков [бронза, серебро, золото] */
+  thresholds: [number, number, number];
+  /** Прежний рекорд по трассе и машине (0 — не было) */
+  previous: number;
+  isRecord: boolean;
 }
 
 export type UiSound = 'move' | 'select' | 'back';
@@ -330,6 +430,18 @@ export interface UICallbacks {
   onCustomBuildChanged(build: CustomBuild): void;
   /** Выбор трассы в меню */
   onSelectTrack(index: number): void;
+  /** «НОВАЯ» на карточке «ГЕНЕРАТОР»: новый случайный seed */
+  onNewSeed?(): void;
+  /** Повтор гонки (кнопка на экране результатов) */
+  onReplay?(): void;
+  /** Фоторежим (кнопка в паузе) */
+  onPhoto?(): void;
+  /** Кампания: «ДАЛЕЕ» на результатах события — вернуться к карте */
+  onCampaignMap?(): void;
+  /** Тап по названию станции в HUD */
+  onRadio?(): void;
+  /** Смена камеры (сенсорная кнопка) */
+  onCamera?(): void;
 }
 
 // ─── Звук ──────────────────────────────────────────────────────────────────

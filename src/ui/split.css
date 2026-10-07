@@ -1,0 +1,20 @@
+/* ── Режим «2 игрока»: мини-HUD ───────────────────────────────────────────── */
+.split-hud { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.split-divider { position: absolute; left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; background: var(--magenta); box-shadow: 0 0 0.8em var(--magenta), 0 0 0.3em var(--cyan); }
+.split-panel {
+  position: absolute; left: 1.2em; padding: 0.4em 0.9em 0.5em; min-width: 9em;
+  background: rgba(26, 11, 59, 0.72); border-left: 3px solid var(--cyan);
+}
+.split-panel.top { top: 0.8em; }
+.split-panel.bottom { top: calc(50% + 0.8em); border-left-color: var(--pink); }
+.split-who { font-size: 0.65em; letter-spacing: 0.18em; color: var(--lilac); }
+.split-pos { font-size: 1.6em; font-style: italic; color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
+.split-lap { font-size: 0.75em; letter-spacing: 0.1em; color: var(--cyan); }
+.split-speed { margin-top: 0.2em; }
+.split-speed b { font-size: 1.5em; }
+.split-speed span { font-size: 0.65em; color: var(--lilac); }
+.split-nitro { margin-top: 0.3em; height: 5px; background: rgba(185, 103, 255, 0.3); overflow: hidden; }
+.split-nitro i { display: block; height: 100%; background: var(--orange); transform-origin: 0 50%; box-shadow: 0 0 0.6em var(--orange); }
+.split-panel.boost .split-nitro i { background: var(--yellow); }
+/* общий HUD гонки в режиме 2 игроков: оставляем только отсчёт и баннеры */
+.nr-split .hud > :not(.hud-center):not(.hud-countdown) { display: none !important; }

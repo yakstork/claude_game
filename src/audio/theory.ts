@@ -1,5 +1,6 @@
 /** Чистые функции звука: частоты, параметры мотора, паттерны секвенсора (без Web Audio, тестируются в Node). */
-import type { EngineAudioParams, MusicTrack } from '../core/types';
+import type { EngineAudioParams, MusicTrack, RadioStation } from '../core/types';
+import { CHROME_SONGS, DARK_SONGS } from './stations';
 
 export const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
@@ -28,6 +29,12 @@ export interface EngineTargets {
   skidGain: number;
   /** Центр полосового фильтра визга, Гц */
   skidFreq: number;
+  /** Громкость шума ветра (растёт со скоростью) */
+  windGain: number;
+  /** Центр полосового фильтра ветра, Гц */
+  windFreq: number;
+  /** Громкость «рыка» (квинта + нагрузка на газу) */
+  growlGain: number;
 }
 
 /** Порог визга по skid (0..1). */
@@ -60,6 +67,10 @@ export function computeEngineTargets(p: EngineAudioParams, out: EngineTargets): 
   const skidOn = p.onGround && speed > 5 && skid > SKID_THRESHOLD;
   out.skidGain = skidOn ? ((skid - SKID_THRESHOLD) / (1 - SKID_THRESHOLD)) * 0.2 : 0;
   out.skidFreq = 1200 + skid * 1300;
+  const sp = clamp(speed / 70, 0, 1);
+  out.windGain = sp * sp * 0.09;
+  out.windFreq = 450 + sp * 1500;
+  out.growlGain = 0.12 + thr * 0.3 + rpm * 0.12;
   return out;
 }
 
@@ -78,7 +89,7 @@ export function applyBoost(out: EngineTargets, boost: number): EngineTargets {
 }
 
 export function makeEngineTargets(): EngineTargets {
-  return { freq: 55, cutoff: 400, gain: 0, nitroGain: 0, nitroFreq: 2200, skidGain: 0, skidFreq: 1200 };
+  return { freq: 55, cutoff: 400, gain: 0, nitroGain: 0, nitroFreq: 2200, skidGain: 0, skidFreq: 1200, windGain: 0, windFreq: 450, growlGain: 0.1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -153,6 +164,33 @@ export interface TrackConfig {
   bassRoots: number[];
   /** Ноты пэда/арпеджио (аккорды по тактам прогрессии) */
   chords: number[][];
+  /** Тембры и рисунок партий (для гоночных вариантов 1+; у варианта 0 и меню — по умолчанию) */
+  style?: SongStyle;
+}
+
+/** Рисунок и тембры вариантной гоночной композиции. Паттерны — по 16 шагов такта. */
+export interface SongStyle {
+  /** Бас: смещение в полутонах от корня или -1 (пауза); нота звучит до следующей (макс. 8 шагов) */
+  bass: readonly number[];
+  /** Громкость бочки по шагам (0 — нет) */
+  kick: readonly number[];
+  /** Малый барабан/хлопок по шагам (0 — нет) */
+  snare: readonly number[];
+  /** Хэты по шагам: >0 закрытый, <0 открытый (модуль — громкость) */
+  hat: readonly number[];
+  /** Арпеджио: индексы аккордовых тонов 0..5 или -1; A — такты 0-3, B — 4-7 */
+  arpA: readonly number[];
+  arpB: readonly number[];
+  /** Длительность ноты арпеджио в 16-х */
+  arpSteps: number;
+  bassType: OscillatorType;
+  bassCut: number;
+  bassCutEnd: number;
+  arpType: OscillatorType;
+  arpCut: number;
+  padCut: number;
+  /** Глубина сайдчейна 0..1 (на сколько прижимаются бас/пэд/арпеджио на бочке) */
+  duck: number;
 }
 
 const MENU: TrackConfig = {
@@ -183,7 +221,135 @@ const RACE: TrackConfig = {
 
 export const TRACKS: Record<MusicTrack, TrackConfig> = { menu: MENU, race: RACE };
 
-export const loopSteps = (track: MusicTrack): number => TRACKS[track].bars * STEPS_PER_BAR;
+const R = -1;
+/** Гоночные композиции 1..3 (0 — исходная RACE). Разные тональности, темп, бас, ритм. */
+const RACE_SONGS: readonly TrackConfig[] = [
+  RACE,
+  {
+    // «Night Drive»: Cm – Ab – Eb – Bb, 126 bpm, оффбит-бас, четыре в корпус
+    bpm: 126,
+    bars: 8,
+    bassRoots: [36, 32, 39, 34],
+    chords: [
+      [60, 63, 67],
+      [56, 60, 63],
+      [58, 63, 67],
+      [58, 62, 65],
+    ],
+    style: {
+      bass: [R, R, 0, R, R, R, 12, R, R, R, 0, R, R, R, 7, 12],
+      kick: [1, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0.9, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0],
+      hat: [0, 0, -0.5, 0, 0, 0, -0.5, 0, 0, 0, -0.5, 0, 0, 0, -0.5, 0.25],
+      arpA: [0, R, R, 2, R, R, 1, R, 3, R, R, 2, R, R, 4, R],
+      arpB: [3, R, R, 5, R, R, 4, R, 2, R, R, 1, R, R, 2, R],
+      arpSteps: 2,
+      bassType: 'sawtooth',
+      bassCut: 1500,
+      bassCutEnd: 240,
+      arpType: 'sawtooth',
+      arpCut: 3600,
+      padCut: 1700,
+      duck: 0.6,
+    },
+  },
+  {
+    // «Chrome Horizon»: Em – C – G – D, 108 bpm, полтайм, тянущийся бас
+    bpm: 108,
+    bars: 8,
+    bassRoots: [40, 36, 43, 38],
+    chords: [
+      [59, 64, 67],
+      [60, 64, 67],
+      [59, 62, 67],
+      [57, 62, 66],
+    ],
+    style: {
+      bass: [0, R, R, R, R, R, 12, R, 0, R, R, 0, R, R, 7, R],
+      kick: [1, 0, 0, 0, 0, 0, 0, 0.6, 0, 0, 0.85, 0, 0, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+      hat: [0.4, 0.15, 0.3, 0.15, 0.4, 0.15, 0.3, 0.15, 0.4, 0.15, 0.3, 0.15, 0.4, 0.15, -0.35, 0.15],
+      arpA: [0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0, 1, 2, 3, 2, 1],
+      arpB: [5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 4, 3, 2, 1, 0],
+      arpSteps: 1,
+      bassType: 'sawtooth',
+      bassCut: 900,
+      bassCutEnd: 200,
+      arpType: 'triangle',
+      arpCut: 4200,
+      padCut: 1300,
+      duck: 0.45,
+    },
+  },
+  {
+    // «Overdrive»: Dm – Bb – F – C, 136 bpm, рубленый 16-й бас, брейкбит
+    bpm: 136,
+    bars: 8,
+    bassRoots: [38, 34, 41, 36],
+    chords: [
+      [62, 65, 69],
+      [62, 65, 70],
+      [60, 65, 69],
+      [60, 64, 67],
+    ],
+    style: {
+      bass: [0, 0, 12, 0, 0, 12, 0, 7, 0, 0, 12, 0, 0, 12, 7, 0],
+      kick: [1, 0, 0, 0, 0.9, 0, 0, 0.5, 0, 0, 0.85, 0, 0.9, 0, 0, 0],
+      snare: [0, 0, 0, 0, 0.95, 0, 0, 0.3, 0, 0, 0, 0, 0.95, 0, 0, 0.3],
+      hat: [0.4, 0.2, 0.3, 0.2, 0.4, 0.2, 0.3, 0.2, 0.4, 0.2, 0.3, 0.2, 0.4, 0.2, -0.45, 0.2],
+      arpA: [0, 2, 1, 2, 3, 2, 1, 2, 0, 2, 4, 2, 3, 5, 4, 2],
+      arpB: [5, 3, 4, 3, 2, 3, 4, 3, 5, 3, 1, 3, 2, 0, 1, 3],
+      arpSteps: 1,
+      bassType: 'square',
+      bassCut: 1700,
+      bassCutEnd: 320,
+      arpType: 'square',
+      arpCut: 3000,
+      padCut: 1500,
+      duck: 0.55,
+    },
+  },
+];
+
+// Радиостанции: NEON FM — RACE_SONGS (variant 0..3); DARKWAVE 88 и CHROME BEAT — stations.ts.
+// Номер варианта кодирует станцию: 0..99 — NEON FM, 100+i — DARKWAVE 88, 200+i — CHROME BEAT.
+export type PlayableStation = Exclude<RadioStation, 'off'>;
+export const STATION_BASE: Record<PlayableStation, number> = { neon: 0, dark: 100, chrome: 200 };
+export const STATION_NAMES: Record<RadioStation, string> = { neon: 'NEON FM', dark: 'DARKWAVE 88', chrome: 'CHROME BEAT', off: 'РАДИО ВЫКЛ.' };
+const NEON_NAMES = ['Neon Rush', 'Night Drive', 'Chrome Horizon', 'Overdrive'];
+const DARK_NAMES = ['Black Mirror', 'Cold Static', 'Ghost Circuit'];
+const CHROME_NAMES = ['Turbo Chrome', 'Laser Highway', 'Grid Runner'];
+
+/** Сколько композиций у станции */
+export function stationSongCount(s: PlayableStation): number {
+  return s === 'neon' ? RACE_SONGS.length : s === 'dark' ? DARK_SONGS.length : CHROME_SONGS.length;
+}
+
+/** Закодированный номер варианта: станция + индекс композиции */
+export function stationVariant(s: PlayableStation, index: number): number {
+  const n = stationSongCount(s);
+  return STATION_BASE[s] + (((index % n) + n) % n);
+}
+
+/** Станция и название композиции по номеру варианта */
+export function songInfo(variant: number): { station: PlayableStation; name: string } {
+  if (variant >= 200) return { station: 'chrome', name: CHROME_NAMES[(variant - 200) % CHROME_NAMES.length] };
+  if (variant >= 100) return { station: 'dark', name: DARK_NAMES[(variant - 100) % DARK_NAMES.length] };
+  return { station: 'neon', name: NEON_NAMES[((variant % RACE_SONGS.length) + RACE_SONGS.length) % RACE_SONGS.length] };
+}
+
+/** Число гоночных композиций (выбор по кругу на каждую гонку). */
+export const RACE_VARIANTS = RACE_SONGS.length;
+
+/** Конфиг трека; variant — номер гоночной композиции (для menu игнорируется). */
+export function getTrackConfig(track: MusicTrack, variant = 0): TrackConfig {
+  if (track === 'menu') return MENU;
+  if (variant >= 200) return CHROME_SONGS[(variant - 200) % CHROME_SONGS.length] ?? RACE;
+  if (variant >= 100) return DARK_SONGS[(variant - 100) % DARK_SONGS.length] ?? RACE;
+  return RACE_SONGS[((variant % RACE_VARIANTS) + RACE_VARIANTS) % RACE_VARIANTS] ?? RACE;
+}
+
+export const loopSteps = (track: MusicTrack, variant = 0): number => getTrackConfig(track, variant).bars * STEPS_PER_BAR;
 /** Длительность 16-й доли, с. */
 export const stepDuration = (bpm: number): number => 60 / bpm / 4;
 
@@ -198,8 +364,9 @@ function chordTone(chord: number[], idx: number): number {
 }
 
 /** События для 16-й доли `step` (номер берётся по модулю длины лупа). */
-export function getStepEvents(track: MusicTrack, stepIn: number): StepEvents {
-  const cfg = TRACKS[track];
+export function getStepEvents(track: MusicTrack, stepIn: number, variant = 0): StepEvents {
+  const cfg = getTrackConfig(track, variant);
+  if (cfg.style) return getSongStepEvents(cfg, cfg.style, stepIn);
   const total = cfg.bars * STEPS_PER_BAR;
   const step = ((stepIn % total) + total) % total;
   const bar = Math.floor(step / STEPS_PER_BAR);
@@ -253,6 +420,56 @@ export function getStepEvents(track: MusicTrack, stepIn: number): StepEvents {
     ev.arp = { midi: chordTone(chord, idx) + 12, steps: 1, vel: s % 4 === 0 ? 0.9 : s % 2 === 0 ? 0.65 : 0.45 };
   }
   // филл в последнем такте: ролл малого барабана, убираем бочку и арпеджио на последней доле
+  if (lastBar) {
+    if (s >= 12) {
+      ev.snare = 0.5 + ((s - 12) / 3) * 0.5;
+      ev.clap = undefined;
+      ev.kick = undefined;
+      ev.arp = undefined;
+      ev.hat = undefined;
+    } else if (s >= 8 && s % 2 === 1) {
+      ev.snare = 0.35;
+    }
+  }
+  return ev;
+}
+
+/** События шага для вариантных гоночных композиций (данные из SongStyle). */
+function getSongStepEvents(cfg: TrackConfig, st: SongStyle, stepIn: number): StepEvents {
+  const total = cfg.bars * STEPS_PER_BAR;
+  const step = ((stepIn % total) + total) % total;
+  const bar = Math.floor(step / STEPS_PER_BAR);
+  const s = step % STEPS_PER_BAR;
+  const prog = bar % cfg.chords.length;
+  const chord = cfg.chords[prog] ?? [];
+  const root = cfg.bassRoots[prog] ?? 36;
+  const ev: StepEvents = {};
+  const lastBar = bar === cfg.bars - 1;
+
+  if (s === 0) ev.pad = { notes: chord, steps: STEPS_PER_BAR };
+  if (step === 0) ev.crash = 0.6;
+  const k = st.kick[s] ?? 0;
+  if (k > 0) ev.kick = k;
+  const sn = st.snare[s] ?? 0;
+  if (sn > 0) {
+    ev.snare = sn;
+    if (sn >= 0.8) ev.clap = sn * 0.75;
+  }
+  const h = st.hat[s] ?? 0;
+  if (h !== 0) ev.hat = { vel: Math.abs(h), open: h < 0 };
+  const b = st.bass[s] ?? -1;
+  if (b >= 0) {
+    let len = 1;
+    while (len < 8 && s + len < STEPS_PER_BAR && (st.bass[s + len] ?? -1) < 0) len++;
+    ev.bass = { midi: root + b, steps: len, vel: s === 0 ? 1 : b >= 12 ? 0.8 : 0.9 };
+  }
+  const ai = (bar >= 4 ? st.arpB : st.arpA)[s] ?? -1;
+  if (ai >= 0) {
+    let am = chordTone(chord, ai) + 12;
+    if (am > 88) am -= 12;
+    ev.arp = { midi: am, steps: st.arpSteps, vel: s % 4 === 0 ? 0.9 : s % 2 === 0 ? 0.65 : 0.5 };
+  }
+  // филл последнего такта: ролл малого, пауза бочки/арпеджио на последней доле
   if (lastBar) {
     if (s >= 12) {
       ev.snare = 0.5 + ((s - 12) / 3) * 0.5;

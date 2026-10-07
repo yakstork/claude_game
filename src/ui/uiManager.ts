@@ -16,16 +16,39 @@ import type {
 import { isTouchDevice } from '../core/device';
 import { CUSTOM_CAR_ID } from '../core/types';
 import './styles.css';
+import './polish.css';
+import './awards.css';
+import './garage.css';
+import './campaign.css';
+import './keys.css';
+import { KeysScreen } from './keys';
+import { keysHint } from '../input/keybinds';
+import type { KeyBinds } from '../input/keybinds';
+import './daily.css';
+import './rival.css';
+import './stats.css';
+import { StatsScreen } from './stats';
+import type { StatsApi } from './stats';
+import { DailyScreen } from './daily';
+import type { DailyApi } from './daily';
+import { CampaignScreen } from './campaign';
+import type { CampaignApi } from './campaign';
+import { AwardsScreen } from './awards';
+import type { AwardItem } from './awards';
 import { CustomizeScreen } from './customize';
+import { GarageScreen } from './garage';
+import type { GarageApi, GarageCarInfo } from './garage';
+import { formatCredits } from '../race/career';
 import { DEFAULT_BUDGET, DEFAULT_PALETTE, defaultCustomBuild } from './customLogic';
 import type { CustomPalette } from './customLogic';
 import { el } from './dom';
 import { Hud } from './hud';
-import { MainMenu } from './menu';
+import { MainMenu, nextRaceMode } from './menu';
 import { Nav } from './nav';
 import { RotatePrompt } from './rotatePrompt';
 import { clampIndex } from './trackLogic';
 import { LoadingScreen, PauseScreen, ResultsScreen, SettingsScreen } from './screens';
+import { TipsOverlay, shouldAutoShowTips } from './tips';
 import { TouchControls } from './touchControls';
 
 export interface UIOptions {
@@ -43,9 +66,19 @@ export interface UIOptions {
   tracks?: TrackInfo[];
   /** Индекс выбранной трассы (по умолчанию 0) */
   trackIndex?: number;
+  /** Гараж (карьера): без него кнопки «ГАРАЖ» в меню нет */
+  garage?: { api: GarageApi; cars: GarageCarInfo[] };
+  /** Кампания: без неё кнопки «КАМПАНИЯ» нет */
+  campaign?: CampaignApi;
+  /** Вызов дня: без него кнопки «ВЫЗОВ ДНЯ» нет */
+  daily?: DailyApi;
+  /** Статистика: без неё кнопки «СТАТИСТИКА» нет */
+  stats?: StatsApi;
+  /** Раскладка клавиш: без неё экрана «УПРАВЛЕНИЕ» нет */
+  keybinds?: KeyBinds;
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'campaign' | 'keys' | 'daily' | 'stats' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -59,8 +92,15 @@ export class UIManager {
   private readonly menu: MainMenu;
   private readonly settings: SettingsScreen;
   private readonly customize: CustomizeScreen;
+  private readonly awards: AwardsScreen;
+  private readonly garage: GarageScreen | null = null;
+  private readonly campaign: CampaignScreen | null = null;
+  private readonly keys: KeysScreen | null = null;
+  private readonly daily: DailyScreen | null = null;
+  private readonly stats: StatsScreen | null = null;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
+  private readonly tips: TipsOverlay;
   private readonly fpsEl: HTMLElement;
   private readonly touch: TouchControls;
   private readonly rotate: RotatePrompt;
@@ -81,11 +121,14 @@ export class UIManager {
     this.host = el('div', 'nr-ui', undefined, root);
     const play = (k: 'move' | 'select' | 'back'): void => cb.onUiSound(k);
 
-    this.hud = new Hud(this.host);
+    this.hud = new Hud(this.host, () => cb.onRadio?.());
     // сенсорные кнопки — над HUD и под экранами меню/паузы
     this.touch = new TouchControls(this.host, {
       onPause: () => {
         if (this.screen === 'hud') cb.onPause();
+      },
+      onCamera: () => {
+        if (this.screen === 'hud') cb.onCamera?.();
       },
       onFirstInteraction: () => cb.onFirstInteraction(),
     });
@@ -107,7 +150,34 @@ export class UIManager {
       () => this.showCustomize(),
       tracks,
       opts.trackIndex ?? 0,
+      () => this.toggleRaceMode(),
+      () => this.tips.show(),
+      () => this.openAwards(),
+      opts.garage ? () => this.openGarage() : null,
+      opts.campaign ? () => this.showCampaign() : null,
+      opts.daily ? () => this.showDaily() : null,
+      opts.stats ? () => this.showStats() : null,
     );
+    if (opts.campaign) this.campaign = new CampaignScreen(this.host, new Nav(play), opts.campaign, () => this.closeCampaign());
+    if (opts.daily) this.daily = new DailyScreen(this.host, new Nav(play), opts.daily, () => this.closeDaily());
+    if (opts.stats) this.stats = new StatsScreen(this.host, new Nav(play), opts.stats, () => this.closeStats());
+    if (opts.garage) {
+      this.garage = new GarageScreen(
+        this.host,
+        new Nav(play),
+        opts.garage.cars,
+        // листание машин в гараже меняет и выбранную в меню
+        Object.assign(Object.create(opts.garage.api) as GarageApi, {
+          preview: (i: number) => {
+            this.menu.setCar(i, false);
+            opts.garage?.api.preview(i);
+          },
+        }),
+        () => this.closeGarage(),
+      );
+      this.menu.setCredits(formatCredits(opts.garage.api.career().credits));
+    }
+    this.menu.setMode(opts.settings.raceMode);
     const budget = opts.customBudget ?? DEFAULT_BUDGET;
     const palette = opts.customPalette ?? DEFAULT_PALETTE;
     const defaults = defaultCustomBuild(budget, palette);
@@ -125,9 +195,13 @@ export class UIManager {
       Object.assign(Object.create(cb) as UICallbacks, { onSettingsChanged: (s: Settings) => this.handleSettings(s) }),
       () => this.closeSettings(),
       (active) => this.setLayoutPreview(active),
+      opts.keybinds ? () => this.openKeys() : null,
     );
+    if (opts.keybinds) this.keys = new KeysScreen(this.host, new Nav(play), opts.keybinds, play, () => this.closeKeys());
+    this.awards = new AwardsScreen(this.host, new Nav(play), () => this.closeAwards());
     this.pause = new PauseScreen(this.host, new Nav(play), cb, () => this.openSettings('pause'));
     this.results = new ResultsScreen(this.host, new Nav(play), opts.cars, cb);
+    this.tips = new TipsOverlay(this.host);
     this.fpsEl = el('div', 'fps', '', this.host);
     this.fpsEl.hidden = true;
     this.rotate = new RotatePrompt(this.host);
@@ -189,16 +263,43 @@ export class UIManager {
     this.menu.setCar(i, false);
   }
 
+  /** Обновить карточку трассы (генератор: новый seed) */
+  updateTrack(i: number, info: TrackInfo): void {
+    this.menu.updateTrack(i, info);
+    this.loading.setTrack(this.menu.trackName);
+  }
+
   /** Выбрать трассу в меню без уведомления (синхронизация с игрой): подпись под логотипом и рекорды. */
   setTrackIndex(i: number): void {
     this.menu.setTrack(i, false);
     this.loading.setTrack(this.menu.trackName);
   }
 
+  private introHint: HTMLElement | null = null;
+
+  /** Облёт камеры перед стартом: HUD скрыт, остаётся подсказка «пропустить» */
+  setIntro(on: boolean): void {
+    this.host.classList.toggle('intro', on);
+    if (on && !this.introHint) {
+      this.introHint = el('div', 'intro-hint', 'ЛЮБАЯ КЛАВИША — ПРОПУСТИТЬ', this.host);
+    }
+  }
+
+  /** Главное меню на экране без оверлеев (можно запускать демо-гонку) */
+  get canAttract(): boolean {
+    return this.screen === 'menu' && !this.tips.visible;
+  }
+
+  /** Демо-гонка на фоне: меню полупрозрачно */
+  setAttractLook(on: boolean): void {
+    this.host.classList.toggle('attract', on);
+  }
+
   showMainMenu(): void {
     this.hud.clearTransient();
     this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
     this.setScreen('menu');
+    if (shouldAutoShowTips()) this.tips.show();
     // синхронизируем 3D-превью с выбранной в меню машиной
     this.opts.callbacks.onPreviewCar(this.menu.index);
   }
@@ -222,9 +323,24 @@ export class UIManager {
     }
   }
 
-  showResults(r: RaceResult): void {
+  /** newAwardIds — id только что открытых наград (плашки «НОВАЯ НАГРАДА»; названия берутся из списка наград). */
+  showResults(r: RaceResult, newAwardIds: readonly string[] = []): void {
     this.hud.clearTransient();
-    this.results.show(r, this.menu.hasTrackChoice ? this.menu.trackName : undefined);
+    this.results.show(
+      r,
+      this.menu.hasTrackChoice ? this.menu.trackName : undefined,
+      newAwardIds.map((id) => this.awards.find(id)?.title).filter((t): t is string => t !== undefined),
+    );
+    this.setScreen('results');
+  }
+
+  /** Корневой слой UI (для оверлеев повтора и фоторежима) */
+  get layer(): HTMLElement {
+    return this.host;
+  }
+
+  /** Вернуть экран результатов без пересборки (после повтора) */
+  restoreResults(): void {
     this.setScreen('results');
   }
 
@@ -241,6 +357,107 @@ export class UIManager {
     if (this.menu.index !== idx) this.menu.setCar(idx, true);
     this.customize.onShown();
     this.setScreen('customize');
+  }
+
+  /** Список наград (порядок и тексты — из игры; флаг `unlocked` в элементах учитывается). */
+  setAchievements(list: readonly AwardItem[]): void {
+    this.awards.setList(list);
+  }
+
+  /** Какие награды открыты (полный набор id). */
+  setUnlocked(ids: readonly string[]): void {
+    this.awards.setUnlocked(ids);
+  }
+
+  /** Экран «НАГРАДЫ»; list (необязательно) — заменить список перед показом. Из гонки/паузы игнорируется. */
+  showAchievements(list?: readonly AwardItem[]): void {
+    if (list) this.awards.setList(list);
+    this.openAwards();
+  }
+
+  private openAwards(): void {
+    if (this.screen !== 'menu') return;
+    this.awards.onShown();
+    this.setScreen('awards');
+  }
+
+  /** Карта кампании (из меню или с экрана результатов). */
+  showCampaign(): void {
+    if ((this.screen !== 'menu' && this.screen !== 'results') || !this.campaign) return;
+    this.campaign.onShown();
+    this.setScreen('campaign');
+  }
+
+  /** «Вызов дня» (из меню). */
+  showDaily(): void {
+    if (this.screen !== 'menu' || !this.daily) return;
+    this.daily.onShown();
+    this.setScreen('daily');
+  }
+
+  /** «Статистика» (из меню). */
+  showStats(): void {
+    if (this.screen !== 'menu' || !this.stats) return;
+    this.stats.onShown();
+    this.setScreen('stats');
+  }
+
+  private closeStats(): void {
+    if (this.screen !== 'stats') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
+  private closeDaily(): void {
+    if (this.screen !== 'daily') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
+  private closeCampaign(): void {
+    if (this.screen !== 'campaign') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
+  private openKeys(): void {
+    if (this.screen !== 'settings' || !this.keys) return;
+    this.keys.onShown();
+    this.setScreen('keys');
+  }
+
+  private closeKeys(): void {
+    if (this.screen !== 'keys' || !this.keys) return;
+    this.keys.onHidden();
+    this.settings.nav.reset(0);
+    this.setScreen('settings');
+  }
+
+  private openGarage(): void {
+    if (this.screen !== 'menu' || !this.garage) return;
+    this.garage.onShown(this.menu.index);
+    this.setScreen('garage');
+  }
+
+  private closeGarage(): void {
+    if (this.screen !== 'garage' || !this.garage) return;
+    this.syncCredits();
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
+  }
+
+  /** Обновить баланс в меню (и в гараже) из карьеры */
+  syncCredits(): void {
+    const g = this.opts.garage;
+    if (!g) return;
+    this.menu.setCredits(formatCredits(g.api.career().credits));
+    this.garage?.refresh();
+  }
+
+  private closeAwards(): void {
+    if (this.screen !== 'awards') return;
+    this.menu.nav.reset(MainMenu.DEFAULT_FOCUS);
+    this.setScreen('menu');
   }
 
   /** Обновить значения «своей сборки» извне (без onCustomBuildChanged). */
@@ -285,14 +502,24 @@ export class UIManager {
 
   private setScreen(s: ScreenName): void {
     this.screen = s;
-    const fromPause = s === 'settings' && this.settingsFrom === 'pause';
+    const fromPause = (s === 'settings' || s === 'keys') && this.settingsFrom === 'pause';
     const hudVisible = s === 'hud' || s === 'pause' || fromPause;
     const wasHidden = this.hud.el.hidden;
     this.hud.el.hidden = !hudVisible;
     this.loading.el.hidden = s !== 'loading';
     this.menu.el.hidden = s !== 'menu';
+    if (s === 'menu' && this.opts.keybinds) this.menu.setKeysHint(keysHint(this.opts.keybinds.layout));
     this.settings.el.hidden = s !== 'settings';
     this.customize.el.hidden = s !== 'customize';
+    this.awards.el.hidden = s !== 'awards';
+    if (this.garage) this.garage.el.hidden = s !== 'garage';
+    if (this.campaign) this.campaign.el.hidden = s !== 'campaign';
+    if (this.keys) {
+      this.keys.el.hidden = s !== 'keys';
+      this.keys.el.classList.toggle('over-hud', fromPause);
+    }
+    if (this.daily) this.daily.el.hidden = s !== 'daily';
+    if (this.stats) this.stats.el.hidden = s !== 'stats';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
     this.results.el.hidden = s !== 'results';
@@ -344,7 +571,16 @@ export class UIManager {
     this.settings.el.classList.toggle('previewing', active);
   }
 
+  private toggleRaceMode(): void {
+    const cur = this.settings.value;
+    const next: Settings = { ...cur, raceMode: nextRaceMode(cur.raceMode) };
+    this.settings.setSettings(next);
+    this.opts.callbacks.onUiSound('move');
+    this.handleSettings(next);
+  }
+
   private handleSettings(s: Settings): void {
+    this.menu.setMode(s.raceMode);
     this.controlMode = s.controlMode;
     this.touch.setLayout(s.touchSize, s.touchOpacity);
     this.setTouchMode(modeUsesTouch(s.controlMode));
@@ -383,6 +619,18 @@ export class UIManager {
         return this.settings.nav;
       case 'customize':
         return this.customize.nav;
+      case 'awards':
+        return this.awards.nav;
+      case 'garage':
+        return this.garage?.nav ?? null;
+      case 'campaign':
+        return this.campaign?.nav ?? null;
+      case 'keys':
+        return this.keys?.nav ?? null;
+      case 'daily':
+        return this.daily?.nav ?? null;
+      case 'stats':
+        return this.stats?.nav ?? null;
       case 'pause':
         return this.pause.nav;
       case 'results':
@@ -396,15 +644,26 @@ export class UIManager {
 
   handleAction(a: MenuAction): void {
     if (this.rotate.shown) return;
+    if (this.tips.visible) {
+      this.tips.hide();
+      this.opts.callbacks.onUiSound('back');
+      return;
+    }
     const nav = this.activeNav();
     if (!nav) return;
     const cb = this.opts.callbacks;
     switch (a) {
       case 'up':
-        nav.move(-1);
+        if (this.screen === 'awards') this.awards.scrollBy(-1);
+        else nav.move(-1);
+        this.campaign?.syncFocus();
+        this.stats?.syncFocus();
         break;
       case 'down':
-        nav.move(1);
+        if (this.screen === 'awards') this.awards.scrollBy(1);
+        else nav.move(1);
+        this.campaign?.syncFocus();
+        this.stats?.syncFocus();
         break;
       case 'left':
       case 'right': {
@@ -424,6 +683,24 @@ export class UIManager {
         } else if (this.screen === 'customize') {
           cb.onUiSound('back');
           this.closeCustomize();
+        } else if (this.screen === 'awards') {
+          cb.onUiSound('back');
+          this.closeAwards();
+        } else if (this.screen === 'garage') {
+          cb.onUiSound('back');
+          this.closeGarage();
+        } else if (this.screen === 'campaign') {
+          cb.onUiSound('back');
+          this.closeCampaign();
+        } else if (this.screen === 'keys') {
+          cb.onUiSound('back');
+          this.closeKeys();
+        } else if (this.screen === 'daily') {
+          cb.onUiSound('back');
+          this.closeDaily();
+        } else if (this.screen === 'stats') {
+          cb.onUiSound('back');
+          this.closeStats();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -436,6 +713,24 @@ export class UIManager {
         } else if (this.screen === 'customize') {
           cb.onUiSound('back');
           this.closeCustomize();
+        } else if (this.screen === 'awards') {
+          cb.onUiSound('back');
+          this.closeAwards();
+        } else if (this.screen === 'garage') {
+          cb.onUiSound('back');
+          this.closeGarage();
+        } else if (this.screen === 'campaign') {
+          cb.onUiSound('back');
+          this.closeCampaign();
+        } else if (this.screen === 'keys') {
+          cb.onUiSound('back');
+          this.closeKeys();
+        } else if (this.screen === 'daily') {
+          cb.onUiSound('back');
+          this.closeDaily();
+        } else if (this.screen === 'stats') {
+          cb.onUiSound('back');
+          this.closeStats();
         } else if (this.screen === 'pause') {
           cb.onUiSound('back');
           cb.onResume();
@@ -465,7 +760,21 @@ export class UIManager {
     this.hud.banner(text, tone);
   }
 
+  /** Реплика соперника по «рации» (2 с) */
+  radio(who: string, text: string): void {
+    this.hud.radio(who, text);
+  }
+
   // ── данные ────────────────────────────────────────────────────────────────
+
+  setSettings(s: Settings): void {
+    this.settings.setSettings(s);
+  }
+
+  /** Название станции в HUD */
+  setRadio(label: string): void {
+    this.hud.setRadio(label);
+  }
 
   setRecords(r: Records): void {
     this.menu.setRecords(r);

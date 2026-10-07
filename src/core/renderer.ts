@@ -5,7 +5,7 @@
  */
 import { ACESFilmicToneMapping, RenderPipeline, SRGBColorSpace, WebGPURenderer } from 'three/webgpu';
 import type { Camera, Scene } from 'three/webgpu';
-import { emissive, mrt, output, pass } from 'three/tsl';
+import { emissive, float, length, mrt, output, pass, screenUV, smoothstep, uniform, vec2 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { Quality } from './types';
 import { setGlowEnabled } from '../world/materials';
@@ -17,6 +17,12 @@ export class RenderSystem {
   private quality: Quality = 'high';
   private scene: Scene | null = null;
   private camera: Camera | null = null;
+  private bloomNode: { strength: { value: number } } | null = null;
+  private neonBoost = 0;
+  /** Яркость кадра: ночью темнее (множитель до тонмаппинга, неон добирает bloom) */
+  private readonly exposure = uniform(1);
+  /** Эффекты скорости 0..1: радиальный блюр + усиленная аберрация (только high) */
+  private readonly speedFx = uniform(0);
 
   private constructor(renderer: WebGPURenderer) {
     this.renderer = renderer;
@@ -53,6 +59,17 @@ export class RenderSystem {
     this.rebuild();
   }
 
+  /** Ночью неон сильнее: усиление bloom 0..1 */
+  setNeonBoost(k: number): void {
+    this.neonBoost = k;
+    if (this.bloomNode) this.bloomNode.strength.value = 0.85 * (1 + 0.3 * k);
+    this.exposure.value = 1 - 0.45 * k;
+  }
+
+  setSpeedFx(k: number): void {
+    this.speedFx.value = k;
+  }
+
   getQuality(): Quality {
     return this.quality;
   }
@@ -64,6 +81,7 @@ export class RenderSystem {
     this.renderer.setPixelRatio(Math.min(dpr, cap));
     this.pipeline?.dispose();
     this.pipeline = null;
+    this.bloomNode = null;
     const bloomOn = this.quality !== 'low';
     setGlowEnabled(bloomOn);
     if (!this.scene || !this.camera || !bloomOn) return;
@@ -73,8 +91,26 @@ export class RenderSystem {
     const color = scenePass.getTextureNode('output');
     const glow = scenePass.getTextureNode('emissive');
     const bloomPass = bloom(glow, 0.85, 0.45, 0.0);
+    this.bloomNode = bloomPass;
+    this.setNeonBoost(this.neonBoost);
     const pipeline = new RenderPipeline(this.renderer);
-    pipeline.outputNode = color.add(bloomPass);
+    // лёгкая виньетка + хроматическая аберрация к краям кадра (только high)
+    const off = screenUV.sub(vec2(0.5, 0.5));
+    const edge = smoothstep(float(0.25), float(0.75), length(off));
+    const fx = this.speedFx;
+    const shift = off.mul(edge).mul(fx.mul(0.012).add(0.006));
+    const aberrated = color.sample(screenUV.add(shift)).r.toVar();
+    // радиальный блюр от центра: 3 дополнительные выборки вдоль луча к центру
+    const blur = off.mul(fx.mul(0.09).mul(smoothstep(float(0.12), float(0.7), length(off))));
+    const rgb = color
+      .sample(screenUV)
+      .rgb.add(color.sample(screenUV.sub(blur.mul(0.33))).rgb)
+      .add(color.sample(screenUV.sub(blur.mul(0.66))).rgb)
+      .add(color.sample(screenUV.sub(blur)).rgb)
+      .mul(0.25);
+    const ca = rgb.setX(aberrated).setZ(color.sample(screenUV.sub(shift)).b);
+    const vignette = float(1.0).sub(edge.mul(0.38));
+    pipeline.outputNode = ca.mul(vignette).mul(this.exposure).add(bloomPass);
     this.pipeline = pipeline;
   }
 
@@ -86,6 +122,32 @@ export class RenderSystem {
     if (!this.scene || !this.camera) return;
     if (this.pipeline) this.pipeline.render();
     else this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Два вида на одном экране (верх/низ) — режим «2 игрока». Постобработка (bloom) в этом
+   * режиме отключена: сцена рендерится напрямую с viewport/scissor на каждую половину.
+   */
+  renderSplit(top: Camera, bottom: Camera): void {
+    if (!this.scene) return;
+    const r = this.renderer;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const half = Math.floor(h / 2);
+    const prevAuto = r.autoClear;
+    r.setScissorTest(true);
+    r.autoClear = true;
+    // y в WebGPURenderer отсчитывается сверху (в WebGL-бэкенде three переворачивает сам)
+    r.setViewport(0, 0, w, half);
+    r.setScissor(0, 0, w, half);
+    r.render(this.scene, top);
+    r.autoClear = false;
+    r.setViewport(0, half, w, h - half);
+    r.setScissor(0, half, w, h - half);
+    r.render(this.scene, bottom);
+    r.autoClear = prevAuto;
+    r.setScissorTest(false);
+    r.setViewport(0, 0, w, h);
   }
 
   /** Число draw calls последнего кадра (для отладки/QA) */

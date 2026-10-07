@@ -1,0 +1,27 @@
+/* ── Соперник: «рация» в HUD и счёт личных встреч на результатах. Палитра из :root. ── */
+.hud-chatter { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); display: flex; align-items: baseline; gap: 0.6em; max-width: 90%;
+  padding: 0.35em 1em; background: rgba(13, 2, 33, 0.78); border: 1px solid var(--magenta); border-left: 4px solid var(--pink); box-shadow: 0 0 1em rgba(255, 42, 109, 0.45);
+  font-style: italic; letter-spacing: 0.05em; pointer-events: none; animation: radio-in 0.18s ease-out; }
+.hud-chatter[hidden] { display: none; }
+.hud-chatter-who { font-size: 0.8em; color: var(--pink); text-shadow: 0 0 0.5em var(--magenta); }
+.hud-chatter-text { font-size: 1em; color: var(--white); }
+@keyframes radio-in { from { opacity: 0; transform: translateX(-50%) translateY(0.5em); } to { opacity: 1; transform: translateX(-50%); } }
+.rrival { display: grid; justify-items: center; gap: 0.15em; padding: 0.5em 0 0.1em; border-top: 1px solid rgba(185, 103, 255, 0.35); margin-top: 0.4em; }
+.rrival-title { font-size: 0.75em; letter-spacing: 0.12em; color: var(--pink); }
+.rrival-score { font-size: 1.5em; font-style: italic; letter-spacing: 0.15em; color: var(--yellow); text-shadow: 0 0 0.6em var(--yellow); }
+.rrival-line { font-size: 0.68em; letter-spacing: 0.05em; color: var(--lilac); }
+
+/* ── Компактные блоки результатов: кампания, соперник, вызов дня — в одной строке/колонке ── */
+.rextras { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0.25em 1.4em; margin-top: 0.35em; padding-top: 0.3em; border-top: 1px solid rgba(185, 103, 255, 0.35); }
+.rextras:empty { display: none; }
+.rextras > .rcampaign, .rextras > .rrival, .rextras > .rdaily { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0.1em 0.6em; padding: 0; margin: 0; border: 0; }
+.rextras .rcampaign-stars { font-size: 1.15em; letter-spacing: 0.1em; }
+.rextras .rcampaign-goal, .rextras .rcampaign-note { font-size: 0.6em; }
+.rextras .rrival-title, .rextras .rdaily-title { font-size: 0.62em; }
+.rextras .rrival-score { font-size: 1.05em; letter-spacing: 0.1em; }
+.rextras .rrival-line, .rextras .rdaily-line { font-size: 0.6em; }
+.rextras .rdaily-medal { font-size: 1em; }
+.rextras .rdaily-line { flex-basis: 100%; text-align: center; }
+@media (min-width: 1100px) {
+  .rextras { flex-direction: column; align-items: center; }
+}

@@ -4,7 +4,10 @@
  * До unlock() (первый жест) все методы — безопасные no-op; желаемые громкость,
  * трек и пауза запоминаются и применяются после unlock.
  */
-import type { EngineAudioParams, MusicTrack, SfxName } from '../core/types';
+import type { EngineAudioParams, MusicTrack, RadioStation, SfxName } from '../core/types';
+import { STATION_NAMES } from './theory';
+import { Ambience } from './ambience';
+import type { AmbienceKind } from './ambience';
 import { EngineSynth } from './engine';
 import { MusicSequencer } from './music';
 import { SfxPlayer } from './sfx';
@@ -35,6 +38,9 @@ export class AudioManager {
   private engine: EngineSynth | null = null;
   private sfx: SfxPlayer | null = null;
   private music: MusicSequencer | null = null;
+  private ambience: Ambience | null = null;
+  private wantedAmbience: AmbienceKind | null = null;
+  private musicLevel: 0 | 1 = 0;
 
   // Желаемое состояние (применяется после unlock)
   private volMaster = 0.8;
@@ -73,11 +79,59 @@ export class AudioManager {
     this.safe(() => this.applyVolumes(false));
   }
 
+  private radio: RadioStation = 'neon';
+
+  /** Выбрать радиостанцию (до unlock() запоминается). withSweep — шум-свип перехода. */
+  setRadio(station: RadioStation, withSweep = false): void {
+    this.radio = station;
+    this.safe(() => {
+      this.music?.setStation(station);
+      if (withSweep) this.sfx?.playRadioSweep();
+    });
+  }
+
+  /** Подпись для HUD: «NEON FM — Night Drive» (без песни, если звук ещё не запущен или радио выкл.) */
+  radioLabel(): string {
+    const name = STATION_NAMES[this.radio];
+    const song = this.radio === 'off' ? null : this.music?.song;
+    return song ? `${name} — ${song.name}` : name;
+  }
+
   playMusic(track: MusicTrack | null): void {
+    const changed = track !== this.wantedTrack;
+    if (changed) this.musicLevel = 0; // интенсивность сбрасывается при смене трека
     this.wantedTrack = track;
     this.safe(() => {
+      if (changed) this.music?.setIntensity(0);
       if (this.music) this.music.setTrack(track);
     });
+  }
+
+  /** Амбиенс трассы: 'rain' (Storm Boulevard), 'sea' (Midnight Coast), null — тишина. До unlock() запоминается. */
+  setAmbience(kind: AmbienceKind | null): void {
+    this.wantedAmbience = kind;
+    this.safe(() => this.ambience?.set(kind));
+  }
+
+  /** Раскат грома, intensity 0..1. До unlock() — no-op. */
+  thunder(intensity: number): void {
+    if (!this.ambience) return;
+    this.safe(() => this.ambience?.thunder(intensity));
+  }
+
+  /** 0 — обычная гоночная музыка, 1 — финальный круг (плотнее, ярче). Сбрасывается в 0 при смене трека. */
+  setMusicIntensity(level: 0 | 1): void {
+    this.musicLevel = level ? 1 : 0;
+    this.safe(() => this.music?.setIntensity(this.musicLevel));
+  }
+
+  private enginePitch = 1;
+  private engineGrowl = 1;
+  /** Тембр мотора машины игрока (высота, «рык») */
+  setEngineProfile(pitch: number, growl: number): void {
+    this.enginePitch = pitch;
+    this.engineGrowl = growl;
+    this.engine?.setProfile(pitch, growl);
   }
 
   updateEngine(p: EngineAudioParams | null): void {
@@ -97,6 +151,12 @@ export class AudioManager {
   playBoost(power: number): void {
     if (!this.sfx) return;
     this.safe(() => this.sfx?.playBoost(power));
+  }
+
+  /** Залп фейерверка на финише. */
+  playFirework(): void {
+    if (!this.sfx) return;
+    this.safe(() => this.sfx?.playFirework());
   }
 
   /**
@@ -197,8 +257,16 @@ export class AudioManager {
     comp.ratio.value = 4;
     comp.attack.value = 0.005;
     comp.release.value = 0.2;
+    // лимитер на выходе: ловит пики после компрессора (удар + нитро + музыка), без клиппинга
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.08;
     master.connect(comp);
-    comp.connect(ctx.destination);
+    comp.connect(limiter);
+    limiter.connect(ctx.destination);
 
     const musicBus = ctx.createGain();
     const sfxBus = ctx.createGain();
@@ -212,8 +280,13 @@ export class AudioManager {
     this.sfxBus = sfxBus;
     this.engineBus = engineBus;
     this.engine = new EngineSynth(ctx, engineBus);
+    this.engine.setProfile(this.enginePitch, this.engineGrowl);
     this.sfx = new SfxPlayer(ctx, sfxBus);
     this.music = new MusicSequencer(ctx, musicBus);
+    this.music.setStation(this.radio);
+    this.music.setIntensity(this.musicLevel);
+    this.ambience = new Ambience(ctx, sfxBus);
+    this.ambience.set(this.wantedAmbience);
     this.applyVolumes(true);
   }
 
@@ -257,6 +330,7 @@ export class AudioManager {
     this.engine = null;
     this.sfx = null;
     this.music = null;
+    this.ambience = null;
     const ctx = this.ctx;
     this.ctx = null;
     try {

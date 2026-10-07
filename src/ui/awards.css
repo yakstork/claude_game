@@ -1,0 +1,39 @@
+/* ── Награды ──────────────────────────────────────────────────────────────── */
+.awards { display: flex; align-items: center; justify-content: center; background: rgba(13, 2, 33, 0.7); pointer-events: auto; z-index: 3;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+.awards > .glow { width: min(56em, 100%); max-height: 100%; display: flex; }
+.awards-panel { --c: 18px; display: flex; flex-direction: column; align-items: center; width: 100%; min-height: 0; max-height: 100%; padding: 1em 1.6em 1.1em; }
+.awards-head { display: flex; align-items: baseline; justify-content: center; gap: 1em; }
+.awards-title { margin-bottom: 0.3em; color: var(--cyan); text-shadow: 0 0 0.5em var(--cyan), 0 0 0.12em var(--cyan); }
+.awards-count { font-style: italic; letter-spacing: 0.14em; color: var(--yellow); text-shadow: 0 0 0.5em var(--yellow); }
+.awards-grid { flex: 1 1 auto; min-height: 0; width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6em; margin: 0.4em 0 0.8em; align-content: start; overflow-y: auto; overscroll-behavior: contain; padding: 0.2em; }
+.award {
+  --t: var(--pink); display: flex; gap: 0.7em; align-items: center; padding: 0.5em 0.7em; min-width: 0;
+  background: rgba(43, 15, 84, 0.55); border-left: 3px solid var(--t); animation: nr-rowin 0.4s ease-out both;
+}
+.award.cyan { --t: var(--cyan); }
+.award.orange { --t: var(--orange); }
+.award.yellow { --t: var(--yellow); }
+.award-icon {
+  flex: none; width: 2.3em; height: 2.3em; display: grid; place-items: center; font-size: 1.1em; color: var(--void);
+  background: var(--t); box-shadow: 0 0 0.9em var(--t); transform: skewX(-12deg); font-family: system-ui, "Segoe UI Symbol", sans-serif;
+}
+.award-name { font-size: 0.85em; font-style: italic; letter-spacing: 0.1em; color: var(--t); text-shadow: 0 0 0.5em var(--t); }
+.award-desc { margin-top: 0.15em; font-size: 0.68em; line-height: 1.3; color: var(--white); font-family: "Trebuchet MS", system-ui, sans-serif; font-weight: 700; }
+.award.locked { --t: var(--lilac); background: rgba(26, 11, 59, 0.5); opacity: 0.55; }
+.award.locked .award-icon { background: transparent; border: 2px solid var(--lilac); color: var(--lilac); box-shadow: none; }
+.award.locked .award-name { text-shadow: none; color: var(--lilac); }
+.award.locked .award-desc { color: var(--lilac); }
+.badge.award-new { background: var(--orange); box-shadow: 0 0 0.9em var(--orange); }
+@media (max-width: 760px) { .awards-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .awards-grid { grid-template-columns: 1fr; } }
+@media (max-height: 520px) {
+  .awards-panel { --c: 12px; padding: 0.4em 1em 0.5em; }
+  .awards-title { font-size: 1.5em; margin-bottom: 0; }
+  .awards-grid { grid-template-columns: repeat(3, 1fr); gap: 0.35em; margin: 0.25em 0 0.4em; }
+  .award { padding: 0.3em 0.5em; gap: 0.5em; }
+  .award-icon { width: 1.9em; height: 1.9em; }
+  .award-desc { font-size: 0.62em; }
+  .awards .btn { padding: 0.2em 0.9em; font-size: 0.9em; min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .award { animation: none; } }

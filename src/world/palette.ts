@@ -17,6 +17,18 @@ export const PALETTE = {
   skyMid: 0xb3206e,
   skyHorizon: 0xff7b54,
   asphalt: 0x160a2e,
+  // ночь (синтвейв: глубокий фиолет с магентовой кромкой города)
+  nightZenith: 0x05010f,
+  nightHigh: 0x0f0326,
+  nightMid: 0x290850,
+  nightHorizon: 0x5c1672,
+  nightFog: 0x0a0220,
+  // рассвет (холодный розово-голубой)
+  dawnZenith: 0x1b2570,
+  dawnHigh: 0x4a5fc8,
+  dawnMid: 0xd48ae6,
+  dawnHorizon: 0xffb4d2,
+  dawnFog: 0x7060b0,
 } as const;
 
 export function cssColor(hex: number): string {

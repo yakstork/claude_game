@@ -6,7 +6,9 @@ import {
   loopSteps,
   makeEngineTargets,
   makeSoftClipCurve,
+  getTrackConfig,
   midiToFreq,
+  RACE_VARIANTS,
   STEPS_PER_BAR,
   stepDuration,
   TRACKS,
@@ -66,6 +68,15 @@ describe('theory: ноты и мотор', () => {
     const f = computeEngineTargets({ ...base, skid: 1 }, t).skidFreq;
     expect(f).toBeGreaterThanOrEqual(1200);
     expect(f).toBeLessThanOrEqual(2500);
+  });
+
+  it('ветер растёт со скоростью, рык — с газом', () => {
+    const t = makeEngineTargets();
+    const slow = { ...computeEngineTargets({ ...base, speed: 5, throttle: 0 }, t) };
+    const fast = { ...computeEngineTargets({ ...base, speed: 70, throttle: 1 }, t) };
+    expect(fast.windGain).toBeGreaterThan(slow.windGain);
+    expect(fast.growlGain).toBeGreaterThan(slow.growlGain);
+    expect(fast.windFreq).toBeGreaterThan(slow.windFreq);
   });
 
   it('NaN/выход за диапазон не ломают цели', () => {
@@ -167,6 +178,56 @@ describe('секвенсор: паттерны', () => {
         }
       }
     }
+  });
+});
+
+describe('секвенсор: гоночные композиции', () => {
+  it('несколько композиций с разным темпом и тональностью', () => {
+    expect(RACE_VARIANTS).toBeGreaterThanOrEqual(4);
+    const bpms = new Set<number>();
+    const roots = new Set<number>();
+    for (let v = 0; v < RACE_VARIANTS; v++) {
+      const c = getTrackConfig('race', v);
+      bpms.add(c.bpm);
+      roots.add(((c.bassRoots[0] ?? 0) % 12 + 12) % 12);
+    }
+    expect(bpms.size).toBe(RACE_VARIANTS);
+    expect(roots.size).toBe(RACE_VARIANTS);
+    expect(getTrackConfig('race', RACE_VARIANTS)).toBe(getTrackConfig('race', 0));
+  });
+
+  it('каждая композиция: луп по модулю, бочка на сильной доле, ноты в диапазоне, есть бас/арп/пэд', () => {
+    for (let v = 0; v < RACE_VARIANTS; v++) {
+      const n = loopSteps('race', v);
+      expect(getStepEvents('race', n + 3, v)).toEqual(getStepEvents('race', 3, v));
+      expect(getStepEvents('race', 0, v).kick).toBeDefined();
+      expect(getStepEvents('race', 0, v).pad).toBeDefined();
+      let bass = 0, arp = 0, snare = 0;
+      for (let s = 0; s < n; s++) {
+        const ev = getStepEvents('race', s, v);
+        if (ev.bass) {
+          bass++;
+          expect(ev.bass.midi).toBeGreaterThanOrEqual(24);
+          expect(ev.bass.midi).toBeLessThanOrEqual(60);
+          expect(ev.bass.steps).toBeGreaterThanOrEqual(1);
+        }
+        if (ev.arp) {
+          arp++;
+          expect(ev.arp.midi).toBeGreaterThanOrEqual(60);
+          expect(ev.arp.midi).toBeLessThanOrEqual(90);
+        }
+        if (ev.snare) snare++;
+      }
+      expect(bass).toBeGreaterThan(n / 8);
+      expect(arp).toBeGreaterThan(n / 8);
+      expect(snare).toBeGreaterThan(0);
+    }
+  });
+
+  it('композиции различаются по рисунку', () => {
+    const sig = (v: number): string =>
+      Array.from({ length: 16 }, (_, s) => `${getStepEvents('race', s, v).kick ?? 0}${getStepEvents('race', s, v).bass?.midi ?? 0}`).join();
+    expect(new Set(Array.from({ length: RACE_VARIANTS }, (_, v) => sig(v))).size).toBe(RACE_VARIANTS);
   });
 });
 
