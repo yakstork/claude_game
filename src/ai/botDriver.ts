@@ -47,6 +47,24 @@ const PLAN_HORIZON = 230;
 const RUN_K = 0.005;
 const RUN_MAX = 330;
 /** Бустер-пластины: дальность прицеливания, м; макс. сдвиг линии, м; считаем «прямой» участок при |k| ниже порога */
+/** Поправки характеров (прибавляются к базовым параметрам; нейтральный бот — без поправок) */
+export const TRAIT_TUNING = {
+  /** агрессор: чаще перекрывает линию, раньше начинает обгон */
+  aggressorDefend: 1.5,
+  aggressorWindow: 8,
+  /** чистюля: реже ошибки, шире дуга обгона */
+  cleanMistake: 0.5,
+  cleanPassGap: 4.6,
+  /** дрифтер: чаще и охотнее входит в занос */
+  drifterChance: 0.15,
+  drifterUse: 0.025,
+  /** нитроман: чаще жжёт нитро и держит меньший запас */
+  nitroRate: 0.2,
+  nitroReserve: 0.4,
+  /** хитрец: на последнем круге агрессивнее и дальше замечает цель */
+  cunningAggr: 0.3,
+  cunningWindow: 14,
+} as const;
 export const PAD_AIM_RANGE = 40;
 export const PAD_MAX_SHIFT = 3.2;
 const PAD_STRAIGHT_K = 0.006;
@@ -149,16 +167,17 @@ export class BotDriver {
   /** Доля расчётной тормозной способности */
   private readonly brakeFrac: number;
   /** Доверие к измеренному боковому ускорению заноса (>1 — смелее) */
-  private readonly driftUse: number;
+  private driftUse: number;
   /** Шанс занести в подходящем повороте */
   private driftChance = 0.5;
   /** Вероятность ошибки на поворот */
-  private readonly mistakeP: number;
+  private mistakeP: number;
   /** Резерв нитро, ниже которого бот копит его на обгон / финиш, и доля прямых, где он жмёт нитро */
-  private readonly nitroReserve: number;
-  private readonly nitroRate: number;
+  private nitroReserve: number;
+  private nitroRate: number;
   /** Склонность прикрывать позицию (0..1) */
-  private readonly defendP: number;
+  private defendP: number;
+  private readonly trait: BotProfile['trait'];
   /** Амплитуда колебаний темпа («форма»), доля */
   private readonly formAmp: number;
   private readonly launchDelay: number;
@@ -218,6 +237,8 @@ export class BotDriver {
     this.nitroReserve = 0.1 + 0.3 * rnd();
     this.nitroRate = 0.45 + 0.4 * this.aggr + 0.15 * rnd();
     this.defendP = 0.1 + 0.6 * this.aggr * (0.6 + 0.4 * rnd());
+    this.trait = calibrating ? undefined : profile.trait;
+    this.applyTrait();
     this.paceBase = calibrating ? 1 : 0.99 + 0.004 * this.skillN + (rnd() - 0.5) * 0.01;
     this.formAmp = calibrating ? 0 : 0.04 + 0.02 * rnd();
     // реакция на старте: 0.05–0.45 с (агрессивные чуть быстрее)
@@ -232,13 +253,35 @@ export class BotDriver {
     if (!calibrating) this.init(specById(profile.carId));
   }
 
+  /** Параметры характера (до init: driftChance дополняется там же) */
+  private applyTrait(): void {
+    const T = TRAIT_TUNING;
+    switch (this.trait) {
+      case 'aggressor':
+        this.defendP = Math.min(0.95, this.defendP * T.aggressorDefend);
+        break;
+      case 'clean':
+        this.mistakeP *= T.cleanMistake;
+        break;
+      case 'drifter':
+        this.driftUse += T.drifterUse;
+        break;
+      case 'nitro':
+        this.nitroRate = Math.min(1, this.nitroRate + T.nitroRate);
+        this.nitroReserve *= T.nitroReserve;
+        break;
+      default:
+        break;
+    }
+  }
+
   private init(spec: CarSpec): void {
     this.specId = spec.id;
     this.drift = driftKnowledge(spec);
     if (!this.calibrating) this.carPace = carPaceFactor(this.track, spec);
     // склонность к заносу: машина (Grizzly любит, Photon реже), скилл, характер
     const rnd = hash01(this.seed, 99, 1);
-    this.driftChance = clamp(0.3 + 0.6 * spec.stats.drift + 0.25 * (this.skillN - 0.5) + 0.2 * (this.aggr - 0.5) + 0.15 * (rnd - 0.5), 0.2, 0.95);
+    this.driftChance = clamp(0.3 + 0.6 * spec.stats.drift + 0.25 * (this.skillN - 0.5) + 0.2 * (this.aggr - 0.5) + 0.15 * (rnd - 0.5) + (this.trait === 'drifter' ? TRAIT_TUNING.drifterChance : 0), 0.2, 0.95);
   }
 
   /** «Форма» бота −1..1: медленно плавающий темп */
@@ -440,7 +483,9 @@ export class BotDriver {
     if (this.calibrating) rubber = 0;
     this.rubber += (rubber - this.rubber) * (1 - Math.exp(-dt * 0.8));
 
-    const aggrNow = this.aggr;
+    const finalLapNow = this.lap >= this.totalLaps;
+    const cunningNow = this.trait === 'cunning' && finalLapNow;
+    const aggrNow = Math.min(1, this.aggr + (cunningNow ? TRAIT_TUNING.cunningAggr : 0));
     // ближайший поворот и прямая до него
     let run = RUN_MAX;
     let runCorner = -1;
@@ -457,7 +502,9 @@ export class BotDriver {
     let shiftTarget = 0;
     if (this.overtakeTimer > 0) this.overtakeTimer -= dt;
     if (this.defendTimer > 0) this.defendTimer -= dt;
-    const window = 12 + 20 * aggrNow + Math.max(0, vFwd - (ahead ? ahead.speed : vFwd)) * 0.7;
+    const window =
+      12 + 20 * aggrNow + Math.max(0, vFwd - (ahead ? ahead.speed : vFwd)) * 0.7 +
+      (this.trait === 'aggressor' ? TRAIT_TUNING.aggressorWindow : 0) + (cunningNow ? TRAIT_TUNING.cunningWindow : 0);
     // слипстрим: на прямой садимся в мешок к машине впереди, а когда он полный — выходим на обгон
     if (this.draftCool > 0) this.draftCool -= dt;
     let drafting = false;
@@ -498,7 +545,7 @@ export class BotDriver {
           this.overtakeTimer = 1.6;
         }
       }
-      const goal = clamp(ahead.lateral + this.overtakeSide * 3.6, -usable, usable);
+      const goal = clamp(ahead.lateral + this.overtakeSide * (this.trait === 'clean' ? TRAIT_TUNING.cleanPassGap : 3.6), -usable, usable);
       shiftTarget = goal - self.lateral;
       if (Math.abs(goal - ahead.lateral) < 2.5) {
         followCap = ahead.speed + Math.max(0, aheadDs - 7) * 0.6;

@@ -159,8 +159,13 @@ export interface Pose {
 
 // ─── ИИ ────────────────────────────────────────────────────────────────────
 
+/** Характер бота: агрессор, чистюля, дрифтер, нитроман, хитрец */
+export type BotTrait = 'aggressor' | 'clean' | 'drifter' | 'nitro' | 'cunning';
+
 export interface BotProfile {
   name: string;
+  /** Характер (параметры в src/ai/botDriver.ts); нет — нейтральный */
+  trait?: BotTrait;
   /** 0..1 — качество траектории и торможения */
   skill: number;
   /** 0..1 — готовность обгонять/толкаться */
@@ -355,6 +360,8 @@ export interface RaceResult {
   credits?: { total: number; lines: { label: string; value: number }[]; balance: number };
   /** Кампания: итог события */
   campaign?: { title: string; stars: number; newStars: number; reward: number; goals: { text: string; on: boolean }[] };
+  /** Соперник: счёт личных встреч (you — сколько раз игрок финишировал выше) */
+  rival?: { name: string; you: number; bot: number; ahead: boolean };
   /** Вызов дня: медаль, серия и подсказки */
   daily?: { title: string; medal: string; medalIndex: number; reward: number; lines: string[] };
   /** Дрифт-вызов: медаль и рекорд */

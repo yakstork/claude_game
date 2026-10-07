@@ -37,6 +37,8 @@ import { getHandling } from '../vehicle/handling';
 import { GarageController } from './garageController';
 import { CampaignController } from './campaignController';
 import { DailyController } from './dailyController';
+import { RADIO_MS, chooseRival, headToHead, loadRivals, radioLine, recordRace, saveRivals } from '../race/rivals';
+import { RivalMarker } from '../world/rivalMarker';
 import { CarModel } from '../vehicle/carModel';
 import { EffectsManager } from '../vehicle/effects';
 import { BotDriver } from '../ai/botDriver';
@@ -205,6 +207,13 @@ export class Game {
   private readonly garageCtl: GarageController;
   /** Кампания «Неоновая лига» (src/core/campaignController.ts) */
   private readonly campaignCtl: CampaignController;
+  /** Соперник (src/race/rivals.ts): слот бота, маркер над ним и состояние «рации» */
+  private readonly rivals = loadRivals();
+  private rivalSlot = -1;
+  private rivalMarker: RivalMarker | null = null;
+  private rivalAhead: boolean | null = null;
+  private radioCool = 0;
+  private radioFinalSent = false;
   /** Вызов дня (src/core/dailyController.ts) */
   private readonly dailyCtl: DailyController;
   /** Модификатор «нитро только с канистр»: допустимый запас нитро игрока */
@@ -644,7 +653,54 @@ export class Game {
       this.pickupMesh = null;
     }
     this.pickups = null;
+    this.rivalMarker?.dispose();
+    this.rivalMarker = null;
+    this.rivalSlot = -1;
+    this.rivalAhead = null;
     if (this.previewModel) this.scene.remove(this.previewModel.group);
+  }
+
+  /** Соперник гонки: ближайший к игроку бот по прошлым результатам; маркер над его машиной */
+  private setupRival(order: readonly (BotProfile | null)[]): void {
+    this.radioCool = 0;
+    this.radioFinalSent = false;
+    const names = order.filter((p): p is BotProfile => p !== null).map((p) => p.name);
+    const pick = names.length ? chooseRival(this.rivals, names) : null;
+    if (!pick) return;
+    this.rivalSlot = order.findIndex((p) => p?.name === pick);
+    this.rivals.rival = pick;
+    const car = this.cars[this.rivalSlot];
+    if (!car) return;
+    this.rivalMarker = new RivalMarker(pick);
+    this.rivalMarker.attach(car.model.group);
+  }
+
+  /** «Рация» соперника: обгоны и последний круг (реплики из шаблонов, 2 с) */
+  private updateRival(dt: number): void {
+    if (this.rivalSlot < 0 || !this.race || this.state !== 'racing') return;
+    this.radioCool -= dt;
+    const rival = this.cars[this.rivalSlot];
+    const me = this.player;
+    if (!rival || !me) return;
+    const gap = this.race.progress(this.playerSlot) - this.race.progress(this.rivalSlot);
+    const trait = BOT_PROFILES.find((b) => b.name === rival.name)?.trait;
+    const say = (kind: 'botPassed' | 'playerPassed' | 'finalLap'): void => {
+      if (this.radioCool > 0 && kind !== 'finalLap') return;
+      this.radioCool = RADIO_MS / 1000 + 2;
+      this.ui.radio(rival.name, radioLine(kind, trait, Math.floor(this.race!.raceTime * 7) + this.rivalSlot));
+    };
+    if (this.rivalAhead === null) this.rivalAhead = gap < 0;
+    else if (this.rivalAhead && gap > 4) {
+      this.rivalAhead = false;
+      say('playerPassed');
+    } else if (!this.rivalAhead && gap < -4) {
+      this.rivalAhead = true;
+      say('botPassed');
+    }
+    if (!this.radioFinalSent && this.laps > 1 && this.race.standing(this.playerSlot).lap + 1 >= this.laps) {
+      this.radioFinalSent = true;
+      say('finalLap');
+    }
   }
 
   /** Пластина — буст (звук игроку даёт HUD по росту boostTime); канистра — звук только игроку */
@@ -730,6 +786,7 @@ export class Game {
     this.hitWallThisStep = false;
     this.setupGhost(playerSpec);
     this.stunts.reset();
+    this.setupRival(order);
     this.dailyNitro = 0;
     if (this.dailyCtl.modifier === 'nitroCans') this.player.physics.state.nitro = 0;
     this.pickups = new PickupSystem(this.track, pickupLayoutFor(this.track.id));
@@ -894,6 +951,7 @@ export class Game {
     updateSlipstream(this.states, dt);
     this.replay.record(dt);
     if (this.state === 'racing') this.pickups?.update(dt, this.states, this.onPickup);
+    this.updateRival(dt);
 
     // события физики
     this.hitWallThisStep = false;
@@ -1122,6 +1180,16 @@ export class Game {
     });
     this.campaignCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore });
     this.dailyCtl.finish(result, { position: playerPos, bestLap: player.bestLap, driftScore: result.driftScore, wallHits: this.stats.wallHits });
+    if (!this.timedMode && this.rivalSlot >= 0) {
+      const rr = rows.map((r) => ({ name: r.name, position: r.position, isPlayer: r.isPlayer }));
+      if (recordRace(this.rivals, rr)) saveRivals(this.rivals);
+      const rname = this.cars[this.rivalSlot]?.name;
+      const rrow = rows.find((r) => r.name === rname);
+      if (rname && rrow) {
+        const h = headToHead(this.rivals, rname);
+        result.rival = { name: rname, you: h.you, bot: h.bot, ahead: playerPos < rrow.position };
+      }
+    }
     this.ui.syncCredits();
     this.lastResult = result;
     this.uiMode = 'results';
@@ -1229,6 +1297,7 @@ export class Game {
 
     this.world.update(this.camera.position);
     if (!this.paused) this.pickupMesh?.update(dt);
+    if (!this.paused) this.rivalMarker?.update(dt);
     this.render.setNeonBoost(this.world.headlights);
     // гром — с задержкой после вспышки молнии (звук идёт медленнее света)
     const strikes = this.world.lightningStrikes;

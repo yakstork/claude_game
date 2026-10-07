@@ -624,6 +624,13 @@ export class ResultsScreen {
       for (const g of cg.goals) el('div', `rcampaign-goal${g.on ? ' on' : ''}`, g.text, box);
       if (cg.reward > 0) el('div', 'rcampaign-note', `НОВЫХ ЗВЁЗД: ${cg.newStars} · +${cg.reward} NC`, box);
     }
+    const rv = r.rival;
+    if (rv) {
+      const box = el('div', 'rrival', undefined, body);
+      el('div', 'rrival-title', `СОПЕРНИК · ${rv.name}`, box);
+      el('div', 'rrival-score', `${rv.you} : ${rv.bot}`, box);
+      el('div', 'rrival-line', rv.ahead ? 'В этой гонке ты впереди' : 'В этой гонке соперник впереди', box);
+    }
     const dl = r.daily;
     if (dl) {
       const box = el('div', 'rdaily', undefined, body);

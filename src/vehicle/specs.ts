@@ -77,11 +77,11 @@ export const CUSTOM_PALETTE: { body: number[]; neon: number[] } = {
 };
 
 export const BOT_PROFILES: BotProfile[] = [
-  { name: 'NOVA', skill: 0.92, aggression: 0.6, lineBias: -0.2, bodyColor: PALETTE.cyan, neonColor: PALETTE.pink, carId: 'photon' },
-  { name: 'BLAZE', skill: 0.85, aggression: 0.9, lineBias: 0.3, bodyColor: PALETTE.orange, neonColor: PALETTE.cyan, carId: 'grizzly' },
-  { name: 'ECHO', skill: 0.8, aggression: 0.4, lineBias: 0.0, bodyColor: PALETTE.violet, neonColor: PALETTE.yellow, carId: 'razor' },
-  { name: 'RONIN', skill: 0.74, aggression: 0.7, lineBias: -0.4, bodyColor: PALETTE.violet, neonColor: PALETTE.pink, carId: 'nightshade' },
-  { name: 'KITE', skill: 0.66, aggression: 0.3, lineBias: 0.45, bodyColor: PALETTE.yellow, neonColor: PALETTE.cyan, carId: 'volt' },
+  { name: 'NOVA', trait: 'nitro', skill: 0.92, aggression: 0.6, lineBias: -0.2, bodyColor: PALETTE.cyan, neonColor: PALETTE.pink, carId: 'photon' },
+  { name: 'BLAZE', trait: 'aggressor', skill: 0.85, aggression: 0.9, lineBias: 0.3, bodyColor: PALETTE.orange, neonColor: PALETTE.cyan, carId: 'grizzly' },
+  { name: 'ECHO', trait: 'clean', skill: 0.8, aggression: 0.4, lineBias: 0.0, bodyColor: PALETTE.violet, neonColor: PALETTE.yellow, carId: 'razor' },
+  { name: 'RONIN', trait: 'drifter', skill: 0.74, aggression: 0.7, lineBias: -0.4, bodyColor: PALETTE.violet, neonColor: PALETTE.pink, carId: 'nightshade' },
+  { name: 'KITE', trait: 'cunning', skill: 0.66, aggression: 0.3, lineBias: 0.45, bodyColor: PALETTE.yellow, neonColor: PALETTE.cyan, carId: 'volt' },
 ];
 
 export function specById(id: string): CarSpec {
