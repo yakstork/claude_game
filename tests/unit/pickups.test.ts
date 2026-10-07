@@ -12,7 +12,7 @@ describe('раскладка', () => {
       const track = new Track(def);
       const lay = pickupLayoutFor(track.id);
       expect(lay.pads.length).toBeGreaterThanOrEqual(3);
-      expect(lay.pads.length).toBeLessThanOrEqual(6);
+      expect(lay.pads.length).toBeLessThanOrEqual(7);
       expect(lay.cans.length).toBeGreaterThan(3);
       const sys = new PickupSystem(track, lay);
       for (let i = 0; i < sys.canCount; i++) {

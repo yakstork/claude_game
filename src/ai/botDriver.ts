@@ -46,6 +46,10 @@ const PLAN_HORIZON = 230;
 /** Прямая для нитро: до следующего поворота (|k| > RUN_K) не меньше, м */
 const RUN_K = 0.005;
 const RUN_MAX = 330;
+/** Бустер-пластины: дальность прицеливания, м; макс. сдвиг линии, м; считаем «прямой» участок при |k| ниже порога */
+export const PAD_AIM_RANGE = 40;
+export const PAD_MAX_SHIFT = 3.2;
+const PAD_STRAIGHT_K = 0.006;
 /** Полная шкала нитро не копится зря: на длинной прямой жмём независимо от «настроения» */
 const FULL_TANK = 0.85;
 /** «Толчея»: машина в пределах 5 м по ширине и ближе этого впереди/сзади по s — занос не начинаем, м */
@@ -170,6 +174,9 @@ export class BotDriver {
   private steerSmooth = 0;
   private avoidShift = 0;
   private overtakeSide = 0;
+  /** Положения бустер-пластин (s, lateral) — задаются игрой; null — цели нет */
+  private padS: ArrayLike<number> | null = null;
+  private padLat: ArrayLike<number> | null = null;
   private overtakeTimer = 0;
   private slowTime = 0;
   private reverseTimer = 0;
@@ -238,6 +245,39 @@ export class BotDriver {
   private form(): number {
     const t = this.time;
     return 0.55 * Math.sin(t * this.freq[2] + this.phase[4]) + 0.3 * Math.sin(t * this.freq[3] + this.phase[5]) + 0.15 * Math.sin(t * 0.07 + this.phase[2]);
+  }
+
+  /** Сообщить боту, где лежат бустер-пластины (массивы s и смещений; не копируются) */
+  setPads(padS: ArrayLike<number> | null, padLateral: ArrayLike<number> | null): void {
+    this.padS = padS;
+    this.padLat = padLateral;
+  }
+
+  /**
+   * Сдвиг линии к ближайшей пластине впереди (≤ PAD_AIM_RANGE м за точкой прицеливания s + look), если она на прямой.
+   * Относительно целевой линии в точке пластины; 0 — цели нет.
+   */
+  private padShift(s: number, look: number): number {
+    const padS = this.padS;
+    const padLat = this.padLat;
+    if (!padS || !padLat) return 0;
+    const track = this.track;
+    let best = -1;
+    let bestD = PAD_AIM_RANGE + look;
+    for (let i = 0; i < padS.length; i++) {
+      const d = track.deltaS(s, padS[i]);
+      if (d > 2 && d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best < 0) return 0;
+    const ps = padS[best];
+    if (Math.abs(track.curvatureAt(ps)) > PAD_STRAIGHT_K) return 0;
+    const hw = track.sampleAt(ps, this.sampleB).halfWidth;
+    const want = padLat[best] - this.lineOffset(ps, hw, false);
+    if (Math.abs(want) > PAD_MAX_SHIFT * 2) return 0;
+    return clamp(want, -PAD_MAX_SHIFT, PAD_MAX_SHIFT);
   }
 
   /** Целевое смещение от осевой (+ вправо) в точке sp: линия без учёта соперников */
@@ -476,8 +516,14 @@ export class BotDriver {
     if (this.defendTimer > 0 && behind !== null && !overtaking && shiftTarget === 0) {
       shiftTarget = clamp(behind.lateral - self.lateral, -2.4, 2.4) * 0.85;
     }
+    let padAim = false;
     if (sidePush > 0 && shiftTarget === 0) shiftTarget = -side * Math.min(3, 0.9 * sidePush);
-    this.avoidShift += (shiftTarget - this.avoidShift) * (1 - Math.exp(-dt * 2.5));
+    // пластина впереди: если не обгоняем, не сидим в мешке и не защищаемся — слегка смещаем линию к ней
+    if (shiftTarget === 0 && !overtaking && !drafting && sidePush <= 0 && this.defendTimer <= 0 && !this.inZone) {
+      shiftTarget = this.padShift(s, 10 + Math.abs(speed) * 0.6);
+      padAim = shiftTarget !== 0;
+    }
+    this.avoidShift += (shiftTarget - this.avoidShift) * (1 - Math.exp(-dt * (padAim ? 7 : 2.5)));
 
     // ── целевая точка и руль (pure pursuit) ───────────────────────────────
     const look = 10 + Math.abs(speed) * 0.6;

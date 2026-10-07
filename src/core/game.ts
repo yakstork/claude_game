@@ -615,6 +615,8 @@ export class Game {
     this.stunts.reset();
     this.pickups = new PickupSystem(this.track, pickupLayoutFor(this.track.id));
     this.pickupMesh = new PickupMesh(this.track, this.pickups);
+    for (const c of this.cars) c.bot?.setPads(this.pickups.padS, this.pickups.padLateral);
+    this.playerAutopilot?.setPads(this.pickups.padS, this.pickups.padLateral);
     this.scene.add(this.pickupMesh.group);
     this.stats = { bestCombo: 0, wallHits: 0, perfectStart: false, ghostRecord: false };
     const [ePitch, eGrowl] = ENGINE_TONE[playerSpec.id] ?? ENGINE_TONE.custom;
@@ -737,7 +739,10 @@ export class Game {
       let controls: VehicleControls;
       if (c.isPlayer) {
         if (this.state === 'finished' || this.playerAutopilot) {
-          if (!this.playerAutopilot) this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5);
+          if (!this.playerAutopilot) {
+            this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[2], name: 'AUTO' }, 5);
+            if (this.pickups) this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);
+          }
           controls = this.playerAutopilot.update(dt, c.physics.state, c.spec, this.states);
         } else {
           controls = this.input.controls(dt);
@@ -1215,7 +1220,10 @@ export class Game {
    */
   debugSimulate(seconds: number): void {
     if (!this.race) return;
-    if (!this.playerAutopilot) this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[0], name: 'AUTO', skill: 0.9 }, 7);
+    if (!this.playerAutopilot) {
+      this.playerAutopilot = new BotDriver(this.track, { ...BOT_PROFILES[0], name: 'AUTO', skill: 0.9 }, 7);
+      if (this.pickups) this.playerAutopilot.setPads(this.pickups.padS, this.pickups.padLateral);
+    }
     const dt = 1 / 120;
     for (let t = 0; t < seconds && !this.resultsShown; t += dt) this.step(dt);
     if (this.cars.length) this.chase.snap(this.chaseInput(this.player));

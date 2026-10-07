@@ -21,6 +21,7 @@ import { uprightFrame } from './trackMesh';
 import { SUN_DIR } from './sky';
 import { GROUND_Y } from './constants';
 import { SignBuilder } from './signs';
+import { buildCanyon } from './canyon';
 
 /** Детерминированный ГПСЧ (mulberry32) */
 export function rng(seed: number): () => number {
@@ -225,12 +226,16 @@ export class Environment {
 
   /** Трасса-побережье: море с восточной (внешней) стороны, город — только с другой */
   private readonly isCoast: boolean;
+  /** Каньон: скалы вместо небоскрёбов, без пальм */
+  private readonly isCanyon: boolean;
 
   constructor(readonly track: Track) {
     this.isCoast = track.id === 'coast';
+    this.isCanyon = track.id === 'canyon';
     this.field = new TrackDistanceField(track);
     this.buildTrackside();
-    this.group.add(this.buildCity());
+    if (this.isCanyon) this.group.add(buildCanyon(track));
+    else this.group.add(this.buildCity());
     this.buildProps();
     if (this.isCoast) {
       this.buildBeach();
@@ -656,7 +661,7 @@ export class Environment {
     // Пальмы вдоль трассы
     for (let s = 5; s < t.length; s += 17 + rand() * 12) {
       t.sampleAt(s, sample);
-      if (sample.position.y > 1.0 || this.isReserved(s)) continue;
+      if (this.isCanyon || sample.position.y > 1.0 || this.isReserved(s)) continue;
       const side = rand() < 0.5 ? -1 : 1;
       const off = sample.halfWidth + 6 + rand() * 7;
       p.copy(sample.position).addScaledVector(sample.right, side * off);
