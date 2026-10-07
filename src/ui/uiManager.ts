@@ -20,6 +20,9 @@ import './polish.css';
 import './awards.css';
 import './garage.css';
 import './campaign.css';
+import './keys.css';
+import { KeysScreen } from './keys';
+import type { KeyBinds } from '../input/keybinds';
 import './daily.css';
 import './rival.css';
 import { DailyScreen } from './daily';
@@ -65,9 +68,11 @@ export interface UIOptions {
   campaign?: CampaignApi;
   /** Вызов дня: без него кнопки «ВЫЗОВ ДНЯ» нет */
   daily?: DailyApi;
+  /** Раскладка клавиш: без неё экрана «УПРАВЛЕНИЕ» нет */
+  keybinds?: KeyBinds;
 }
 
-type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'campaign' | 'daily' | 'hud' | 'pause' | 'results';
+type ScreenName = 'none' | 'loading' | 'menu' | 'settings' | 'customize' | 'awards' | 'garage' | 'campaign' | 'keys' | 'daily' | 'hud' | 'pause' | 'results';
 
 /** Режим управления → нужны ли сенсорные кнопки (авто — по типу устройства). */
 function modeUsesTouch(mode: ControlMode): boolean {
@@ -84,6 +89,7 @@ export class UIManager {
   private readonly awards: AwardsScreen;
   private readonly garage: GarageScreen | null = null;
   private readonly campaign: CampaignScreen | null = null;
+  private readonly keys: KeysScreen | null = null;
   private readonly daily: DailyScreen | null = null;
   private readonly pause: PauseScreen;
   private readonly results: ResultsScreen;
@@ -177,7 +183,9 @@ export class UIManager {
       Object.assign(Object.create(cb) as UICallbacks, { onSettingsChanged: (s: Settings) => this.handleSettings(s) }),
       () => this.closeSettings(),
       (active) => this.setLayoutPreview(active),
+      opts.keybinds ? () => this.openKeys() : null,
     );
+    if (opts.keybinds) this.keys = new KeysScreen(this.host, new Nav(play), opts.keybinds, play, () => this.closeKeys());
     this.awards = new AwardsScreen(this.host, new Nav(play), () => this.closeAwards());
     this.pause = new PauseScreen(this.host, new Nav(play), cb, () => this.openSettings('pause'));
     this.results = new ResultsScreen(this.host, new Nav(play), opts.cars, cb);
@@ -371,6 +379,19 @@ export class UIManager {
     this.setScreen('menu');
   }
 
+  private openKeys(): void {
+    if (this.screen !== 'settings' || !this.keys) return;
+    this.keys.onShown();
+    this.setScreen('keys');
+  }
+
+  private closeKeys(): void {
+    if (this.screen !== 'keys' || !this.keys) return;
+    this.keys.onHidden();
+    this.settings.nav.reset(0);
+    this.setScreen('settings');
+  }
+
   private openGarage(): void {
     if (this.screen !== 'menu' || !this.garage) return;
     this.garage.onShown(this.menu.index);
@@ -440,7 +461,7 @@ export class UIManager {
 
   private setScreen(s: ScreenName): void {
     this.screen = s;
-    const fromPause = s === 'settings' && this.settingsFrom === 'pause';
+    const fromPause = (s === 'settings' || s === 'keys') && this.settingsFrom === 'pause';
     const hudVisible = s === 'hud' || s === 'pause' || fromPause;
     const wasHidden = this.hud.el.hidden;
     this.hud.el.hidden = !hudVisible;
@@ -451,6 +472,10 @@ export class UIManager {
     this.awards.el.hidden = s !== 'awards';
     if (this.garage) this.garage.el.hidden = s !== 'garage';
     if (this.campaign) this.campaign.el.hidden = s !== 'campaign';
+    if (this.keys) {
+      this.keys.el.hidden = s !== 'keys';
+      this.keys.el.classList.toggle('over-hud', fromPause);
+    }
     if (this.daily) this.daily.el.hidden = s !== 'daily';
     this.settings.el.classList.toggle('over-hud', fromPause);
     this.pause.el.hidden = s !== 'pause';
@@ -557,6 +582,8 @@ export class UIManager {
         return this.garage?.nav ?? null;
       case 'campaign':
         return this.campaign?.nav ?? null;
+      case 'keys':
+        return this.keys?.nav ?? null;
       case 'daily':
         return this.daily?.nav ?? null;
       case 'pause':
@@ -618,6 +645,9 @@ export class UIManager {
         } else if (this.screen === 'campaign') {
           cb.onUiSound('back');
           this.closeCampaign();
+        } else if (this.screen === 'keys') {
+          cb.onUiSound('back');
+          this.closeKeys();
         } else if (this.screen === 'daily') {
           cb.onUiSound('back');
           this.closeDaily();
@@ -642,6 +672,9 @@ export class UIManager {
         } else if (this.screen === 'campaign') {
           cb.onUiSound('back');
           this.closeCampaign();
+        } else if (this.screen === 'keys') {
+          cb.onUiSound('back');
+          this.closeKeys();
         } else if (this.screen === 'daily') {
           cb.onUiSound('back');
           this.closeDaily();

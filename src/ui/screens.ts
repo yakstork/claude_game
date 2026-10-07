@@ -175,6 +175,8 @@ export class SettingsScreen {
     onBack: () => void,
     /** Предпросмотр сенсорных кнопок, пока палец на слайдере размера/прозрачности */
     private readonly onPreview: (active: boolean) => void = () => undefined,
+    /** Экран «УПРАВЛЕНИЕ» (клавиши); null — кнопки нет */
+    onKeys: (() => void) | null = null,
   ) {
     this.nav = nav;
     this.settings = { ...settings };
@@ -269,7 +271,12 @@ export class SettingsScreen {
     this.addChoice(list2, RACE_CHOICES[4]);
     for (const def of TOUCH_SLIDERS) this.addSlider(list2, def);
 
-    const back = makeButton(el('div', 'set-actions', undefined, panel), 'НАЗАД');
+    const actions = el('div', 'set-actions', undefined, panel);
+    if (onKeys) {
+      const keys = makeButton(actions, 'УПРАВЛЕНИЕ');
+      nav.add({ el: keys, activate: onKeys });
+    }
+    const back = makeButton(actions, 'НАЗАД');
     nav.add({ el: back, activate: onBack });
 
     this.refresh();

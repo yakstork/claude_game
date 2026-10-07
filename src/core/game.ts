@@ -76,6 +76,7 @@ import { ACHIEVEMENTS, evaluate, loadProgress, saveProgress, type AchievementPro
 import { DIFFICULTY, applyDifficulty } from '../ai/difficulty';
 import type { TrackInfo } from './types';
 import { AudioManager } from '../audio/audioManager';
+import { KeyBinds } from '../input/keybinds';
 import { STATION_NAMES } from '../audio/theory';
 import { RADIO_ORDER } from './types';
 import { StartBoostJudge, START_BOOST } from './startBoost';
@@ -142,6 +143,8 @@ export class Game {
   readonly world: World;
   readonly effects = new EffectsManager();
   readonly input = new InputManager();
+  /** Раскладка клавиш игрока 1 (экран «УПРАВЛЕНИЕ») */
+  private readonly keybinds = new KeyBinds();
   readonly audio = new AudioManager();
   readonly ui: UIManager;
   readonly loop: GameLoop;
@@ -347,6 +350,7 @@ export class Game {
       trackIndex: this.trackIndex,
       garage: { api: this.garageCtl, cars: CAR_SPECS.map((c) => ({ id: c.id, name: c.name, custom: c.id === CUSTOM_CAR_ID })) },
       campaign: this.campaignCtl,
+      keybinds: this.keybinds,
       daily: this.dailyCtl,
       callbacks: {
         onRadio: () => this.cycleRadio(),
@@ -430,6 +434,8 @@ export class Game {
       this.camera.updateProjectionMatrix();
     });
     render.setView(this.scene, this.camera);
+    this.keybinds.onChange = (l) => this.input.setKeys(l);
+    this.input.setKeys(this.keybinds.layout);
     this.applySettings(this.settings, false);
 
     this.attract = new Attract({

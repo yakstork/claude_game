@@ -1,0 +1,15 @@
+/* ── Экран «УПРАВЛЕНИЕ» (переназначение клавиш) ───────────────────────────── */
+.keys .set-row.keys-row { cursor: pointer; align-items: center; }
+.keys-val {
+  justify-self: end; min-width: 5em; text-align: center; padding: 0.15em 0.9em;
+  font-size: 0.85em; letter-spacing: 0.1em; color: var(--yellow);
+  background: rgba(13, 2, 33, 0.85); border: 2px solid rgba(255, 211, 0, 0.55); transform: skewX(-12deg);
+}
+.keys-row.waiting .keys-val { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 0.9em rgba(5, 217, 232, 0.6); }
+.keys-row.waiting { background: rgba(5, 217, 232, 0.14); }
+.keys-note { min-height: 1.3em; text-align: center; margin-top: 0.5em; }
+.keys .set-actions { gap: 0.8em; }
+@media (max-height: 520px) {
+  .keys .keys-note { margin-top: 0.2em; font-size: 0.7em; }
+  .keys .set-actions { gap: 0.5em; }
+}
