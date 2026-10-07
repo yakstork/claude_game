@@ -3,6 +3,7 @@
  * рысканию — занос хорошо виден) и облёт машины в меню.
  */
 import { MathUtils, Vector3, type PerspectiveCamera } from 'three/webgpu';
+import type { CamPose } from './cinematics';
 import type { CameraView } from './types';
 
 const BASE_FOV = 62;
@@ -125,6 +126,15 @@ export class ChaseCamera {
       c.fov = this.fov;
       c.updateProjectionMatrix();
     }
+  }
+
+  /** Кинематографичная поза (облёт, финиш): камера ставится жёстко, пружина продолжит с неё */
+  setPose(p: CamPose): void {
+    this.t += 0.016;
+    this.pos.set(p.px, p.py, p.pz);
+    this.lookAt.set(p.lx, p.ly, p.lz);
+    this.fov = p.fov;
+    this.apply(0);
   }
 
   /** Облёт машины в меню */
