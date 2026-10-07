@@ -64,9 +64,9 @@ export const TOD_PRESETS: Record<TimeOfDay, TodPreset> = {
     sunVis: 0,
     night: 1,
     hemiColor: PALETTE.lilac,
-    hemiIntensity: 0.5,
+    hemiIntensity: 0.28,
     sunLight: PALETTE.lilac,
-    sunLightIntensity: 0.6,
+    sunLightIntensity: 0.4,
     rimIntensity: 0.8,
   },
   dawn: {

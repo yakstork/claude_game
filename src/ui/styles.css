@@ -1120,3 +1120,10 @@
 .hud-lap.challenge .hud-lap-rows { display: none; }
 .hud-lap.challenge .hud-lap-cur { font-size: 3.4em; margin: 0.05em 0 0.1em; line-height: 1; }
 .hud-lap.challenge .hud-delta { font-size: 0.95em; letter-spacing: 0.08em; color: var(--yellow, #f9c80e); }
+
+/* Облёт камеры на старте: HUD скрыт, остаётся подсказка */
+.nr-ui.intro .screen.hud { visibility: hidden; }
+.intro-hint { display: none; position: absolute; left: 0; right: 0; bottom: 6%; text-align: center; font-style: italic;
+  font-weight: 900; font-size: 1.5em; letter-spacing: 0.18em; color: var(--white); text-shadow: 0 0 10px var(--magenta), 0 0 22px var(--magenta); animation: intro-blink 1.4s ease-in-out infinite; }
+.nr-ui.intro .intro-hint { display: block; }
+@keyframes intro-blink { 50% { opacity: 0.45; } }

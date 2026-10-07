@@ -707,8 +707,8 @@ export class CarModel {
     const lobe = (c: number) => smoothstep(spread, spread.mul(0.2), abs(bx.sub(c)));
     const beam = max(lobe(-0.72), lobe(0.72)).mul(pow(oneMinus(bv), 1.7)).mul(smoothstep(0.0, 0.05, bv));
     const hMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
-    hMat.colorNode = color(HEAD).mul(beam).mul(this.lamp).mul(0.42);
-    setGlow(hMat, color(HEAD).mul(beam).mul(this.lamp).mul(0.18));
+    hMat.colorNode = color(HEAD).mul(beam).mul(this.lamp).mul(0.6);
+    setGlow(hMat, color(HEAD).mul(beam).mul(this.lamp).mul(0.3));
     this.headBeam = new Mesh(new PlaneGeometry(BEAM_W, BEAM_L), hMat);
     this.headBeam.rotation.x = -Math.PI / 2;
     this.headBeam.position.z = 2.2 + BEAM_L / 2;

@@ -8,8 +8,8 @@ import { PALETTE } from './palette';
 import { setGlow } from './materials';
 
 const COLORS = [PALETTE.magenta, PALETTE.cyan, PALETTE.yellow, PALETTE.pink, PALETTE.lilac] as const;
-const PER_COLOR = 140;
-const BURST_COUNT = 34;
+const PER_COLOR = 220;
+const BURST_COUNT = 58;
 const GRAVITY = 9;
 const DRAG = 0.9;
 /** Интервал между залпами, с */
@@ -36,14 +36,14 @@ class Swarm {
     this.vel = new Float32Array(PER_COLOR * 3);
     this.life = new Float32Array(PER_COLOR);
     this.maxLife = new Float32Array(PER_COLOR).fill(1);
-    const geo = new OctahedronGeometry(0.28, 0);
+    const geo = new OctahedronGeometry(0.55, 0);
     this.lifeAttr = new InstancedBufferAttribute(new Float32Array(PER_COLOR), 1).setUsage(DynamicDrawUsage) as InstancedBufferAttribute;
     geo.setAttribute('fwLife', this.lifeAttr);
     const mat = new MeshBasicNodeMaterial({ blending: AdditiveBlending, transparent: true, depthWrite: false });
     const l = instancedDynamicBufferAttribute(this.lifeAttr, 'float' as const);
-    const c = mix(color(hex), color(PALETTE.white), oneMinus(l).mul(0.15)).mul(oneMinus(l).mul(0.9).add(0.45));
+    const c = mix(color(hex), color(PALETTE.white), oneMinus(l).mul(0.15)).mul(oneMinus(l).mul(0.9).add(0.45)).mul(1.7);
     mat.colorNode = c;
-    setGlow(mat, c.mul(1.4));
+    setGlow(mat, c.mul(2.6));
     this.mesh = new InstancedMesh(geo, mat, PER_COLOR);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.frustumCulled = false;

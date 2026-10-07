@@ -263,6 +263,16 @@ export class UIManager {
     this.loading.setTrack(this.menu.trackName);
   }
 
+  private introHint: HTMLElement | null = null;
+
+  /** Облёт камеры перед стартом: HUD скрыт, остаётся подсказка «пропустить» */
+  setIntro(on: boolean): void {
+    this.host.classList.toggle('intro', on);
+    if (on && !this.introHint) {
+      this.introHint = el('div', 'intro-hint', 'ЛЮБАЯ КЛАВИША — ПРОПУСТИТЬ', this.host);
+    }
+  }
+
   /** Главное меню на экране без оверлеев (можно запускать демо-гонку) */
   get canAttract(): boolean {
     return this.screen === 'menu' && !this.tips.visible;

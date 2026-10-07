@@ -5,7 +5,7 @@
  */
 import { ACESFilmicToneMapping, RenderPipeline, SRGBColorSpace, WebGPURenderer } from 'three/webgpu';
 import type { Camera, Scene } from 'three/webgpu';
-import { emissive, float, length, mrt, output, pass, screenUV, smoothstep, vec2 } from 'three/tsl';
+import { emissive, float, length, mrt, output, pass, screenUV, smoothstep, uniform, vec2 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import type { Quality } from './types';
 import { setGlowEnabled } from '../world/materials';
@@ -19,6 +19,8 @@ export class RenderSystem {
   private camera: Camera | null = null;
   private bloomNode: { strength: { value: number } } | null = null;
   private neonBoost = 0;
+  /** Яркость кадра: ночью темнее (множитель до тонмаппинга, неон добирает bloom) */
+  private readonly exposure = uniform(1);
 
   private constructor(renderer: WebGPURenderer) {
     this.renderer = renderer;
@@ -58,8 +60,8 @@ export class RenderSystem {
   /** Ночью неон сильнее: усиление bloom 0..1 */
   setNeonBoost(k: number): void {
     this.neonBoost = k;
-    if (this.bloomNode) this.bloomNode.strength.value = 0.85 * (1 + 0.45 * k);
-    this.renderer.toneMappingExposure = 1 - 0.28 * k;
+    if (this.bloomNode) this.bloomNode.strength.value = 0.85 * (1 + 0.3 * k);
+    this.exposure.value = 1 - 0.45 * k;
   }
 
   getQuality(): Quality {
@@ -94,7 +96,7 @@ export class RenderSystem {
     const rgb = color.sample(screenUV).rgb;
     const ca = rgb.setX(aberrated).setZ(color.sample(screenUV.sub(shift)).b);
     const vignette = float(1.0).sub(edge.mul(0.38));
-    pipeline.outputNode = ca.mul(vignette).add(bloomPass);
+    pipeline.outputNode = ca.mul(vignette).mul(this.exposure).add(bloomPass);
     this.pipeline = pipeline;
   }
 
