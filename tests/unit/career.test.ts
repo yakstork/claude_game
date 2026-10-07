@@ -6,6 +6,12 @@ import {
   applyUpgrades,
   award,
   buyColor,
+  buyNumberSlot,
+  buyStripe,
+  selectNumber,
+  selectStripe,
+  NUMBER_PRICE,
+  STRIPE_PRICE,
   buyUpgrade,
   computeReward,
   emptyCareer,
@@ -165,5 +171,67 @@ describe('сохранение', () => {
   it('без хранилища не падает', () => {
     expect(loadCareer(null)).toEqual(emptyCareer());
     expect(() => saveCareer(emptyCareer(), null)).not.toThrow();
+  });
+});
+
+describe('ливрея: полоса и номер', () => {
+  it('полоса: покупка, выбор только купленной, 0 — без полосы', () => {
+    const c = emptyCareer();
+    expect(buyStripe(c, 0)).toBe('invalid');
+    expect(buyStripe(c, 2)).toBe('poor');
+    c.credits = 1000;
+    expect(buyStripe(c, 2)).toBe('ok');
+    expect(c.credits).toBe(1000 - STRIPE_PRICE);
+    expect(buyStripe(c, 2)).toBe('owned');
+    expect(selectStripe(c, 'razor', 1)).toBe(false);
+    expect(selectStripe(c, 'razor', 2)).toBe(true);
+    expect(c.cars.razor.stripe).toBe(2);
+    expect(selectStripe(c, 'razor', 0)).toBe(true);
+    expect(c.cars.razor.stripe).toBe(0);
+  });
+  it('номер: нужен купленный слот, диапазон 0..99, слот per-car', () => {
+    const c = emptyCareer();
+    c.credits = 500;
+    expect(selectNumber(c, 'razor', 7)).toBe(false);
+    expect(buyNumberSlot(c, 'razor')).toBe('ok');
+    expect(c.credits).toBe(500 - NUMBER_PRICE);
+    expect(buyNumberSlot(c, 'razor')).toBe('owned');
+    expect(selectNumber(c, 'razor', 100)).toBe(false);
+    expect(selectNumber(c, 'razor', 7)).toBe(true);
+    expect(selectNumber(c, 'grizzly', 7)).toBe(false);
+    expect(selectNumber(c, 'razor', null)).toBe(true);
+    expect(c.cars.razor.number).toBeNull();
+  });
+  it('сохранение ливреи и миграция старого формата без потери данных', () => {
+    const s = mem();
+    const c = emptyCareer();
+    c.credits = 900;
+    buyStripe(c, 3);
+    selectStripe(c, 'photon', 3);
+    buyNumberSlot(c, 'photon');
+    selectNumber(c, 'photon', 42);
+    saveCareer(c, s);
+    expect(loadCareer(s)).toEqual(c);
+    // старое сохранение (до ливреи): нет stripe/number/owned.stripes
+    s.setItem(
+      CAREER_KEY,
+      JSON.stringify({ credits: 321, earned: 999, cars: { razor: { levels: { engine: 3, grip: 1, nitro: 0 }, body: CUSTOM_PALETTE.body[1], neon: null } }, owned: { body: [CUSTOM_PALETTE.body[1]], neon: [] } }),
+    );
+    const old = loadCareer(s);
+    expect(old.credits).toBe(321);
+    expect(old.earned).toBe(999);
+    expect(old.cars.razor.levels).toEqual({ engine: 3, grip: 1, nitro: 0 });
+    expect(old.cars.razor.body).toBe(CUSTOM_PALETTE.body[1]);
+    expect(old.cars.razor.stripe).toBe(0);
+    expect(old.cars.razor.number).toBeNull();
+    expect(old.owned.stripes).toEqual([]);
+  });
+  it('валидация: неизвестная полоса и номер без слота отбрасываются', () => {
+    const c = sanitizeCareer({ credits: 1, owned: { stripes: [1, 9, 'x'] }, cars: { razor: { stripe: 2, number: 5, numberOwned: false }, volt: { stripe: 1, number: 12, numberOwned: true } } });
+    expect(c.owned.stripes).toEqual([1]);
+    expect(c.cars.razor.stripe).toBe(0);
+    expect(c.cars.razor.number).toBeNull();
+    expect(c.cars.volt.stripe).toBe(1);
+    expect(c.cars.volt.number).toBe(12);
   });
 });

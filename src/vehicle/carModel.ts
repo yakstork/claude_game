@@ -5,6 +5,7 @@
  */
 import {
   AdditiveBlending,
+  BufferGeometry,
   Color,
   Group,
   Matrix4,
@@ -16,7 +17,7 @@ import {
   Vector3,
 } from 'three/webgpu';
 import { abs, attribute, color, float, length, max, oneMinus, pow, sin, smoothstep, time, uniform, uv, vertexColor } from 'three/tsl';
-import type { CarModelKind, VehicleState } from '../core/types';
+import type { CarLivery, CarModelKind, VehicleState } from '../core/types';
 import { GeometryBuilder } from '../world/geometryBuilder';
 import { setGlow } from '../world/materials';
 import { PALETTE } from '../world/palette';
@@ -28,6 +29,8 @@ export interface CarLook {
   bodyColor: number;
   neonColor: number;
   accentColor: number;
+  /** Полоса/номер из гаража (необязательно) */
+  livery?: CarLivery;
 }
 
 const GLASS = 0x120726;
@@ -503,6 +506,100 @@ function buildWheel(neon: number): GeometryBuilder {
   return gb;
 }
 
+
+// ─── Ливрея: полоса (перекраска вершин) и номер (семисегментные цифры из боксов) ───
+
+/** Сегменты a..g по цифрам 0..9 */
+const SEG: string[] = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+const DIGIT_W = 0.17;
+const DIGIT_H = 0.3;
+const SEG_T = 0.04;
+
+/** Номер на бортах: цифры читаются спереди-назад с обеих сторон */
+function addNumber(gb: GeometryBuilder, num: number, paint: number): void {
+  const text = String(Math.max(0, Math.min(99, Math.floor(num))));
+  const c = new Color(paint);
+  const light = c.r * 0.3 + c.g * 0.59 + c.b * 0.11 > 0.55;
+  const col = light ? PALETTE.void : PALETTE.white;
+  const hw = CAR_GEOMETRY.width / 2;
+  const step = DIGIT_W + 0.07;
+  const total = text.length * step - 0.07;
+  const z0 = 0.2 + total / 2; // читаем от переда (+Z) к корме
+  const y0 = 0.26;
+  for (const side of [-1, 1]) {
+    for (let k = 0; k < text.length; k++) {
+      const u0 = k * step; // смещение слева направо по тексту
+      for (const seg of SEG[Number(text[k])]) {
+        // позиция сегмента в (u, v) внутри цифры
+        let u = DIGIT_W / 2;
+        let v = DIGIT_H / 2;
+        let su = DIGIT_W;
+        let sv = SEG_T;
+        if (seg === 'a') v = DIGIT_H - SEG_T / 2;
+        else if (seg === 'g') v = DIGIT_H / 2;
+        else if (seg === 'd') v = SEG_T / 2;
+        else {
+          su = SEG_T;
+          sv = DIGIT_H / 2 - SEG_T / 2;
+          u = seg === 'b' || seg === 'c' ? DIGIT_W - SEG_T / 2 : SEG_T / 2;
+          v = seg === 'b' || seg === 'f' ? DIGIT_H * 0.75 - SEG_T / 4 : DIGIT_H * 0.25 + SEG_T / 4;
+        }
+        const uu = u0 + u;
+        // +X (левый борт): взгляд на −X, вправо = −Z; −X: вправо = +Z
+        const z = side > 0 ? z0 - uu : z0 - total + uu;
+        gb.box(0.015, sv, su, col, 0.15, T(side * (hw * 1.045 + 0.01), y0 + v, z));
+      }
+    }
+  }
+}
+
+const _c1 = new Color();
+
+/** Перекраска верхних/боковых граней кузова под узор полосы (только грани цвета кузова) */
+function applyStripe(geo: BufferGeometry, look: CarLook): void {
+  const pattern = look.livery?.stripe ?? 0;
+  if (pattern <= 0) return;
+  const pos = geo.getAttribute('position');
+  const col = geo.getAttribute('color');
+  const glw = geo.getAttribute('glow');
+  const nor = geo.getAttribute('normal');
+  const body = new Color(look.bodyColor);
+  const dark = body.clone().multiplyScalar(0.62);
+  const stripe = new Color(look.neonColor);
+  const near = (r: number, g: number, b: number, c: Color): boolean => Math.abs(r - c.r) + Math.abs(g - c.g) + Math.abs(b - c.b) < 0.03;
+  for (let i = 0; i + 2 < pos.count; i += 3) {
+    const r = col.getX(i);
+    const g = col.getY(i);
+    const b = col.getZ(i);
+    if (glw.getX(i) > 0 || !(near(r, g, b, body) || near(r, g, b, dark))) continue;
+    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+    const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+    const nx = nor.getX(i);
+    const ny = nor.getY(i);
+    const ax = Math.abs(cx);
+    let hit = false;
+    if (pattern === 1) hit = ny > 0.5 && ax < 0.24;
+    else if (pattern === 2) hit = ny > 0.5 && ax > 0.1 && ax < 0.3;
+    else hit = Math.abs(nx) > 0.7 && cy > 0.0 && cy < 0.2;
+    if (!hit) continue;
+    _c1.copy(stripe);
+    for (let k = 0; k < 3; k++) {
+      col.setXYZ(i + k, _c1.r, _c1.g, _c1.b);
+      glw.setX(i + k, 0.3);
+    }
+  }
+}
+
+/** Геометрия кузова с ливреей */
+function makeBodyGeometry(look: CarLook): BufferGeometry {
+  const gb = buildBody(look);
+  const n = look.livery?.number;
+  if (n !== undefined && n !== null) addNumber(gb, n, look.bodyColor);
+  const geo = gb.build();
+  applyStripe(geo, look);
+  return geo;
+}
+
 /** Общий материал машины: vertex colors + свечение по атрибуту glow */
 const makeGain = () => uniform(1);
 function carMaterial(neonGain: ReturnType<typeof makeGain>): MeshStandardNodeMaterial {
@@ -543,9 +640,15 @@ export class CarModel {
   private readonly crack: Mesh;
   private crackT = 0;
 
+  /** Текущий вид (после setLivery) */
+  private cur: CarLook;
+  private readonly neonUniform = uniform(new Color(0));
+
   constructor(readonly look: CarLook) {
+    this.cur = look;
     const mat = carMaterial(this.neonGain);
-    this.body = new Mesh(buildBody(look).build(), mat);
+    this.body = new Mesh(makeBodyGeometry(look), mat);
+    this.cur = look;
     this.group.add(this.body);
     const wheelGeo = buildWheel(look.neonColor).build();
     for (const [x, y, z] of CAR_GEOMETRY.wheelOffsets) {
@@ -574,7 +677,8 @@ export class CarModel {
     const ugMat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
     const d = length(uv().sub(0.5).mul(float(2.0)));
     const fall = oneMinus(smoothstep(0.2, 1.0, d));
-    const neon = uniform(new Color(look.neonColor));
+    const neon = this.neonUniform;
+    neon.value.set(look.neonColor);
     ugMat.colorNode = neon.mul(fall).mul(this.glowPulse).mul(0.9);
     setGlow(ugMat, neon.mul(fall).mul(0.35));
     this.underglow = new Mesh(new PlaneGeometry(3.2, 5.6), ugMat);
@@ -725,6 +829,30 @@ export class CarModel {
     this.lamp.value = intensity;
     this.headBeam.visible = intensity > 0.01 && cones;
     this.tailGlow.visible = intensity > 0.01;
+  }
+
+  /**
+   * Сменить ливрею (покраска, цвет неона, узор полосы, номер). Пересобирает геометрию кузова
+   * и колёс один раз за вызов (не каждый кадр); материалы, урон и фары не затрагиваются.
+   */
+  setLivery(l: { paint?: number; glow?: number; stripe?: number; number?: number | null }): void {
+    const prev = this.cur;
+    const next: CarLook = {
+      ...prev,
+      bodyColor: l.paint ?? prev.bodyColor,
+      neonColor: l.glow ?? prev.neonColor,
+      livery: { stripe: l.stripe ?? prev.livery?.stripe ?? 0, number: l.number === undefined ? (prev.livery?.number ?? null) : l.number },
+    };
+    this.cur = next;
+    this.body.geometry.dispose();
+    this.body.geometry = makeBodyGeometry(next);
+    if (next.neonColor !== prev.neonColor) {
+      const wheelGeo = buildWheel(next.neonColor).build();
+      const old = this.wheels[0]?.geometry;
+      for (const w of this.wheels) w.geometry = wheelGeo;
+      old?.dispose();
+      this.neonUniform.value.set(next.neonColor);
+    }
   }
 
   /** Полупрозрачный «призрак» лучшего круга: без тени и пламени, не пишет глубину */

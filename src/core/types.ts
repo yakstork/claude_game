@@ -40,6 +40,12 @@ export interface CustomBuild {
 /** id машины «своя сборка» */
 export const CUSTOM_CAR_ID = 'custom';
 
+/** Ливрея заводской машины из гаража: узор полосы (0 — нет, 1..3) и номер на борту */
+export interface CarLivery {
+  stripe: number;
+  number: number | null;
+}
+
 export interface CarSpec {
   id: string;
   name: string;
@@ -54,6 +60,8 @@ export interface CarSpec {
   // src/vehicle/handling.ts (HandlingConfig), единый источник истины.
   /** Полоски характеристик в меню, 0..1 */
   stats: { speed: number; handling: number; drift: number };
+  /** Ливрея игрока (ставит гараж; у ботов не задаётся) */
+  livery?: CarLivery;
 }
 
 export interface WheelState {

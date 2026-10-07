@@ -633,7 +633,7 @@ export class Game {
     const order: (BotProfile | null)[] = solo ? [null] : versus ? [bots[0], bots[1], null, bots[2], null, bots[3]] : [bots[0], bots[1], bots[2], null, bots[3], bots[4]];
     order.forEach((profile, slot) => {
       const isP2 = versus && !profile && slot !== this.playerSlot;
-      const spec: CarSpec = profile ? { ...specById(profile.carId), bodyColor: profile.bodyColor, neonColor: profile.neonColor } : isP2 ? p2Spec : playerSpec;
+      const spec: CarSpec = profile ? { ...specById(profile.carId), bodyColor: profile.bodyColor, neonColor: profile.neonColor, livery: undefined } : isP2 ? p2Spec : playerSpec;
       const physics = new VehiclePhysics(spec, this.track);
       const pose = this.track.gridPose(slot);
       physics.reset(pose.position, pose.heading, pose.s);
