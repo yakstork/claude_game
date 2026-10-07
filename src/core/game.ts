@@ -509,6 +509,7 @@ export class Game {
     this.render.setQuality(s.quality);
     this.world.setQuality(s.quality);
     this.world.setTimeOfDay(s.timeOfDay);
+    this.world.setWeather(s.weather);
     this.previewModel?.setHeadlights(this.world.headlights, s.quality === 'high');
     this.effects.density = s.quality === 'high' ? 1 : 0.5;
     this.camera.far = s.quality === 'high' ? 2000 : 1600;

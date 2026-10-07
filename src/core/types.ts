@@ -244,7 +244,11 @@ export interface Settings {
   cameraView: CameraView;
   /** Время суток: закат / ночь / рассвет (на Storm Boulevard погода приоритетнее) */
   timeOfDay: TimeOfDay;
+  /** Погода на любой трассе: ясно / дождь / туман (Storm Boulevard всегда с дождём) */
+  weather: Weather;
 }
+
+export type Weather = 'clear' | 'rain' | 'fog';
 
 export type TimeOfDay = 'sunset' | 'night' | 'dawn';
 
