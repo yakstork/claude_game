@@ -15,6 +15,7 @@ import { addFullscreenButton } from './fullscreen';
 import { formatCredits } from '../race/career';
 import { buildLogo } from './menu';
 import { Nav } from './nav';
+import { applyProgress, exportProgress, parseProgress } from '../core/progressTransfer';
 import { trackLabel } from './trackLogic';
 
 /** Кнопка со скосом: внутренний span выпрямляет текст. */
@@ -294,6 +295,8 @@ export class SettingsScreen {
     this.addChoice(list2, RACE_CHOICES[4]);
     for (const def of TOUCH_SLIDERS) this.addSlider(list2, def);
 
+    this.addTransfer(list2);
+
     const actions = el('div', 'set-actions', undefined, panel);
     if (onKeys) {
       const keys = makeButton(actions, 'УПРАВЛЕНИЕ');
@@ -303,6 +306,58 @@ export class SettingsScreen {
     nav.add({ el: back, activate: onBack });
 
     this.refresh();
+  }
+
+  /** Перенос прогресса: экспорт (base64 в буфер и поле) и импорт (вставить, проверить, подтвердить, перезагрузить) */
+  private addTransfer(parent: HTMLElement): void {
+    const row = el('div', 'set-row wide', undefined, parent);
+    el('span', 'set-label', 'ПЕРЕНОС ПРОГРЕССА', row);
+    const area = document.createElement('textarea');
+    area.className = 'transfer-area';
+    area.rows = 3;
+    area.spellcheck = false;
+    area.placeholder = 'Строка прогресса: «Экспорт» заполнит поле, для импорта вставьте её сюда';
+    area.addEventListener('keydown', (e) => e.stopPropagation());
+    area.addEventListener('keyup', (e) => e.stopPropagation());
+    row.appendChild(area);
+    const status = el('div', 'set-hint', '', row);
+    const btns = el('div', 'transfer-btns', undefined, row);
+    const exp = makeButton(btns, 'ЭКСПОРТ ПРОГРЕССА');
+    const imp = makeButton(btns, 'ИМПОРТ');
+    const doExport = async (): Promise<void> => {
+      try {
+        const text = await exportProgress(localStorage);
+        area.value = text;
+        area.select();
+        let copied = false;
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch {
+          /* буфер недоступен — строка осталась в поле */
+        }
+        status.textContent = copied ? 'Скопировано в буфер и показано в поле' : 'Скопируйте строку из поля вручную';
+      } catch {
+        status.textContent = 'Не удалось собрать прогресс';
+      }
+    };
+    const doImport = async (): Promise<void> => {
+      const r = await parseProgress(area.value);
+      if (!r.ok) {
+        status.textContent = r.error;
+        return;
+      }
+      if (!window.confirm(`Заменить текущий прогресс импортированным (${r.count} записей) и перезагрузить игру?`)) return;
+      try {
+        applyProgress(localStorage, r.dump);
+        status.textContent = 'Готово, перезагрузка…';
+        location.reload();
+      } catch {
+        status.textContent = 'Не удалось записать данные';
+      }
+    };
+    this.nav.add({ el: exp, activate: () => void doExport() });
+    this.nav.add({ el: imp, activate: () => void doImport() });
   }
 
   /** Сброс прокрутки при открытии. */
