@@ -25,6 +25,8 @@ import {
 
 export interface TouchControlsOptions {
   onPause(): void;
+  /** Смена камеры (кнопка под паузой) */
+  onCamera?(): void;
   /** Первое касание кнопки: разблокировать звук (на iOS — строго в обработчике жеста) */
   onFirstInteraction(): void;
 }
@@ -133,6 +135,26 @@ export class TouchControls {
     svgEl('rect', { x: 6, y: 4, width: 4.2, height: 16, fill: 'currentColor' }, pIcon);
     svgEl('rect', { x: 13.8, y: 4, width: 4.2, height: 16, fill: 'currentColor' }, pIcon);
     this.pauseBtn = pause;
+
+    const cam = el('div', 'nr-tc-pause nr-tc-cam', undefined, root);
+    cam.setAttribute('role', 'button');
+    cam.setAttribute('aria-label', 'Камера');
+    el('div', 'nr-tc-face', undefined, cam);
+    const cIcon = svgEl('svg', { viewBox: '0 0 24 24', class: 'nr-tc-icon', 'aria-hidden': 'true' }, cam);
+    svgEl('path', { d: 'M3 8h4l2-3h6l2 3h4v11H3z', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linejoin': 'round' }, cIcon);
+    svgEl('circle', { cx: 12, cy: 13, r: 3.6, fill: 'currentColor' }, cIcon);
+    cam.addEventListener('pointerdown', (e: PointerEvent) => {
+      if (!this.interactive) return;
+      e.stopPropagation();
+      if (e.cancelable) e.preventDefault();
+      cam.classList.add('on');
+      window.setTimeout(() => cam.classList.remove('on'), 140);
+      if (!this.gotDown) {
+        this.gotDown = true;
+        this.opts.onFirstInteraction();
+      }
+      this.opts.onCamera?.();
+    });
 
     root.addEventListener('pointerdown', this.onDown);
     root.addEventListener('contextmenu', this.prevent);

@@ -358,6 +358,7 @@ export class Game {
       },
       callbacks: {
         onRadio: () => this.cycleRadio(),
+        onCamera: () => { if (this.cars.length) this.cycleCamera(); },
         onCampaignMap: () => {
           this.enterMenu();
           this.ui.showCampaign();

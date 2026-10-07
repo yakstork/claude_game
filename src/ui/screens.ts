@@ -304,7 +304,7 @@ export class SettingsScreen {
   }
 
   private addChoice(parent: HTMLElement, def: ChoiceDef): void {
-    const row = el('div', 'set-row', undefined, parent);
+    const row = el('div', def.options.length > 4 ? 'set-row wide' : 'set-row', undefined, parent);
     el('span', 'set-label', def.label, row);
     const seg = el('div', 'segments', undefined, row);
     const btns = def.options.map((o) => {

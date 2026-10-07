@@ -120,6 +120,9 @@ export class UIManager {
       onPause: () => {
         if (this.screen === 'hud') cb.onPause();
       },
+      onCamera: () => {
+        if (this.screen === 'hud') cb.onCamera?.();
+      },
       onFirstInteraction: () => cb.onFirstInteraction(),
     });
     const tracks = opts.tracks ?? [];
