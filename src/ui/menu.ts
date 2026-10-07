@@ -72,6 +72,7 @@ export class MainMenu {
   private readonly trackTagEl: HTMLElement;
   private readonly trackLenEl: HTMLElement;
   private readonly trackCounterEl: HTMLElement;
+  private readonly newSeedBtn: HTMLElement;
   /** Индекс пункта «трасса» в Nav (всегда первый: визуально он над кнопкой «ГОНКА»). */
   static readonly TRACK_NAV = 0;
   /** Пункт Nav, на котором стоит фокус по умолчанию: кнопка «ГОНКА». */
@@ -201,6 +202,11 @@ export class MainMenu {
     const tmeta = el('div', 'track-meta', undefined, tp);
     this.trackTagEl = el('span', 'track-tag', '', tmeta);
     this.trackLenEl = el('span', 'track-len', '', tmeta);
+    // «НОВАЯ» — только на карточке «ГЕНЕРАТОР»
+    this.newSeedBtn = el('span', 'track-new', 'НОВАЯ', tmeta);
+    this.newSeedBtn.setAttribute('role', 'button');
+    this.newSeedBtn.hidden = true;
+    onTap(this.newSeedBtn, () => this.cb.onNewSeed?.());
     nav.add({
       el: this.trackBox,
       noClick: true,
@@ -390,6 +396,13 @@ export class MainMenu {
     }
   }
 
+  /** Заменить данные карточки (генератор: новый seed) */
+  updateTrack(i: number, info: TrackInfo): void {
+    if (i < 0 || i >= this.tracks.length) return;
+    this.tracks[i] = info;
+    if (i === this.trackIdx) this.renderTrack();
+  }
+
   private renderTrack(): void {
     const t = this.tracks[this.trackIdx];
     const choice = this.tracks.length > 1;
@@ -400,6 +413,7 @@ export class MainMenu {
     setText(this.trackNameEl, t.name);
     setText(this.trackTagEl, t.tagline);
     setText(this.trackLenEl, formatLength(t.lengthKm));
+    this.newSeedBtn.hidden = !t.id.startsWith('gen-');
     setText(this.trackCounterEl, `${this.trackIdx + 1} / ${this.tracks.length}`);
     setText(this.recTrack, choice ? t.name : '');
   }

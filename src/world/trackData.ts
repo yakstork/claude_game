@@ -4,6 +4,9 @@
  * [x, y, z, halfWidth?, bank?] — bank в градусах (+ правый край ниже).
  * Первая точка — стартовая линия (s = 0), движение — по порядку точек.
  */
+import type { PickupLayout } from './pickups';
+import { generateTrack, GEN_DEFAULT_SEED } from './trackGen';
+
 export type ControlPoint = [x: number, y: number, z: number, halfWidth?: number, bankDeg?: number];
 
 export interface TrackDefinition {
@@ -14,6 +17,10 @@ export interface TrackDefinition {
   tagline?: string;
   /** Световые тоннели — участки [f0, f1] в долях длины круга */
   tunnels?: [number, number][];
+  /** Декор: город (по умолчанию) или каньон — для сгенерированных трасс */
+  decor?: 'city' | 'canyon';
+  /** Готовая раскладка пикапов (сгенерированные трассы) */
+  pickups?: PickupLayout;
   points: ControlPoint[];
   defaultHalfWidth: number;
   checkpointCount: number;
@@ -334,4 +341,13 @@ export const NEON_CANYON: TrackDefinition = {
 };
 
 /** Все трассы в порядке меню */
-export const TRACKS: TrackDefinition[] = [SUNSET_LOOP, NEON_HEIGHTS, MIDNIGHT_COAST, STORM_BOULEVARD, NEON_CANYON];
+export const TRACKS: TrackDefinition[] = [SUNSET_LOOP, NEON_HEIGHTS, MIDNIGHT_COAST, STORM_BOULEVARD, NEON_CANYON, generateTrack(GEN_DEFAULT_SEED)];
+
+/** Индекс карточки «ГЕНЕРАТОР» (последняя) */
+export const GEN_INDEX = TRACKS.length - 1;
+
+/** Заменить сгенерированную трассу в списке (карточка «ГЕНЕРАТОР») */
+export function setGeneratedSeed(seed: number): TrackDefinition {
+  TRACKS[GEN_INDEX] = generateTrack(seed);
+  return TRACKS[GEN_INDEX];
+}
