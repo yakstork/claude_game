@@ -163,6 +163,8 @@ export class SettingsScreen {
   private readonly modeBtns: Record<ControlMode, HTMLElement>;
   private readonly fpsBtn: HTMLElement;
   private readonly fpsVal: HTMLElement;
+  private readonly fxBtn: HTMLElement;
+  private readonly fxVal: HTMLElement;
   private readonly list: HTMLElement;
   private readonly modeHint: HTMLElement;
   private readonly choices: { def: ChoiceDef; btns: HTMLElement[] }[] = [];
@@ -234,6 +236,27 @@ export class SettingsScreen {
         return true;
       },
       activate: toggleFps,
+    });
+
+    // эффекты скорости
+    const xRow = el('div', 'set-row', undefined, list);
+    el('span', 'set-label', 'ЭФФЕКТЫ СКОРОСТИ', xRow);
+    this.fxBtn = el('div', 'toggle', undefined, xRow);
+    el('span', 'toggle-knob', undefined, this.fxBtn);
+    this.fxVal = el('span', 'slider-val', '', xRow);
+    const toggleFx = (): void => this.setSpeedFx(!this.settings.speedFx);
+    onTap(xRow, () => {
+      this.nav.focusAt(this.nav.items.findIndex((it) => it.el === xRow), false);
+      toggleFx();
+    });
+    nav.add({
+      el: xRow,
+      noClick: true,
+      adjust: () => {
+        toggleFx();
+        return true;
+      },
+      activate: toggleFx,
     });
 
     // тип управления
@@ -415,6 +438,11 @@ export class SettingsScreen {
     this.emit();
   }
 
+  private setSpeedFx(v: boolean): void {
+    this.settings = { ...this.settings, speedFx: v };
+    this.emit();
+  }
+
   private setFps(v: boolean): void {
     this.settings = { ...this.settings, showFps: v };
     this.emit();
@@ -432,6 +460,8 @@ export class SettingsScreen {
     this.modeHint.hidden = !(this.settings.controlMode === 'keyboard' && isTouchDevice());
     this.fpsBtn.classList.toggle('on', this.settings.showFps);
     this.fpsVal.textContent = this.settings.showFps ? 'ВКЛ' : 'ВЫКЛ';
+    this.fxBtn.classList.toggle('on', this.settings.speedFx);
+    this.fxVal.textContent = this.settings.speedFx ? 'ВКЛ' : 'ВЫКЛ';
     for (const c of this.choices) c.def.options.forEach((o, i) => c.btns[i].classList.toggle('on', this.settings[c.def.key] === o.value));
   }
 }
