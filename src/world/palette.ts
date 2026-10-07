@@ -19,10 +19,10 @@ export const PALETTE = {
   asphalt: 0x160a2e,
   // ночь (синтвейв: глубокий фиолет с магентовой кромкой города)
   nightZenith: 0x05010f,
-  nightHigh: 0x180536,
-  nightMid: 0x3b0c63,
-  nightHorizon: 0x7a1f8c,
-  nightFog: 0x120330,
+  nightHigh: 0x0f0326,
+  nightMid: 0x290850,
+  nightHorizon: 0x5c1672,
+  nightFog: 0x0a0220,
   // рассвет (холодный розово-голубой)
   dawnZenith: 0x1b2570,
   dawnHigh: 0x4a5fc8,

@@ -572,6 +572,7 @@ export class Game {
       this.scene.add(m.group);
       return m;
     });
+    for (const m of temp) m.setHeadlights(1, true); // прогрев конусов фар
     this.camera.position.set(-20, 15, -20);
     this.camera.lookAt(0, 0, 0);
     try {
@@ -580,6 +581,7 @@ export class Game {
       console.warn('Предкомпиляция шейдеров не удалась', e);
     }
     for (const m of temp) {
+      m.setHeadlights(0);
       this.scene.remove(m.group);
       m.dispose();
     }
@@ -701,6 +703,7 @@ export class Game {
     this.fireworks.clear();
     this.finishCam = false;
     this.introT = 0;
+    this.ui.setIntro(false);
     if (this.pickupMesh) {
       this.scene.remove(this.pickupMesh.group);
       this.pickupMesh.dispose();
@@ -878,6 +881,7 @@ export class Game {
     this.lastStrikes = this.world.lightningStrikes;
     this.ui.showRaceHud(this.track.outline(256));
     this.hud.totalRacers = this.cars.length;
+    this.ui.setIntro(this.introT > 0);
     if (this.mode === 'cup') {
       this.cup ??= new Cup(
         this.cars.map((c) => ({ name: c.name, isPlayer: c.isPlayer, color: c.color })),
@@ -1438,6 +1442,7 @@ export class Game {
 
   private endIntro(): void {
     this.introT = 0;
+    this.ui.setIntro(false);
     if (this.cars.length) this.chase.snap(this.chaseInput(this.player));
   }
 
