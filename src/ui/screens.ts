@@ -99,9 +99,9 @@ export const RACE_CHOICES: ChoiceDef[] = [
     key: 'raceMode',
     label: 'РЕЖИМ',
     options: [
-      { value: 'race' as RaceMode, full: 'ГОНКА' },
-      { value: 'cup' as RaceMode, full: 'КУБОК' },
-      { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ' },
+      { value: 'race' as RaceMode, full: 'ГОНКА', short: 'ГОНКА' },
+      { value: 'cup' as RaceMode, full: 'КУБОК', short: 'КУБОК' },
+      { value: 'timeAttack' as RaceMode, full: 'НА ВРЕМЯ', short: 'ВРЕМЯ' },
       { value: 'drift' as RaceMode, full: 'ДРИФТ', short: 'ДРИФТ' },
       { value: 'elimination' as RaceMode, full: 'ВЫБЫВАНИЕ', short: 'ВЫБЫВ.' },
       { value: 'versus' as RaceMode, full: '2 ИГРОКА', short: '2 ИГР.' },
@@ -295,7 +295,8 @@ export class SettingsScreen {
   }
 
   private addChoice(parent: HTMLElement, def: ChoiceDef): void {
-    const row = el('div', 'set-row', undefined, parent);
+    // много вариантов (режимы) — строка на всю ширину: подпись сверху, кнопки ниже
+    const row = el('div', def.options.length > 4 ? 'set-row wide' : 'set-row', undefined, parent);
     el('span', 'set-label', def.label, row);
     const seg = el('div', 'segments', undefined, row);
     const btns = def.options.map((o) => {
