@@ -25,7 +25,7 @@ const info = (page: Page) => page.evaluate(() => window.__neonRush!.info() as un
 
 test('меню загружается, гонка стартует и машина едет, пауза работает', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/');
+  await page.goto('/?attract=0');
   await page.waitForFunction(() => window.__neonRush?.info().state === 'menu', null, { timeout: 60_000 });
   await expect(page.locator('#app canvas')).toBeVisible();
   await expect(page.locator('.logo-title >> visible=true').first()).toBeVisible();
