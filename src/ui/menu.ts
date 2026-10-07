@@ -73,6 +73,7 @@ export class MainMenu {
   private trackIdx = 0;
   private records: Records;
   private modeEl: HTMLElement | null = null;
+  private creditsEl: HTMLElement | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -88,6 +89,8 @@ export class MainMenu {
     onToggleMode: (() => void) | null = null,
     onTips: () => void = () => undefined,
     onAwards: (() => void) | null = null,
+    /** «ГАРАЖ» (null — кнопки нет) */
+    onGarage: (() => void) | null = null,
   ) {
     this.cars = cars.slice();
     this.tracks = tracks.slice();
@@ -217,6 +220,13 @@ export class MainMenu {
       modeBtn.setAttribute('aria-label', 'Режим: гонка с ботами или заезд на время');
       modeNav = { el: modeBtn, activate: onToggleMode, adjust: () => (onToggleMode(), true) };
     }
+    let garageBtn: HTMLElement | null = null;
+    if (onGarage) {
+      garageBtn = el('div', 'btn garage-btn', undefined, btns);
+      garageBtn.setAttribute('role', 'button');
+      const gl = el('span', undefined, 'ГАРАЖ', garageBtn);
+      this.creditsEl = el('span', 'credits', '', gl);
+    }
     const sett = el('div', 'btn', undefined, btns);
     el('span', undefined, 'НАСТРОЙКИ', sett);
     const adjust = (dir: -1 | 1): boolean => {
@@ -246,6 +256,9 @@ export class MainMenu {
       nav.add({ el: awards, activate: onAwards });
     }
 
+    // «ГАРАЖ» — самый последний пункт Nav (фокус по умолчанию остаётся на «ГОНКА»)
+    if (garageBtn && onGarage) nav.add({ el: garageBtn, activate: onGarage, adjust });
+
     // подсказка управления (внизу)
     const hint = el('div', 'menu-hint', undefined, root);
     this.hint1 = el('div', undefined, HINT_KEYS, hint);
@@ -253,6 +266,11 @@ export class MainMenu {
 
     this.setCar(0, false);
     this.renderTrack();
+  }
+
+  /** Баланс неон-кредитов на кнопке «ГАРАЖ» */
+  setCredits(text: string): void {
+    if (this.creditsEl) setText(this.creditsEl, text);
   }
 
   /** Подпись кнопки режима */
